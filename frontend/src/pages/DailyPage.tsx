@@ -9,6 +9,18 @@ import {
   setRevenue,
 } from '../api/daily'
 import type { DailyEntry, MyEtablissement } from '../api/types'
+import { Modal } from '../components/Modal'
+
+/** Date longue en français à partir d'un ISO YYYY-MM-DD. */
+function formatLongDate(iso: string): string {
+  const [yy, mm, dd] = iso.split('-').map(Number)
+  return new Date(yy, mm - 1, dd).toLocaleDateString('fr-FR', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  })
+}
 
 function formatEur(value: number | null | undefined): string {
   if (value == null) return '—'
@@ -116,6 +128,13 @@ export function DailyPage() {
   const onSelectDay = (iso: string) => {
     setSelected(iso)
     loadDay(iso)
+  }
+
+  const closeEditor = () => {
+    setSelected(null)
+    setDay(null)
+    setEditorError(null)
+    setEditorOk(null)
   }
 
   const prevMonth = () => {
@@ -268,21 +287,12 @@ export function DailyPage() {
         </div>
       </section>
 
-      {selected && (
-        <section className="card">
-          <h2>
-            Saisie du{' '}
-            {(() => {
-              const [yy, mm, dd] = selected.split('-').map(Number)
-              return new Date(yy, mm - 1, dd).toLocaleDateString('fr-FR', {
-                weekday: 'long',
-                day: 'numeric',
-                month: 'long',
-                year: 'numeric',
-              })
-            })()}
-          </h2>
-
+      <Modal
+        open={selected != null}
+        onClose={closeEditor}
+        title={selected ? `Saisie du ${formatLongDate(selected)}` : ''}
+      >
+        <div className="day-editor">
           {editorError && <div className="alert">{editorError}</div>}
           {editorOk && <div className="success">{editorOk}</div>}
 
@@ -355,8 +365,8 @@ export function DailyPage() {
               Dernière mise à jour : {new Date(day.updatedAt).toLocaleString('fr-FR')}
             </p>
           )}
-        </section>
-      )}
+        </div>
+      </Modal>
     </div>
   )
 }

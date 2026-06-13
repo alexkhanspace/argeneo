@@ -41,14 +41,23 @@ export async function createTenant(input: CreateTenantInput): Promise<Tenant> {
   return data
 }
 
-// --- Patron : etablissements ---
+// --- Patron : etablissements (lecture seule ; création réservée au Super-Admin) ---
 export async function listEtablissements(): Promise<Etablissement[]> {
   const { data } = await api.get<Etablissement[]>('/etablissements')
   return data
 }
 
-export async function createEtablissement(input: { name: string; address?: string }): Promise<Etablissement> {
-  const { data } = await api.post<Etablissement>('/etablissements', input)
+// --- Super-Admin : etablissements d'un tenant (souscription / licence) ---
+export async function listTenantEtablissements(tenantId: number): Promise<Etablissement[]> {
+  const { data } = await api.get<Etablissement[]>(`/admin/tenants/${tenantId}/etablissements`)
+  return data
+}
+
+export async function createTenantEtablissement(
+  tenantId: number,
+  input: { name: string; address?: string },
+): Promise<Etablissement> {
+  const { data } = await api.post<Etablissement>(`/admin/tenants/${tenantId}/etablissements`, input)
   return data
 }
 

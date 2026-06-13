@@ -155,10 +155,15 @@ export function RecipeEditorPage() {
       <div className="grid grid-recipe">
         <section className="card">
           <h2>Composition</h2>
+          <p className="muted small">
+            Saisissez la recette pour un lot, puis indiquez le <strong>rendement</strong> : ce que
+            ce lot produit (ex. 120 pièces). Le coût de revient à l'unité = coût du lot ÷ rendement
+            (ajusté de la perte).
+          </p>
           <form onSubmit={onSubmit}>
             <div className="form-inline">
               <label>
-                Rendement
+                Rendement (quantité produite)
                 <input
                   type="number"
                   step="0.0001"

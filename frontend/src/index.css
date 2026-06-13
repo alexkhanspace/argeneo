@@ -367,6 +367,79 @@ textarea {
   overflow-x: auto;
 }
 
+.plain-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.plain-list li {
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--line);
+}
+
+/* ---- Modale ---- */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(20, 16, 12, 0.45);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 5vh 1rem 1rem;
+  z-index: 100;
+  overflow-y: auto;
+}
+.modal {
+  background: var(--surface);
+  border-radius: var(--radius);
+  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.25);
+  width: 100%;
+  max-width: 520px;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid var(--line);
+}
+.modal-title {
+  margin: 0;
+  font-size: 1.1rem;
+  text-transform: capitalize;
+}
+.modal-close {
+  background: transparent;
+  border: none;
+  font-size: 1.6rem;
+  line-height: 1;
+  color: var(--muted);
+  padding: 0 0.25rem;
+}
+.modal-close:hover {
+  color: var(--ink);
+}
+.modal-body {
+  padding: 1.5rem;
+  overflow-y: auto;
+}
+@media (max-width: 640px) {
+  .modal-overlay {
+    padding: 0;
+  }
+  .modal {
+    max-width: 100%;
+    min-height: 100vh;
+    max-height: 100vh;
+    border-radius: 0;
+  }
+}
+
 /* ---- Matières : édition du prix inline ---- */
 .price-cell {
   display: flex;

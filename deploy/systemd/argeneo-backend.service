@@ -1,0 +1,54 @@
+# =============================================================================
+# Argeneo backend — Spring Boot fat jar, run natively under systemd (no Docker).
+# Install:  sudo cp deploy/systemd/argeneo-backend.service \
+#                   /etc/systemd/system/argeneo-backend.service
+#           sudo systemctl daemon-reload
+#           sudo systemctl enable --now argeneo-backend
+# Logs:     journalctl -u argeneo-backend -f
+# =============================================================================
+[Unit]
+Description=Argeneo backend (Spring Boot)
+Documentation=https://argeneo.fr
+# Postgres is local; wait for it (and the network) before starting.
+After=network-online.target postgresql.service
+Wants=network-online.target
+Requires=postgresql.service
+
+[Service]
+Type=simple
+User=argeneo
+Group=argeneo
+
+# Secrets and tunables live here (chmod 600). The jar is deployed by deploy.sh.
+EnvironmentFile=/etc/argeneo/argeneo.env
+WorkingDirectory=/opt/argeneo
+
+# $JAVA_OPTS comes from the EnvironmentFile. systemd splits it on whitespace.
+ExecStart=/usr/bin/java $JAVA_OPTS -jar /opt/argeneo/argeneo-backend.jar
+
+# Restart policy — survive transient crashes, but don't hammer on a hard fail.
+Restart=on-failure
+RestartSec=5
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+# Give the app time to run Flyway migrations + warm up on first boot.
+TimeoutStartSec=120
+TimeoutStopSec=30
+
+# --- Hardening -------------------------------------------------------------
+NoNewPrivileges=true
+ProtectSystem=strict          # whole FS read-only except ReadWritePaths below
+ProtectHome=true
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+# The jar writes nothing under /opt/argeneo at runtime, but Spring may want a
+# tmp/work dir — PrivateTmp covers it. Add paths here if the app needs to write.
+# ReadWritePaths=/opt/argeneo/data
+
+[Install]
+WantedBy=multi-user.target

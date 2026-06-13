@@ -1,7 +1,12 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { errorMessage } from '../../api/client'
-import { createTenant, listTenants } from '../../api/iam'
-import type { RecipeScope, Tenant } from '../../api/types'
+import {
+  createTenant,
+  createTenantEtablissement,
+  listTenantEtablissements,
+  listTenants,
+} from '../../api/iam'
+import type { Etablissement, RecipeScope, Tenant } from '../../api/types'
 
 export function TenantsPage() {
   const [tenants, setTenants] = useState<Tenant[]>([])
@@ -13,6 +18,14 @@ export function TenantsPage() {
   const [patronFullName, setPatronFullName] = useState('')
   const [patronEmail, setPatronEmail] = useState('')
   const [patronPassword, setPatronPassword] = useState('')
+
+  // Gestion des établissements d'un tenant sélectionné.
+  const [selected, setSelected] = useState<Tenant | null>(null)
+  const [etabs, setEtabs] = useState<Etablissement[]>([])
+  const [etabName, setEtabName] = useState('')
+  const [etabAddress, setEtabAddress] = useState('')
+  const [etabError, setEtabError] = useState<string | null>(null)
+  const [etabBusy, setEtabBusy] = useState(false)
 
   const refresh = () => {
     listTenants().then(setTenants).catch((e) => setError(errorMessage(e)))
@@ -37,10 +50,39 @@ export function TenantsPage() {
     }
   }
 
+  const selectTenant = (t: Tenant) => {
+    setSelected(t)
+    setEtabError(null)
+    setEtabName('')
+    setEtabAddress('')
+    listTenantEtablissements(t.id).then(setEtabs).catch((e) => setEtabError(errorMessage(e)))
+  }
+
+  const addEtablissement = async (e: FormEvent) => {
+    e.preventDefault()
+    if (!selected) return
+    setEtabError(null)
+    setEtabBusy(true)
+    try {
+      await createTenantEtablissement(selected.id, { name: etabName, address: etabAddress || undefined })
+      setEtabName('')
+      setEtabAddress('')
+      const list = await listTenantEtablissements(selected.id)
+      setEtabs(list)
+    } catch (err) {
+      setEtabError(errorMessage(err))
+    } finally {
+      setEtabBusy(false)
+    }
+  }
+
   return (
     <div className="page">
       <h1>Tenants</h1>
-      <p className="muted">Chaque tenant (artisan/enseigne) est créé avec son patron initial.</p>
+      <p className="muted">
+        Chaque tenant (artisan/enseigne) est créé avec son patron initial. Les
+        établissements sont ajoutés ici, à la souscription (licence).
+      </p>
 
       <div className="grid">
         <section className="card">
@@ -54,7 +96,7 @@ export function TenantsPage() {
               Portée des recettes
               <select value={recipeScope} onChange={(e) => setRecipeScope(e.target.value as RecipeScope)}>
                 <option value="ENSEIGNE">Communes à l'enseigne</option>
-                <option value="ETABLISSEMENT">Propres à chaque etablissement</option>
+                <option value="ETABLISSEMENT">Propres à chaque établissement</option>
               </select>
             </label>
             <hr />
@@ -89,29 +131,74 @@ export function TenantsPage() {
           {tenants.length === 0 ? (
             <p className="muted">Aucun tenant pour le moment.</p>
           ) : (
-            <table>
-              <thead>
-                <tr>
-                  <th>#</th>
-                  <th>Enseigne</th>
-                  <th>Recettes</th>
-                  <th>Statut</th>
-                </tr>
-              </thead>
-              <tbody>
-                {tenants.map((t) => (
-                  <tr key={t.id}>
-                    <td data-label="#">{t.id}</td>
-                    <td data-label="Enseigne">{t.name}</td>
-                    <td data-label="Recettes">{t.recipeScope === 'ENSEIGNE' ? 'Enseigne' : 'Par etablissement'}</td>
-                    <td data-label="Statut">{t.active ? 'Actif' : 'Inactif'}</td>
+            <div className="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>Enseigne</th>
+                    <th>Recettes</th>
+                    <th></th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {tenants.map((t) => (
+                    <tr key={t.id}>
+                      <td data-label="#">{t.id}</td>
+                      <td data-label="Enseigne">{t.name}</td>
+                      <td data-label="Recettes">
+                        {t.recipeScope === 'ENSEIGNE' ? 'Enseigne' : 'Par établissement'}
+                      </td>
+                      <td data-label="" className="actions">
+                        <button className="btn-link" onClick={() => selectTenant(t)}>
+                          Établissements
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
         </section>
       </div>
+
+      {selected && (
+        <section className="card">
+          <h2>Établissements — {selected.name}</h2>
+          <div className="grid">
+            <form onSubmit={addEtablissement}>
+              <label>
+                Nom de l'établissement
+                <input value={etabName} onChange={(e) => setEtabName(e.target.value)} required />
+              </label>
+              <label>
+                Adresse (optionnel)
+                <input value={etabAddress} onChange={(e) => setEtabAddress(e.target.value)} />
+              </label>
+              {etabError && <div className="alert">{etabError}</div>}
+              <button className="btn-primary" type="submit" disabled={etabBusy}>
+                {etabBusy ? 'Ajout…' : 'Ajouter l\'établissement'}
+              </button>
+            </form>
+
+            <div>
+              {etabs.length === 0 ? (
+                <p className="muted">Aucun établissement pour ce tenant.</p>
+              ) : (
+                <ul className="plain-list">
+                  {etabs.map((b) => (
+                    <li key={b.id}>
+                      <strong>{b.name}</strong>
+                      {b.address ? <span className="muted"> — {b.address}</span> : null}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+        </section>
+      )}
     </div>
   )
 }

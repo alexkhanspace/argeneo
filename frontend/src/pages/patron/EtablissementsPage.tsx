@@ -1,65 +1,32 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useState } from 'react'
 import { errorMessage } from '../../api/client'
-import { createEtablissement, listEtablissements } from '../../api/iam'
+import { listEtablissements } from '../../api/iam'
 import type { Etablissement } from '../../api/types'
 
 export function EtablissementsPage() {
   const [items, setItems] = useState<Etablissement[]>([])
-  const [name, setName] = useState('')
-  const [address, setAddress] = useState('')
   const [error, setError] = useState<string | null>(null)
-  const [busy, setBusy] = useState(false)
 
-  const refresh = () => {
+  useEffect(() => {
     listEtablissements().then(setItems).catch((e) => setError(errorMessage(e)))
-  }
-  useEffect(refresh, [])
-
-  const onSubmit = async (e: FormEvent) => {
-    e.preventDefault()
-    setError(null)
-    setBusy(true)
-    try {
-      await createEtablissement({ name, address: address || undefined })
-      setName('')
-      setAddress('')
-      refresh()
-    } catch (err) {
-      setError(errorMessage(err))
-    } finally {
-      setBusy(false)
-    }
-  }
+  }, [])
 
   return (
     <div className="page">
       <h1>Établissements</h1>
-      <p className="muted">Les points de vente de votre enseigne.</p>
+      <p className="muted">
+        Les points de vente de votre enseigne. L'ajout d'un établissement se fait
+        sous licence, à la souscription — contactez l'éditeur.
+      </p>
 
-      <div className="grid">
-        <section className="card">
-          <h2>Ajouter un Établissement</h2>
-          <form onSubmit={onSubmit}>
-            <label>
-              Nom
-              <input value={name} onChange={(e) => setName(e.target.value)} required />
-            </label>
-            <label>
-              Adresse (optionnel)
-              <input value={address} onChange={(e) => setAddress(e.target.value)} />
-            </label>
-            {error && <div className="alert">{error}</div>}
-            <button className="btn-primary" type="submit" disabled={busy}>
-              {busy ? 'Ajout…' : 'Ajouter'}
-            </button>
-          </form>
-        </section>
+      {error && <div className="alert">{error}</div>}
 
-        <section className="card">
-          <h2>Mes Établissements ({items.length})</h2>
-          {items.length === 0 ? (
-            <p className="muted">Aucun Établissement pour le moment.</p>
-          ) : (
+      <section className="card">
+        <h2>Mes établissements ({items.length})</h2>
+        {items.length === 0 ? (
+          <p className="muted">Aucun établissement pour le moment.</p>
+        ) : (
+          <div className="table-wrap">
             <table>
               <thead>
                 <tr>
@@ -78,9 +45,9 @@ export function EtablissementsPage() {
                 ))}
               </tbody>
             </table>
-          )}
-        </section>
-      </div>
+          </div>
+        )}
+      </section>
     </div>
   )
 }
