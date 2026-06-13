@@ -1,0 +1,52 @@
+spring:
+  application:
+    name: argeneo-backend
+
+  datasource:
+    url: jdbc:postgresql://localhost:5432/argeneo
+    username: argeneo
+    password: argeneo_local_dev
+
+  jpa:
+    hibernate:
+      ddl-auto: validate        # Flyway possède le schéma ; JPA ne fait que valider le mapping
+    open-in-view: false         # pas d'OSIV : transactions explicites, mapping multi-tenant net
+    properties:
+      hibernate.format_sql: true
+      # Isolation multi-tenant automatique : Hibernate filtre/stampe @TenantId
+      # via ce resolver (instancié par Hibernate, lit le TenantContext statique).
+      hibernate.tenant_identifier_resolver: net.argeneo.tenant.TenantIdentifierResolver
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+
+server:
+  port: 8080
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info
+
+# --- Configuration applicative Argeneo ---
+argeneo:
+  security:
+    jwt:
+      # Secret de DEV uniquement. En prod : surcharger via ARGENEO_SECURITY_JWT_SECRET (>= 32 octets).
+      secret: ${ARGENEO_SECURITY_JWT_SECRET:dev-secret-change-me-please-argeneo-local-0123456789}
+      expiration-minutes: 720
+    cors:
+      allowed-origins: http://localhost:5173
+  # Super-admin amorcé au démarrage s'il n'existe pas (DEV).
+  bootstrap:
+    super-admin:
+      enabled: true
+      email: ${ARGENEO_BOOTSTRAP_ADMIN_EMAIL:admin@argeneo.local}
+      password: ${ARGENEO_BOOTSTRAP_ADMIN_PASSWORD:Admin123!}
+      full-name: Super Admin
+
+logging:
+  level:
+    org.hibernate.SQL: info
