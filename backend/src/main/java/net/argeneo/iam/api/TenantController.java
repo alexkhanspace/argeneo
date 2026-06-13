@@ -2,11 +2,14 @@ package net.argeneo.iam.api;
 
 import jakarta.validation.Valid;
 import java.util.List;
+import net.argeneo.iam.api.dto.EtablissementDtos.CreateEtablissementRequest;
+import net.argeneo.iam.api.dto.EtablissementDtos.EtablissementResponse;
 import net.argeneo.iam.api.dto.TenantDtos.CreateTenantRequest;
 import net.argeneo.iam.api.dto.TenantDtos.TenantResponse;
 import net.argeneo.iam.service.TenantService;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -33,5 +36,19 @@ public class TenantController {
     @GetMapping
     public List<TenantResponse> list() {
         return tenantService.listTenants();
+    }
+
+    // --- Établissements d'un tenant (création à la souscription) ---
+
+    @PostMapping("/{tenantId}/etablissements")
+    @ResponseStatus(HttpStatus.CREATED)
+    public EtablissementResponse addEtablissement(@PathVariable Long tenantId,
+                                                  @Valid @RequestBody CreateEtablissementRequest request) {
+        return tenantService.addEtablissement(tenantId, request);
+    }
+
+    @GetMapping("/{tenantId}/etablissements")
+    public List<EtablissementResponse> listEtablissements(@PathVariable Long tenantId) {
+        return tenantService.listEtablissements(tenantId);
     }
 }

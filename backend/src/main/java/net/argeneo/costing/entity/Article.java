@@ -33,6 +33,10 @@ public class Article {
     @Column(name = "tenant_id", nullable = false, updatable = false)
     private Long tenantId;
 
+    /** Code métier : A0001 (acheté-revendu), R0001 (fabriqué). Généré à la création. */
+    @Column(nullable = false, length = 10, updatable = false)
+    private String code;
+
     @Column(nullable = false)
     private String name;
 

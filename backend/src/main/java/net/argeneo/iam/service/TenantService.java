@@ -1,6 +1,9 @@
 package net.argeneo.iam.service;
 
 import java.util.List;
+import net.argeneo.common.error.ResourceNotFoundException;
+import net.argeneo.iam.api.dto.EtablissementDtos.CreateEtablissementRequest;
+import net.argeneo.iam.api.dto.EtablissementDtos.EtablissementResponse;
 import net.argeneo.iam.api.dto.TenantDtos.CreateTenantRequest;
 import net.argeneo.iam.api.dto.TenantDtos.TenantResponse;
 import net.argeneo.iam.domain.RecipeScope;
@@ -24,10 +27,14 @@ public class TenantService {
 
     private final TenantRepository tenantRepository;
     private final UserService userService;
+    private final EtablissementService etablissementService;
 
-    public TenantService(TenantRepository tenantRepository, UserService userService) {
+    public TenantService(TenantRepository tenantRepository,
+                         UserService userService,
+                         EtablissementService etablissementService) {
         this.tenantRepository = tenantRepository;
         this.userService = userService;
+        this.etablissementService = etablissementService;
     }
 
     public TenantResponse createTenant(CreateTenantRequest request) {
@@ -50,5 +57,25 @@ public class TenantService {
     @Transactional(readOnly = true)
     public List<TenantResponse> listTenants() {
         return tenantRepository.findAll().stream().map(TenantResponse::from).toList();
+    }
+
+    // --- Établissements d'un tenant (réservé Super-Admin : souscription/licence) ---
+    // Pas de @Transactional ici : on laisse EtablissementService ouvrir sa session
+    // APRÈS que runAs ait positionné le tenant (cf. note sur Hibernate ci-dessus).
+
+    public EtablissementResponse addEtablissement(Long tenantId, CreateEtablissementRequest request) {
+        requireTenant(tenantId);
+        return TenantContext.runAs(tenantId, () -> etablissementService.create(request));
+    }
+
+    public List<EtablissementResponse> listEtablissements(Long tenantId) {
+        requireTenant(tenantId);
+        return TenantContext.runAs(tenantId, etablissementService::list);
+    }
+
+    private void requireTenant(Long tenantId) {
+        if (!tenantRepository.existsById(tenantId)) {
+            throw new ResourceNotFoundException("Tenant introuvable : " + tenantId);
+        }
     }
 }

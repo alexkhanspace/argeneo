@@ -29,6 +29,7 @@ public class ArticleService {
     @Transactional
     public ArticleResponse create(CreateArticleRequest request) {
         Article article = new Article();
+        article.setCode(nextCode(request.type()));
         article.setName(request.name());
         article.setType(request.type());
         article.setUnit(request.unit());
@@ -44,9 +45,18 @@ public class ArticleService {
     public List<ArticleResponse> list() {
         Set<Long> withRecipe = recipeRepository.findAll().stream()
                 .map(Recipe::getArticleId).collect(Collectors.toSet());
-        return articleRepository.findAllByOrderByNameAsc().stream()
+        return articleRepository.findAllByOrderByCodeAsc().stream()
                 .map(a -> ArticleResponse.from(a, withRecipe.contains(a.getId())))
                 .toList();
+    }
+
+    /** Code séquentiel par préfixe (A = acheté-revendu, R = fabriqué), scopé tenant. */
+    private String nextCode(ArticleType type) {
+        String prefix = type == ArticleType.FABRIQUE ? "R" : "A";
+        int next = articleRepository.findFirstByCodeStartingWithOrderByCodeDesc(prefix)
+                .map(a -> Integer.parseInt(a.getCode().substring(1)) + 1)
+                .orElse(1);
+        return prefix + String.format("%04d", next);
     }
 
     @Transactional(readOnly = true)

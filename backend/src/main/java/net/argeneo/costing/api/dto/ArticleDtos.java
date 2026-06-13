@@ -29,6 +29,7 @@ public final class ArticleDtos {
 
     public record ArticleResponse(
             Long id,
+            String code,
             String name,
             ArticleType type,
             Unit unit,
@@ -41,7 +42,7 @@ public final class ArticleDtos {
 
         public static ArticleResponse from(Article a, boolean hasRecipe) {
             BigDecimal salePriceHt = Pricing.htFromTtc(a.getSalePriceTtc(), a.getVatRate());
-            return new ArticleResponse(a.getId(), a.getName(), a.getType(), a.getUnit(),
+            return new ArticleResponse(a.getId(), a.getCode(), a.getName(), a.getType(), a.getUnit(),
                     a.getSalePriceTtc(), salePriceHt, a.getVatRate(), a.getPurchasePrice(),
                     a.isActive(), hasRecipe);
         }
