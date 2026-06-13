@@ -33,12 +33,12 @@ export function EtablissementsPage() {
 
   return (
     <div className="page">
-      <h1>Etablissements</h1>
+      <h1>Établissements</h1>
       <p className="muted">Les points de vente de votre enseigne.</p>
 
       <div className="grid">
         <section className="card">
-          <h2>Ajouter une etablissement</h2>
+          <h2>Ajouter un Établissement</h2>
           <form onSubmit={onSubmit}>
             <label>
               Nom
@@ -56,9 +56,9 @@ export function EtablissementsPage() {
         </section>
 
         <section className="card">
-          <h2>Mes etablissements ({items.length})</h2>
+          <h2>Mes Établissements ({items.length})</h2>
           {items.length === 0 ? (
-            <p className="muted">Aucune etablissement pour le moment.</p>
+            <p className="muted">Aucun Établissement pour le moment.</p>
           ) : (
             <table>
               <thead>

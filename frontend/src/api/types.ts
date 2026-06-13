@@ -88,6 +88,7 @@ export interface RawMaterial {
 
 export interface Article {
   id: number
+  code?: string
   name: string
   type: ArticleType
   unit: MeasureUnit
@@ -137,4 +138,27 @@ export interface Pnet {
   effectiveYield: number
   yieldUnit: MeasureUnit
   lines: PnetLine[]
+  salePriceTtc?: number | null
+  salePriceHt?: number | null
+  vatRate?: number | null
+  marginHt?: number | null
+  markupRate?: number | null
+  marginRate?: number | null
+  coefficient?: number | null
+}
+
+// --- Saisie quotidienne (CA, perte, mot du jour) ---
+export interface MyEtablissement {
+  id: number
+  name: string
+  permissions: string[]
+}
+
+export interface DailyEntry {
+  etablissementId: number
+  date: string
+  revenue: number | null
+  loss: number | null
+  noteOfDay: string | null
+  updatedAt: string | null
 }

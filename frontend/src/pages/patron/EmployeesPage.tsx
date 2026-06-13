@@ -37,7 +37,7 @@ export function EmployeesPage() {
   return (
     <div className="page">
       <h1>Équipe</h1>
-      <p className="muted">Créez vos employés, puis attribuez leurs permissions par etablissement.</p>
+      <p className="muted">Créez vos employés, puis attribuez leurs permissions par Établissement.</p>
 
       <div className="grid">
         <section className="card">

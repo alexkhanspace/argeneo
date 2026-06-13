@@ -433,6 +433,128 @@ label.mt {
   margin-top: 1rem;
 }
 
+/* ---- Tableau de bord : KPI ---- */
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 1rem;
+  margin: 1.5rem 0;
+}
+.kpi-grid .card {
+  margin-bottom: 0;
+}
+.kpi {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 1.1rem 1.25rem;
+}
+.kpi-value {
+  font-size: 1.8rem;
+  font-weight: 700;
+  color: var(--ink);
+  line-height: 1.1;
+}
+.kpi-label {
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+.kpi-accent .kpi-value {
+  color: var(--primary);
+}
+.grid-dash {
+  grid-template-columns: 1fr 1fr;
+}
+
+/* ---- Calendrier de saisie ---- */
+.cal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+.calendar {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 0.4rem;
+}
+.cal-weekday {
+  text-align: center;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding-bottom: 0.25rem;
+}
+.cal-cell {
+  aspect-ratio: 1 / 1;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-start;
+  padding: 0.35rem 0.4rem;
+  gap: 0.15rem;
+  text-align: left;
+  overflow: hidden;
+}
+.cal-cell:hover {
+  border-color: var(--primary);
+}
+.cal-empty {
+  border: none;
+  background: transparent;
+  cursor: default;
+}
+.cal-num {
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+.cal-ca {
+  font-size: 0.68rem;
+  color: var(--primary);
+  font-weight: 600;
+  line-height: 1.1;
+  word-break: break-all;
+}
+.cal-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--primary);
+}
+.cal-has {
+  background: #fbf6f0;
+}
+.cal-today {
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
+}
+.cal-selected {
+  border-color: var(--primary);
+  box-shadow: inset 0 0 0 2px var(--primary);
+}
+
+/* ---- Ligne champ + bouton enregistrer ---- */
+.save-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: stretch;
+  margin-top: 0.3rem;
+}
+.save-row input {
+  margin-top: 0;
+  flex: 1;
+}
+.save-row .btn-primary {
+  white-space: nowrap;
+}
+
 /* ============================================================
    RESPONSIVE
    ============================================================ */
@@ -476,6 +598,9 @@ label.mt {
     padding: 1.25rem;
   }
   .grid-recipe {
+    grid-template-columns: 1fr;
+  }
+  .grid-dash {
     grid-template-columns: 1fr;
   }
   .pnet-card {
@@ -554,5 +679,27 @@ label.mt {
   }
   .comp-row {
     grid-template-columns: 1fr 1fr;
+  }
+
+  /* Calendrier : libellés CA cachés, on garde un point */
+  .calendar {
+    gap: 0.25rem;
+  }
+  .cal-cell {
+    padding: 0.25rem;
+  }
+  .cal-ca {
+    display: none;
+  }
+  .cal-has::after {
+    content: '';
+    display: block;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--primary);
+  }
+  .save-row {
+    flex-direction: column;
   }
 }

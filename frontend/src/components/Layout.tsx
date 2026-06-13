@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import type { Me } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
-import { isAdmin, isPatron } from '../auth/roles'
+import { isAdmin, isEmploye, isPatron } from '../auth/roles'
 
 function roleLabel(me: Me): string {
   if (isAdmin(me)) return 'Super-Admin'
@@ -44,12 +44,15 @@ export function Layout() {
           {isAdmin(me) && <NavLink to="/admin/tenants">Tenants</NavLink>}
           {isPatron(me) && (
             <>
-              <NavLink to="/etablissements">Etablissements</NavLink>
+              <NavLink to="/dashboard">Tableau de bord</NavLink>
+              <NavLink to="/etablissements">Établissements</NavLink>
               <NavLink to="/employees">Équipe</NavLink>
               <NavLink to="/articles">Articles</NavLink>
               <NavLink to="/materials">Matières</NavLink>
+              <NavLink to="/saisie">Saisie</NavLink>
             </>
           )}
+          {isEmploye(me) && <NavLink to="/saisie">Saisie</NavLink>}
         </nav>
 
         <div className="user">

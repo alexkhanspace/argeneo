@@ -32,7 +32,7 @@ export function AccountPage() {
       </section>
 
       <section className="card">
-        <h2>Mes permissions par etablissement</h2>
+        <h2>Mes permissions par Établissement</h2>
         {byEtablissement.length === 0 ? (
           <p className="muted">Aucune permission attribuée pour le moment.</p>
         ) : (

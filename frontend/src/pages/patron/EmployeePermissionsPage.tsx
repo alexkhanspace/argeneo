@@ -91,7 +91,7 @@ export function EmployeePermissionsPage() {
     return (
       <div className="page">
         <h1>Permissions</h1>
-        <p className="muted">Créez d'abord au moins une etablissement.</p>
+        <p className="muted">Créez d'abord au moins un Établissement.</p>
       </div>
     )
   }
@@ -100,7 +100,7 @@ export function EmployeePermissionsPage() {
     <div className="page">
       <h1>Permissions de l'employé #{userId}</h1>
       <p className="muted">
-        Les droits sont attribués <strong>par etablissement</strong> : un employé peut être manager
+        Les droits sont attribués <strong>par Établissement</strong> : un employé peut être manager
         ici et vendeur ailleurs.
       </p>
 

@@ -4,6 +4,8 @@ import { ProtectedRoute } from './auth/ProtectedRoute'
 import { homePathFor, isAdmin, isPatron } from './auth/roles'
 import { Layout } from './components/Layout'
 import { AccountPage } from './pages/AccountPage'
+import { DashboardPage } from './pages/DashboardPage'
+import { DailyPage } from './pages/DailyPage'
 import { LoginPage } from './pages/LoginPage'
 import { TenantsPage } from './pages/admin/TenantsPage'
 import { ArticlesPage } from './pages/patron/ArticlesPage'
@@ -32,6 +34,22 @@ export default function App() {
           </ProtectedRoute>
         }
       >
+        <Route
+          path="/dashboard"
+          element={
+            <ProtectedRoute allow={isPatron}>
+              <DashboardPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/saisie"
+          element={
+            <ProtectedRoute allow={(me) => me.type === 'USER'}>
+              <DailyPage />
+            </ProtectedRoute>
+          }
+        />
         <Route
           path="/admin/tenants"
           element={
