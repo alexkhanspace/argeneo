@@ -32,7 +32,7 @@ public class AuthService {
 
         AuthPrincipal principal = new AuthPrincipal(
                 account.id(), account.email(), account.fullName(),
-                account.type(), account.role(), account.tenantId());
+                account.type(), account.role(), account.tenantId(), null);
 
         return new LoginResponse(
                 jwtService.generate(principal),

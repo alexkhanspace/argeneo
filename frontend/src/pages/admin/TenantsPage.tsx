@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { errorMessage } from '../../api/client'
 import {
   createTenant,
@@ -7,8 +8,12 @@ import {
   listTenants,
 } from '../../api/iam'
 import type { Etablissement, RecipeScope, Tenant } from '../../api/types'
+import { useAuth } from '../../auth/AuthContext'
+import { homePathFor } from '../../auth/roles'
 
 export function TenantsPage() {
+  const { enterTenant } = useAuth()
+  const navigate = useNavigate()
   const [tenants, setTenants] = useState<Tenant[]>([])
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -47,6 +52,15 @@ export function TenantsPage() {
       setError(errorMessage(err))
     } finally {
       setBusy(false)
+    }
+  }
+
+  const onEnter = async (t: Tenant) => {
+    try {
+      const me = await enterTenant(t.id)
+      navigate(homePathFor(me))
+    } catch (err) {
+      setError(errorMessage(err))
     }
   }
 
@@ -150,6 +164,9 @@ export function TenantsPage() {
                         {t.recipeScope === 'ENSEIGNE' ? 'Enseigne' : 'Par établissement'}
                       </td>
                       <td data-label="" className="actions">
+                        <button className="btn-link" onClick={() => onEnter(t)}>
+                          Accéder
+                        </button>
                         <button className="btn-link" onClick={() => selectTenant(t)}>
                           Établissements
                         </button>

@@ -61,6 +61,11 @@ export async function createTenantEtablissement(
   return data
 }
 
+export async function impersonateTenant(tenantId: number): Promise<LoginResponse> {
+  const { data } = await api.post<LoginResponse>(`/admin/tenants/${tenantId}/impersonate`)
+  return data
+}
+
 // --- Patron : employés ---
 export async function listEmployees(): Promise<AppUser[]> {
   const { data } = await api.get<AppUser[]>('/users')

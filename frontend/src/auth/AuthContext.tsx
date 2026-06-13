@@ -1,13 +1,19 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
 import { tokenStore } from '../api/client'
-import { fetchMe, login as apiLogin } from '../api/iam'
+import { fetchMe, impersonateTenant, login as apiLogin } from '../api/iam'
 import type { Me } from '../api/types'
+
+const ADMIN_TOKEN_KEY = 'argeneo.adminToken'
 
 interface AuthState {
   me: Me | null
   loading: boolean
   login: (email: string, password: string) => Promise<Me>
   logout: () => void
+  /** Super-Admin : entrer dans un tenant (mode support). */
+  enterTenant: (tenantId: number) => Promise<Me>
+  /** Revenir à la session Super-Admin. */
+  exitImpersonation: () => Promise<Me>
 }
 
 const AuthContext = createContext<AuthState | undefined>(undefined)
@@ -38,11 +44,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = () => {
     tokenStore.clear()
+    localStorage.removeItem(ADMIN_TOKEN_KEY)
     setMe(null)
   }
 
+  const enterTenant = async (tenantId: number) => {
+    const adminToken = tokenStore.get()
+    if (adminToken) {
+      localStorage.setItem(ADMIN_TOKEN_KEY, adminToken)
+    }
+    const response = await impersonateTenant(tenantId)
+    tokenStore.set(response.token)
+    const profile = await fetchMe()
+    setMe(profile)
+    return profile
+  }
+
+  const exitImpersonation = async () => {
+    const adminToken = localStorage.getItem(ADMIN_TOKEN_KEY)
+    if (!adminToken) {
+      logout()
+      throw new Error('Session Super-Admin expirée, reconnectez-vous.')
+    }
+    tokenStore.set(adminToken)
+    localStorage.removeItem(ADMIN_TOKEN_KEY)
+    const profile = await fetchMe()
+    setMe(profile)
+    return profile
+  }
+
   return (
-    <AuthContext.Provider value={{ me, loading, login, logout }}>
+    <AuthContext.Provider
+      value={{ me, loading, login, logout, enterTenant, exitImpersonation }}
+    >
       {children}
     </AuthContext.Provider>
   )

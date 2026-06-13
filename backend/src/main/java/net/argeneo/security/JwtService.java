@@ -31,6 +31,7 @@ public class JwtService {
                 .claim("typ", principal.type().name())
                 .claim("role", principal.role() == null ? null : principal.role().name())
                 .claim("tenantId", principal.tenantId())
+                .claim("imp", principal.impersonatedByAdminId())
                 .claim("email", principal.email())
                 .claim("name", principal.fullName())
                 .issuedAt(Date.from(now))
@@ -51,6 +52,7 @@ public class JwtService {
         String roleClaim = claims.get("role", String.class);
         UserRole role = roleClaim == null ? null : UserRole.valueOf(roleClaim);
         Number tenant = claims.get("tenantId", Number.class);
+        Number imp = claims.get("imp", Number.class);
 
         return new AuthPrincipal(
                 Long.valueOf(claims.getSubject()),
@@ -58,7 +60,8 @@ public class JwtService {
                 claims.get("name", String.class),
                 type,
                 role,
-                tenant == null ? null : tenant.longValue());
+                tenant == null ? null : tenant.longValue(),
+                imp == null ? null : imp.longValue());
     }
 
     public long expirationSeconds() {

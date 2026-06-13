@@ -16,9 +16,15 @@ public record AuthPrincipal(
         String fullName,
         PrincipalType type,
         UserRole role,
-        Long tenantId) {
+        Long tenantId,
+        /** Si renseigné : id du Super-Admin qui agit en tant que ce Patron (mode support). */
+        Long impersonatedByAdminId) {
 
     public boolean isSuperAdmin() {
         return type == PrincipalType.ADMIN;
+    }
+
+    public boolean isImpersonated() {
+        return impersonatedByAdminId != null;
     }
 }

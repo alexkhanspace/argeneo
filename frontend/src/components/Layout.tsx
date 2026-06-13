@@ -11,7 +11,7 @@ function roleLabel(me: Me): string {
 }
 
 export function Layout() {
-  const { me, logout } = useAuth()
+  const { me, logout, exitImpersonation } = useAuth()
   const navigate = useNavigate()
   const [menuOpen, setMenuOpen] = useState(false)
 
@@ -21,10 +21,24 @@ export function Layout() {
     logout()
     navigate('/login')
   }
+  const onExitImpersonation = async () => {
+    await exitImpersonation()
+    navigate('/admin/tenants')
+  }
   const closeMenu = () => setMenuOpen(false)
 
   return (
     <div className="app">
+      {me.impersonatedBy != null && (
+        <div className="impersonation-bar">
+          <span>
+            🛟 Mode support — vous agissez en tant que <strong>{me.fullName}</strong>
+          </span>
+          <button className="btn-ghost small" onClick={onExitImpersonation}>
+            Quitter le tenant
+          </button>
+        </div>
+      )}
       <header className="topbar">
         <div className="topbar-main">
           <button

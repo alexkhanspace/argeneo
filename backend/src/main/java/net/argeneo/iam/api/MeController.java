@@ -21,6 +21,7 @@ public class MeController {
             String type,
             String role,
             Long tenantId,
+            Long impersonatedBy,
             List<String> authorities) {
     }
 
@@ -36,6 +37,7 @@ public class MeController {
                 principal.type().name(),
                 principal.role() == null ? null : principal.role().name(),
                 principal.tenantId(),
+                principal.impersonatedByAdminId(),
                 authorities);
     }
 }

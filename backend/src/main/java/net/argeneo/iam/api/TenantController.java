@@ -6,7 +6,9 @@ import net.argeneo.iam.api.dto.EtablissementDtos.CreateEtablissementRequest;
 import net.argeneo.iam.api.dto.EtablissementDtos.EtablissementResponse;
 import net.argeneo.iam.api.dto.TenantDtos.CreateTenantRequest;
 import net.argeneo.iam.api.dto.TenantDtos.TenantResponse;
+import net.argeneo.iam.service.ImpersonationService;
 import net.argeneo.iam.service.TenantService;
+import net.argeneo.security.AuthDtos.LoginResponse;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -22,9 +24,12 @@ import org.springframework.web.bind.annotation.RestController;
 public class TenantController {
 
     private final TenantService tenantService;
+    private final ImpersonationService impersonationService;
 
-    public TenantController(TenantService tenantService) {
+    public TenantController(TenantService tenantService,
+                            ImpersonationService impersonationService) {
         this.tenantService = tenantService;
+        this.impersonationService = impersonationService;
     }
 
     @PostMapping
@@ -50,5 +55,11 @@ public class TenantController {
     @GetMapping("/{tenantId}/etablissements")
     public List<EtablissementResponse> listEtablissements(@PathVariable Long tenantId) {
         return tenantService.listEtablissements(tenantId);
+    }
+
+    /** Mode support : obtenir un jeton « Patron » pour agir dans ce tenant. */
+    @PostMapping("/{tenantId}/impersonate")
+    public LoginResponse impersonate(@PathVariable Long tenantId) {
+        return impersonationService.impersonatePatron(tenantId);
     }
 }

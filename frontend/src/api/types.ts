@@ -19,6 +19,7 @@ export interface Me {
   type: PrincipalType
   role: UserRole | null
   tenantId: number | null
+  impersonatedBy: number | null
   authorities: string[]
 }
 
