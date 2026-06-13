@@ -1,0 +1,25 @@
+# ---- OS ----
+.DS_Store
+
+# ---- Backend (Gradle / Java) ----
+backend/.gradle/
+backend/build/
+backend/bin/
+backend/out/
+!backend/gradle/wrapper/gradle-wrapper.jar
+
+# ---- Frontend (Node / Vite) ----
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
+# ---- IDE ----
+.idea/
+*.iml
+.vscode/
+*.swp
+
+# ---- Secrets / local config ----
+*.env
+.env.local
+backend/src/main/resources/application-local.yml
