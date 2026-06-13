@@ -48,14 +48,18 @@ fi
 [[ -f "${FRONTEND_DIR}/dist/index.html" ]] || die "frontend/dist/index.html missing — bad build?"
 
 # --- 2. Ship artifacts ------------------------------------------------------
-# Jar -> a temp path first, then atomic mv on the server (no half-written jar).
-log "Uploading backend jar to ${ARGENEO_HOST}:${REMOTE_JAR} ..."
-scp "${JAR_PATH}" "${ARGENEO_HOST}:${REMOTE_JAR}.new"
+# We connect as an unprivileged user (rocky) but /opt/argeneo is owned by the
+# 'argeneo' system user, so we stage in /tmp and let passwordless sudo place
+# files. The frontend rsync runs its remote side as root (--rsync-path).
+STAGE_JAR="/tmp/argeneo-backend.jar.new"
+log "Uploading backend jar to ${ARGENEO_HOST}:${STAGE_JAR} ..."
+scp "${JAR_PATH}" "${ARGENEO_HOST}:${STAGE_JAR}"
 
 log "Syncing frontend dist -> ${ARGENEO_HOST}:${REMOTE_FRONTEND} ..."
 # --delete removes stale assets from previous builds. Trailing slashes matter.
+# --rsync-path="sudo rsync" so the remote side can write the argeneo-owned dir.
 rsync -az --delete \
-  -e ssh \
+  -e ssh --rsync-path="sudo rsync" \
   "${FRONTEND_DIR}/dist/" \
   "${ARGENEO_HOST}:${REMOTE_FRONTEND}"
 
@@ -64,7 +68,7 @@ rsync -az --delete \
 log "Activating release on ${ARGENEO_HOST} (restart backend, reload nginx)..."
 ssh "${ARGENEO_HOST}" bash -s <<REMOTE
 set -euo pipefail
-sudo mv -f "${REMOTE_JAR}.new" "${REMOTE_JAR}"
+sudo mv -f "${STAGE_JAR}" "${REMOTE_JAR}"
 sudo chown argeneo:argeneo "${REMOTE_JAR}"
 sudo chown -R argeneo:argeneo "${REMOTE_APP_DIR}/frontend"
 

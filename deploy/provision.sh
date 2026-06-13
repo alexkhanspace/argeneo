@@ -41,11 +41,11 @@ log "Detected EL major version: ${EL_VER:-unknown}"
 # 1. Packages
 # ---------------------------------------------------------------------------
 log "Installing base packages (java, nginx, postgresql, tools)..."
-# java-17-openjdk-headless: backend runtime. If unavailable on EL10, see the
-# Temurin fallback note in the README.
-# policycoreutils-python-utils provides semanage (used for SELinux fcontext).
+# java-21-openjdk-headless: backend runtime (EL10 ships Java 21; the app targets
+# Java 17 bytecode and runs fine on 21). policycoreutils-python-utils provides
+# semanage (used for the SELinux fcontext on the frontend dir).
 dnf install -y \
-  java-17-openjdk-headless \
+  java-21-openjdk-headless \
   nginx \
   postgresql-server postgresql-contrib \
   firewalld \
@@ -104,8 +104,21 @@ if [[ -f "${PG_CONF}" ]]; then
   fi
 fi
 
+# Local TCP connections must use password auth (scram-sha-256), not the EL
+# default 'ident' — the Spring Boot app connects over 127.0.0.1:5432 with a
+# password. Without this, startup fails: "Ident authentication failed".
+PG_HBA="${PGDATA_DEFAULT}/pg_hba.conf"
+if [[ -f "${PG_HBA}" ]]; then
+  if grep -qE "^host[[:space:]]+all[[:space:]]+all[[:space:]]+(127\.0\.0\.1/32|::1/128)[[:space:]]+ident" "${PG_HBA}"; then
+    log "Switching local TCP auth to scram-sha-256 in pg_hba.conf..."
+    sed -i -E '/^host[[:space:]]+all[[:space:]]+all[[:space:]]+(127\.0\.0\.1\/32|::1\/128)[[:space:]]+/ s/ident[[:space:]]*$/scram-sha-256/' "${PG_HBA}"
+  fi
+fi
+
 log "Enabling and starting PostgreSQL..."
 systemctl enable --now postgresql
+# Reload to pick up postgresql.conf / pg_hba.conf changes if it was already up.
+systemctl reload postgresql || true
 
 # Create role + database (idempotent). Pull the password from the env file if it
 # has already been edited; otherwise create with a placeholder and warn loudly.
@@ -120,7 +133,7 @@ fi
 if [[ -f "${SCRIPT_DIR}/postgres/setup.sql" ]]; then
   log "Applying postgres/setup.sql (role + database, idempotent)..."
   sudo -u postgres psql -v ON_ERROR_STOP=1 \
-       -v argeneo_pw="'${DB_PW}'" \
+       -v argeneo_pw="${DB_PW}" \
        -f "${SCRIPT_DIR}/postgres/setup.sql"
 else
   warn "postgres/setup.sql not found next to script; create role/db manually."

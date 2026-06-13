@@ -28,19 +28,16 @@
 \endif
 
 -- --- Role -------------------------------------------------------------------
--- Create the login role only if it does not already exist; otherwise just make
--- sure the password matches what we were given (safe to re-run).
-DO $$
-BEGIN
-   IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'argeneo') THEN
-      EXECUTE format('CREATE ROLE argeneo LOGIN PASSWORD %L', :'argeneo_pw');
-      RAISE NOTICE 'Role "argeneo" created.';
-   ELSE
-      EXECUTE format('ALTER ROLE argeneo LOGIN PASSWORD %L', :'argeneo_pw');
-      RAISE NOTICE 'Role "argeneo" already existed — password synced.';
-   END IF;
-END
-$$;
+-- Create the login role if missing, else sync its password. We build the SQL
+-- with format()+%L and run it via \gexec: psql does NOT interpolate :'var'
+-- inside a DO/dollar-quoted block, so we keep the interpolation at top level.
+SELECT format('CREATE ROLE argeneo LOGIN PASSWORD %L', :'argeneo_pw')
+WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'argeneo')
+\gexec
+
+SELECT format('ALTER ROLE argeneo LOGIN PASSWORD %L', :'argeneo_pw')
+WHERE EXISTS (SELECT FROM pg_roles WHERE rolname = 'argeneo')
+\gexec
 
 -- --- Database ---------------------------------------------------------------
 -- CREATE DATABASE cannot run inside a DO/transaction block, so we generate the

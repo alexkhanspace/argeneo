@@ -173,8 +173,10 @@ Une fois le DNS propagé et nginx servant en HTTP :
 
 ```bash
 ssh rocky@argeneo.fr
+# certbot vit dans EPEL sur Rocky/EL10 :
+sudo dnf install -y epel-release
 sudo dnf install -y certbot python3-certbot-nginx
-sudo certbot --nginx -d argeneo.fr -d www.argeneo.fr --redirect -m admin@argeneo.fr --agree-tos
+sudo certbot --nginx -d argeneo.fr -d www.argeneo.fr --redirect -m alexkhan.yog@icloud.com --agree-tos
 ```
 
 certbot injecte le bloc `server` 443 + la redirection HTTP→HTTPS, et installe un
