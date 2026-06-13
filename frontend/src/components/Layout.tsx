@@ -37,7 +37,7 @@ export function Layout() {
             <span />
             <span />
           </button>
-          <div className="brand">Argeneo</div>
+          <img src="/argeneo-logo.png" className="brand-logo" alt="Argéneo" />
         </div>
 
         <nav className={`nav ${menuOpen ? 'open' : ''}`} onClick={closeMenu}>

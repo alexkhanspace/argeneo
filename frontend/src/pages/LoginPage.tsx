@@ -29,7 +29,7 @@ export function LoginPage() {
   return (
     <div className="center">
       <form className="card login" onSubmit={onSubmit}>
-        <h1 className="brand brand-lg">Argeneo</h1>
+        <img src="/argeneo-logo.png" className="login-logo" alt="Argéneo" />
         <p className="muted">Connectez-vous à votre back-office.</p>
 
         <label>

@@ -57,7 +57,7 @@ h3 {
   align-items: center;
   gap: 1.5rem;
   padding: 0 1.5rem;
-  height: 60px;
+  height: 88px;
   background: var(--surface);
   border-bottom: 1px solid var(--line);
 }
@@ -70,6 +70,17 @@ h3 {
 .brand-lg {
   font-size: 2rem;
   text-align: center;
+}
+.brand-logo {
+  height: 88px;
+  width: auto;
+  display: block;
+}
+.login-logo {
+  display: block;
+  height: 110px;
+  width: auto;
+  margin: 0 auto 0.75rem;
 }
 .nav {
   display: flex;
