@@ -88,11 +88,12 @@ export interface RawMaterial {
 
 export interface Article {
   id: number
-  code?: string
+  code: string
   name: string
   type: ArticleType
   unit: MeasureUnit
-  salePrice: number | null
+  salePriceTtc: number | null
+  salePriceHt: number | null
   vatRate: number | null
   purchasePrice: number | null
   active: boolean

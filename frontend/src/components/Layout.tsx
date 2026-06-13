@@ -49,10 +49,10 @@ export function Layout() {
               <NavLink to="/employees">Équipe</NavLink>
               <NavLink to="/articles">Articles</NavLink>
               <NavLink to="/materials">Matières</NavLink>
-              <NavLink to="/saisie">Saisie</NavLink>
+              <NavLink to="/saisie">Calendrier</NavLink>
             </>
           )}
-          {isEmploye(me) && <NavLink to="/saisie">Saisie</NavLink>}
+          {isEmploye(me) && <NavLink to="/saisie">Calendrier</NavLink>}
         </nav>
 
         <div className="user">

@@ -362,6 +362,35 @@ textarea {
   border-radius: 2px;
 }
 
+/* ---- En-tête de page (titre + action) ---- */
+.page-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 1.5rem;
+}
+.page-head h1 {
+  margin-bottom: 0.25rem;
+}
+code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.85rem;
+  background: var(--bg);
+  padding: 0.1rem 0.4rem;
+  border-radius: 6px;
+}
+
+.search {
+  max-width: 360px;
+  margin-bottom: 1rem;
+}
+.btn-link.danger {
+  color: var(--danger);
+  margin-left: 0.75rem;
+}
+
 /* ---- Tables : scroll horizontal de secours ---- */
 .table-wrap {
   overflow-x: auto;

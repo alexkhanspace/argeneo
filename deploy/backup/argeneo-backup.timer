@@ -1,0 +1,18 @@
+# =============================================================================
+# Argeneo — schedule the daily DB backup.
+# Enable:  sudo systemctl enable --now argeneo-backup.timer
+# Check:   systemctl list-timers argeneo-backup.timer
+# =============================================================================
+[Unit]
+Description=Run Argeneo PostgreSQL backup daily
+
+[Timer]
+# Every day at 03:30 server time. Randomised delay avoids exact-time spikes.
+OnCalendar=*-*-* 03:30:00
+RandomizedDelaySec=300
+# If the VPS was off at 03:30, run the backup at next boot.
+Persistent=true
+Unit=argeneo-backup.service
+
+[Install]
+WantedBy=timers.target

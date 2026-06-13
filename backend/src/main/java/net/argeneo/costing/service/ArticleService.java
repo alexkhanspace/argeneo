@@ -3,6 +3,7 @@ package net.argeneo.costing.service;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
+import net.argeneo.common.error.ConflictException;
 import net.argeneo.common.error.ResourceNotFoundException;
 import net.argeneo.costing.api.dto.ArticleDtos.ArticleResponse;
 import net.argeneo.costing.api.dto.ArticleDtos.CreateArticleRequest;
@@ -10,6 +11,7 @@ import net.argeneo.costing.entity.Article;
 import net.argeneo.costing.entity.ArticleType;
 import net.argeneo.costing.entity.Recipe;
 import net.argeneo.costing.repository.ArticleRepository;
+import net.argeneo.costing.repository.RecipeComponentRepository;
 import net.argeneo.costing.repository.RecipeRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -20,10 +22,14 @@ public class ArticleService {
 
     private final ArticleRepository articleRepository;
     private final RecipeRepository recipeRepository;
+    private final RecipeComponentRepository componentRepository;
 
-    public ArticleService(ArticleRepository articleRepository, RecipeRepository recipeRepository) {
+    public ArticleService(ArticleRepository articleRepository,
+                          RecipeRepository recipeRepository,
+                          RecipeComponentRepository componentRepository) {
         this.articleRepository = articleRepository;
         this.recipeRepository = recipeRepository;
+        this.componentRepository = componentRepository;
     }
 
     @Transactional
@@ -48,6 +54,18 @@ public class ArticleService {
         return articleRepository.findAllByOrderByCodeAsc().stream()
                 .map(a -> ArticleResponse.from(a, withRecipe.contains(a.getId())))
                 .toList();
+    }
+
+    @Transactional
+    public void delete(Long id) {
+        Article article = articleRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Article introuvable : " + id));
+        if (componentRepository.existsBySubArticleId(article.getId())) {
+            throw new ConflictException(
+                    "Cet article est utilisé comme sous-recette ; retirez-le des recettes concernées d'abord.");
+        }
+        // La recette et ses composants sont supprimés en cascade (FK ON DELETE CASCADE).
+        articleRepository.delete(article);
     }
 
     /** Code séquentiel par préfixe (A = acheté-revendu, R = fabriqué), scopé tenant. */

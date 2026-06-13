@@ -1,0 +1,25 @@
+# =============================================================================
+# Argeneo — daily DB backup (oneshot, triggered by argeneo-backup.timer).
+# Runs as the 'postgres' user so pg_dump uses local peer authentication.
+# Logs: journalctl -u argeneo-backup
+# =============================================================================
+[Unit]
+Description=Argeneo PostgreSQL daily backup
+After=postgresql.service
+Requires=postgresql.service
+
+[Service]
+Type=oneshot
+User=postgres
+Group=postgres
+ExecStart=/usr/local/bin/argeneo-pg-backup.sh
+
+# Pass tunables here if you want to override the script defaults:
+# Environment=RETENTION_DAYS=30
+# Environment=BACKUP_DIR=/var/backups/argeneo
+
+# Mild hardening for a oneshot dump job.
+NoNewPrivileges=true
+PrivateTmp=true
+# postgres must read PGDATA and write the backup dir, so we don't lock down FS
+# as aggressively as the backend service.

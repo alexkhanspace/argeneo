@@ -58,8 +58,6 @@ export function LoginPage() {
         <button className="btn-primary" type="submit" disabled={submitting}>
           {submitting ? 'Connexion…' : 'Se connecter'}
         </button>
-
-        <p className="hint muted">Démo : admin@argeneo.local / Admin123!</p>
       </form>
     </div>
   )

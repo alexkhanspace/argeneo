@@ -39,6 +39,10 @@ export async function updateRawMaterial(
   return data
 }
 
+export async function deleteRawMaterial(id: number): Promise<void> {
+  await api.delete(`/raw-materials/${id}`)
+}
+
 // --- Articles ---
 export async function listArticles(): Promise<Article[]> {
   const { data } = await api.get<Article[]>('/articles')
@@ -54,12 +58,16 @@ export async function createArticle(input: {
   name: string
   type: ArticleType
   unit: MeasureUnit
-  salePrice?: number | null
+  salePriceTtc?: number | null
   vatRate?: number | null
   purchasePrice?: number | null
 }): Promise<Article> {
   const { data } = await api.post<Article>('/articles', input)
   return data
+}
+
+export async function deleteArticle(id: number): Promise<void> {
+  await api.delete(`/articles/${id}`)
 }
 
 export async function getCost(articleId: number): Promise<Pnet> {

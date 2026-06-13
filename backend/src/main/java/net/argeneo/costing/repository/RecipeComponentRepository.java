@@ -10,6 +10,10 @@ public interface RecipeComponentRepository extends JpaRepository<RecipeComponent
 
     List<RecipeComponent> findByRecipeId(Long recipeId);
 
+    boolean existsBySubArticleId(Long subArticleId);
+
+    boolean existsByRawMaterialId(Long rawMaterialId);
+
     @Transactional
     void deleteByRecipeId(Long recipeId);
 }

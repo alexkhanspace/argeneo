@@ -76,6 +76,10 @@ export async function createEmployee(input: {
   return data
 }
 
+export async function deleteEmployee(id: number): Promise<void> {
+  await api.delete(`/users/${id}`)
+}
+
 export async function getUserPermissions(userId: number): Promise<UserPermissions> {
   const { data } = await api.get<UserPermissions>(`/users/${userId}/permissions`)
   return data

@@ -81,6 +81,13 @@ public class UserService {
                 .stream().map(UserResponse::from).toList();
     }
 
+    @Transactional
+    public void deleteEmployee(Long userId) {
+        AppUser user = requireEmployee(userId);
+        // Les attributions de permissions sont supprimées en cascade (FK ON DELETE CASCADE).
+        userRepository.delete(user);
+    }
+
     /** Remplace l'ensemble des permissions d'un employé sur une etablissement. */
     @Transactional
     public void assignPermissions(Long userId, AssignPermissionsRequest request) {

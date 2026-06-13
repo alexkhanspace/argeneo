@@ -43,8 +43,8 @@ argeneo:
   bootstrap:
     super-admin:
       enabled: true
-      email: ${ARGENEO_BOOTSTRAP_ADMIN_EMAIL:admin@argeneo.local}
-      password: ${ARGENEO_BOOTSTRAP_ADMIN_PASSWORD:Admin123!}
+      email: "${ARGENEO_BOOTSTRAP_ADMIN_EMAIL:alexkhan.yog@icloud.com}"
+      password: "${ARGENEO_BOOTSTRAP_ADMIN_PASSWORD:Argénéo90251@}"
       full-name: Super Admin
 
 logging:
