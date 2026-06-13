@@ -3,6 +3,7 @@ package net.argeneo.common.error;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import net.argeneo.costing.domain.CostingException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -47,6 +48,12 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(DataIntegrityViolationException.class)
     ResponseEntity<ApiError> handleIntegrity(DataIntegrityViolationException ex) {
         return build(HttpStatus.CONFLICT, "Violation de contrainte d'intégrité", null);
+    }
+
+    @ExceptionHandler(CostingException.class)
+    ResponseEntity<ApiError> handleCosting(CostingException ex) {
+        // Cycle de sous-recettes, unités incompatibles, données manquantes…
+        return build(HttpStatus.UNPROCESSABLE_ENTITY, ex.getMessage(), null);
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
