@@ -79,6 +79,19 @@ boulangeries, ses employés et attribue les permissions par boulangerie.
 | POST/GET | `/api/users` | Patron |
 | GET/PUT | `/api/users/{id}/permissions` | Patron |
 | GET | `/api/permissions`, `/api/permission-presets` | Patron |
+| GET | `/api/units` | authentifié |
+| POST/GET/PUT | `/api/raw-materials` | Patron |
+| POST/GET | `/api/articles` | Patron |
+| GET | `/api/articles/{id}/cost` (PNET, calculé à la volée) | Patron |
+| GET/PUT | `/api/articles/{id}/recipe` | Patron |
+
+Le **moteur de coût (PNET)** est un domaine Java pur (`net.argeneo.costing.domain`),
+testé unitairement : conversion d'unités par dimension, sous-recettes récursives
+avec détection de cycle et mémoïsation. Changer un prix matière recalcule
+aussitôt le coût des produits qui l'utilisent.
+
+L'UI est **responsive** (mobile/tablette) : navigation repliable, tables en
+cartes sur petit écran, cibles tactiles.
 
 ## Structure
 

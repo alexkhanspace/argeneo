@@ -71,9 +71,9 @@ export function BoulangeriesPage() {
               <tbody>
                 {items.map((b) => (
                   <tr key={b.id}>
-                    <td>{b.id}</td>
-                    <td>{b.name}</td>
-                    <td>{b.address ?? '—'}</td>
+                    <td data-label="#">{b.id}</td>
+                    <td data-label="Nom">{b.name}</td>
+                    <td data-label="Adresse">{b.address ?? '—'}</td>
                   </tr>
                 ))}
               </tbody>

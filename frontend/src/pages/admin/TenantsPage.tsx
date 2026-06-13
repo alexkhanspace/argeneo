@@ -101,10 +101,10 @@ export function TenantsPage() {
               <tbody>
                 {tenants.map((t) => (
                   <tr key={t.id}>
-                    <td>{t.id}</td>
-                    <td>{t.name}</td>
-                    <td>{t.recipeScope === 'ENSEIGNE' ? 'Enseigne' : 'Par boulangerie'}</td>
-                    <td>{t.active ? 'Actif' : 'Inactif'}</td>
+                    <td data-label="#">{t.id}</td>
+                    <td data-label="Enseigne">{t.name}</td>
+                    <td data-label="Recettes">{t.recipeScope === 'ENSEIGNE' ? 'Enseigne' : 'Par boulangerie'}</td>
+                    <td data-label="Statut">{t.active ? 'Actif' : 'Inactif'}</td>
                   </tr>
                 ))}
               </tbody>

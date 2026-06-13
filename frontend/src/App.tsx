@@ -6,9 +6,12 @@ import { Layout } from './components/Layout'
 import { AccountPage } from './pages/AccountPage'
 import { LoginPage } from './pages/LoginPage'
 import { TenantsPage } from './pages/admin/TenantsPage'
+import { ArticlesPage } from './pages/patron/ArticlesPage'
 import { BoulangeriesPage } from './pages/patron/BoulangeriesPage'
 import { EmployeePermissionsPage } from './pages/patron/EmployeePermissionsPage'
 import { EmployeesPage } from './pages/patron/EmployeesPage'
+import { MaterialsPage } from './pages/patron/MaterialsPage'
+import { RecipeEditorPage } from './pages/patron/RecipeEditorPage'
 
 function HomeRedirect() {
   const { me, loading } = useAuth()
@@ -58,6 +61,30 @@ export default function App() {
           element={
             <ProtectedRoute allow={isPatron}>
               <EmployeePermissionsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/articles"
+          element={
+            <ProtectedRoute allow={isPatron}>
+              <ArticlesPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/articles/:id/recipe"
+          element={
+            <ProtectedRoute allow={isPatron}>
+              <RecipeEditorPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/materials"
+          element={
+            <ProtectedRoute allow={isPatron}>
+              <MaterialsPage />
             </ProtectedRoute>
           }
         />

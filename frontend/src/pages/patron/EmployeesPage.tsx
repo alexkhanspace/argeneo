@@ -84,9 +84,9 @@ export function EmployeesPage() {
               <tbody>
                 {items.map((u) => (
                   <tr key={u.id}>
-                    <td>{u.fullName}</td>
-                    <td>{u.email}</td>
-                    <td>
+                    <td data-label="Nom">{u.fullName}</td>
+                    <td data-label="E-mail">{u.email}</td>
+                    <td data-label="" className="actions">
                       <Link className="btn-link" to={`/employees/${u.id}/permissions`}>
                         Permissions
                       </Link>

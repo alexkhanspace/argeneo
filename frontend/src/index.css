@@ -315,3 +315,233 @@ td {
   width: auto;
   margin: 0;
 }
+
+/* ---- Textarea ---- */
+textarea {
+  display: block;
+  width: 100%;
+  margin-top: 0.3rem;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  font: inherit;
+  font-size: 0.95rem;
+  color: var(--ink);
+  resize: vertical;
+}
+
+/* ---- Topbar : hamburger ---- */
+.topbar-main {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+.hamburger {
+  display: none;
+  flex-direction: column;
+  gap: 4px;
+  background: transparent;
+  border: none;
+  padding: 6px;
+}
+.hamburger span {
+  width: 22px;
+  height: 2px;
+  background: var(--ink);
+  border-radius: 2px;
+}
+
+/* ---- Tables : scroll horizontal de secours ---- */
+.table-wrap {
+  overflow-x: auto;
+}
+
+/* ---- Matières : édition du prix inline ---- */
+.price-cell {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.price-cell input {
+  width: 110px;
+  margin-top: 0;
+}
+.unit-suffix {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+.actions {
+  text-align: right;
+}
+
+/* ---- Éditeur de recette ---- */
+.grid-recipe {
+  grid-template-columns: 1.4fr 1fr;
+}
+.form-inline {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+.form-inline label {
+  flex: 1;
+  min-width: 120px;
+}
+.comp-row {
+  display: grid;
+  grid-template-columns: 1fr 1.4fr 0.9fr 0.9fr auto;
+  gap: 0.5rem;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+.comp-row select,
+.comp-row input {
+  margin-top: 0;
+}
+label.mt {
+  margin-top: 0.75rem;
+}
+
+/* ---- Carte PNET ---- */
+.pnet-card {
+  position: sticky;
+  top: 1rem;
+}
+.pnet-headline {
+  display: flex;
+  align-items: baseline;
+  gap: 0.25rem;
+}
+.pnet-value {
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--primary);
+}
+.pnet-table {
+  margin-top: 1rem;
+}
+
+/* ============================================================
+   RESPONSIVE
+   ============================================================ */
+
+/* Tablette / petit desktop : nav repliable via hamburger */
+@media (max-width: 860px) {
+  .topbar {
+    flex-wrap: wrap;
+    height: auto;
+    min-height: 56px;
+    padding: 0.5rem 1rem;
+    position: relative;
+  }
+  .topbar-main {
+    flex: 1;
+  }
+  .hamburger {
+    display: flex;
+  }
+  .nav {
+    display: none;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    flex-direction: column;
+    gap: 0;
+    background: var(--surface);
+    border-bottom: 1px solid var(--line);
+    box-shadow: var(--shadow);
+    z-index: 20;
+    padding: 0.4rem;
+  }
+  .nav.open {
+    display: flex;
+  }
+  .nav a {
+    padding: 0.75rem 0.8rem;
+  }
+  .content {
+    padding: 1.25rem;
+  }
+  .grid-recipe {
+    grid-template-columns: 1fr;
+  }
+  .pnet-card {
+    position: static;
+  }
+}
+
+/* Mobile : tables en cartes, cibles tactiles, formulaires pleine largeur */
+@media (max-width: 640px) {
+  .user-name,
+  .user .badge {
+    display: none;
+  }
+  .content {
+    padding: 1rem;
+  }
+
+  /* Tables -> cartes empilées avec libellés */
+  .table-wrap {
+    overflow: visible;
+  }
+  table thead {
+    display: none;
+  }
+  table,
+  tbody,
+  tr,
+  td {
+    display: block;
+    width: 100%;
+  }
+  tbody tr {
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    margin-bottom: 0.75rem;
+    padding: 0.35rem 0.7rem;
+    background: #fff;
+  }
+  td {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+    border: none;
+    padding: 0.45rem 0.1rem;
+    text-align: right;
+  }
+  td::before {
+    content: attr(data-label);
+    color: var(--muted);
+    font-weight: 600;
+    font-size: 0.78rem;
+    text-align: left;
+  }
+  td.actions {
+    justify-content: flex-end;
+  }
+  td.actions::before {
+    content: '';
+  }
+
+  /* Cibles tactiles plus grandes */
+  input,
+  select,
+  textarea,
+  .btn-primary,
+  .btn-ghost,
+  .tab {
+    min-height: 44px;
+  }
+  .btn-ghost.small {
+    min-height: 36px;
+  }
+  .price-cell input {
+    width: 90px;
+  }
+  .comp-row {
+    grid-template-columns: 1fr 1fr;
+  }
+}

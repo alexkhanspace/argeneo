@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
 import type { Me } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
@@ -12,6 +13,7 @@ function roleLabel(me: Me): string {
 export function Layout() {
   const { me, logout } = useAuth()
   const navigate = useNavigate()
+  const [menuOpen, setMenuOpen] = useState(false)
 
   if (!me) return null
 
@@ -19,20 +21,37 @@ export function Layout() {
     logout()
     navigate('/login')
   }
+  const closeMenu = () => setMenuOpen(false)
 
   return (
     <div className="app">
       <header className="topbar">
-        <div className="brand">Argeneo</div>
-        <nav className="nav">
+        <div className="topbar-main">
+          <button
+            className="hamburger"
+            aria-label="Menu"
+            aria-expanded={menuOpen}
+            onClick={() => setMenuOpen((o) => !o)}
+          >
+            <span />
+            <span />
+            <span />
+          </button>
+          <div className="brand">Argeneo</div>
+        </div>
+
+        <nav className={`nav ${menuOpen ? 'open' : ''}`} onClick={closeMenu}>
           {isAdmin(me) && <NavLink to="/admin/tenants">Tenants</NavLink>}
           {isPatron(me) && (
             <>
               <NavLink to="/boulangeries">Boulangeries</NavLink>
               <NavLink to="/employees">Équipe</NavLink>
+              <NavLink to="/articles">Articles</NavLink>
+              <NavLink to="/materials">Matières</NavLink>
             </>
           )}
         </nav>
+
         <div className="user">
           <span className="user-name">{me.fullName}</span>
           <span className="badge">{roleLabel(me)}</span>
@@ -41,6 +60,7 @@ export function Layout() {
           </button>
         </div>
       </header>
+
       <main className="content">
         <Outlet />
       </main>
