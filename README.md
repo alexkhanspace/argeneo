@@ -56,6 +56,30 @@ npm run dev
 # UI sur http://localhost:5173 (proxy /api -> :8080)
 ```
 
+## Comptes
+
+Au premier démarrage, le backend amorce un **Super-Admin** (configurable dans
+`application.yml`, ou via les variables d'env `ARGENEO_BOOTSTRAP_ADMIN_*`) :
+
+```
+admin@argeneo.local / Admin123!
+```
+
+Le Super-Admin crée les tenants (avec leur patron). Le patron crée ses
+boulangeries, ses employés et attribue les permissions par boulangerie.
+
+## Endpoints (slice 1)
+
+| Méthode | Chemin | Rôle |
+|---|---|---|
+| POST | `/api/auth/login` | public |
+| GET | `/api/me` | authentifié |
+| POST/GET | `/api/admin/tenants` | Super-Admin |
+| POST/GET | `/api/boulangeries` | Patron |
+| POST/GET | `/api/users` | Patron |
+| GET/PUT | `/api/users/{id}/permissions` | Patron |
+| GET | `/api/permissions`, `/api/permission-presets` | Patron |
+
 ## Structure
 
 ```
