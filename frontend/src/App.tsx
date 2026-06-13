@@ -8,6 +8,7 @@ import { DashboardPage } from './pages/DashboardPage'
 import { DailyPage } from './pages/DailyPage'
 import { LoginPage } from './pages/LoginPage'
 import { TenantsPage } from './pages/admin/TenantsPage'
+import { UsersAdminPage } from './pages/admin/UsersAdminPage'
 import { ArticlesPage } from './pages/patron/ArticlesPage'
 import { EtablissementsPage } from './pages/patron/EtablissementsPage'
 import { EmployeePermissionsPage } from './pages/patron/EmployeePermissionsPage'
@@ -55,6 +56,14 @@ export default function App() {
           element={
             <ProtectedRoute allow={isAdmin}>
               <TenantsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/users"
+          element={
+            <ProtectedRoute allow={isAdmin}>
+              <UsersAdminPage />
             </ProtectedRoute>
           }
         />

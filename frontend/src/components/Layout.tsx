@@ -55,7 +55,12 @@ export function Layout() {
         </div>
 
         <nav className={`nav ${menuOpen ? 'open' : ''}`} onClick={closeMenu}>
-          {isAdmin(me) && <NavLink to="/admin/tenants">Tenants</NavLink>}
+          {isAdmin(me) && (
+            <>
+              <NavLink to="/admin/tenants">Tenants</NavLink>
+              <NavLink to="/admin/users">Utilisateurs</NavLink>
+            </>
+          )}
           {isPatron(me) && (
             <>
               <NavLink to="/dashboard">Tableau de bord</NavLink>

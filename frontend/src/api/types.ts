@@ -68,6 +68,17 @@ export interface UserPermissions {
   etablissements: EtablissementPermissions[]
 }
 
+export interface AdminUserRow {
+  kind: 'ADMIN' | 'USER'
+  id: number
+  email: string
+  fullName: string
+  role: 'SUPER_ADMIN' | 'PATRON' | 'EMPLOYE'
+  tenantId: number | null
+  tenantName: string | null
+  active: boolean
+}
+
 // --- Costing (matières, articles, recettes, PNET) ---
 export type MeasureUnit = 'G' | 'KG' | 'ML' | 'L' | 'PIECE'
 export type MeasureDimension = 'MASS' | 'VOLUME' | 'PIECE'

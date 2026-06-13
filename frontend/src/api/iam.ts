@@ -1,5 +1,6 @@
 import { api } from './client'
 import type {
+  AdminUserRow,
   AppUser,
   Etablissement,
   LoginResponse,
@@ -64,6 +65,20 @@ export async function createTenantEtablissement(
 export async function impersonateTenant(tenantId: number): Promise<LoginResponse> {
   const { data } = await api.post<LoginResponse>(`/admin/tenants/${tenantId}/impersonate`)
   return data
+}
+
+// --- Super-Admin : annuaire global + reset MDP ---
+export async function listAllUsers(): Promise<AdminUserRow[]> {
+  const { data } = await api.get<AdminUserRow[]>('/admin/users')
+  return data
+}
+
+export async function resetUserPassword(
+  kind: 'ADMIN' | 'USER',
+  id: number,
+  newPassword: string,
+): Promise<void> {
+  await api.put('/admin/users/reset-password', { kind, id, newPassword })
 }
 
 // --- Patron : employés ---
