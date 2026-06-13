@@ -7,6 +7,6 @@ export const isEmploye = (me: Me) => me.type === 'USER' && me.role === 'EMPLOYE'
 /** Route d'accueil par défaut selon le rôle. */
 export function homePathFor(me: Me): string {
   if (isAdmin(me)) return '/admin/tenants'
-  if (isPatron(me)) return '/boulangeries'
+  if (isPatron(me)) return '/etablissements'
   return '/mon-compte'
 }

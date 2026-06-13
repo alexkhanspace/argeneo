@@ -44,8 +44,9 @@ public class Article {
     @Column(nullable = false, length = 10)
     private Unit unit;
 
-    @Column(name = "sale_price", precision = 12, scale = 4)
-    private BigDecimal salePrice;
+    /** Prix de vente TTC (prix client). Le HT s'en déduit via {@link #vatRate}. */
+    @Column(name = "sale_price_ttc", precision = 12, scale = 4)
+    private BigDecimal salePriceTtc;
 
     @Column(name = "vat_rate", precision = 5, scale = 4)
     private BigDecimal vatRate;

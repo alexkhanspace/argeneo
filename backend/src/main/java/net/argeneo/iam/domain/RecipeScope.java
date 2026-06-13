@@ -4,6 +4,6 @@ package net.argeneo.iam.domain;
 public enum RecipeScope {
     /** Recettes communes à toute l'enseigne. */
     ENSEIGNE,
-    /** Recettes propres à chaque boulangerie. */
-    BOULANGERIE
+    /** Recettes propres à chaque etablissement. */
+    ETABLISSEMENT
 }

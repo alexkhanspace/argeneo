@@ -1,7 +1,7 @@
 import { api } from './client'
 import type {
   AppUser,
-  Boulangerie,
+  Etablissement,
   LoginResponse,
   Me,
   Permission,
@@ -41,14 +41,14 @@ export async function createTenant(input: CreateTenantInput): Promise<Tenant> {
   return data
 }
 
-// --- Patron : boulangeries ---
-export async function listBoulangeries(): Promise<Boulangerie[]> {
-  const { data } = await api.get<Boulangerie[]>('/boulangeries')
+// --- Patron : etablissements ---
+export async function listEtablissements(): Promise<Etablissement[]> {
+  const { data } = await api.get<Etablissement[]>('/etablissements')
   return data
 }
 
-export async function createBoulangerie(input: { name: string; address?: string }): Promise<Boulangerie> {
-  const { data } = await api.post<Boulangerie>('/boulangeries', input)
+export async function createEtablissement(input: { name: string; address?: string }): Promise<Etablissement> {
+  const { data } = await api.post<Etablissement>('/etablissements', input)
   return data
 }
 
@@ -74,10 +74,10 @@ export async function getUserPermissions(userId: number): Promise<UserPermission
 
 export async function assignPermissions(
   userId: number,
-  boulangerieId: number,
+  etablissementId: number,
   permissionCodes: string[],
 ): Promise<void> {
-  await api.put(`/users/${userId}/permissions`, { boulangerieId, permissionCodes })
+  await api.put(`/users/${userId}/permissions`, { etablissementId, permissionCodes })
 }
 
 // --- Catalogue ---

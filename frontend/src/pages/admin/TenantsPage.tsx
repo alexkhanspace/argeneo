@@ -54,7 +54,7 @@ export function TenantsPage() {
               Portée des recettes
               <select value={recipeScope} onChange={(e) => setRecipeScope(e.target.value as RecipeScope)}>
                 <option value="ENSEIGNE">Communes à l'enseigne</option>
-                <option value="BOULANGERIE">Propres à chaque boulangerie</option>
+                <option value="ETABLISSEMENT">Propres à chaque etablissement</option>
               </select>
             </label>
             <hr />
@@ -103,7 +103,7 @@ export function TenantsPage() {
                   <tr key={t.id}>
                     <td data-label="#">{t.id}</td>
                     <td data-label="Enseigne">{t.name}</td>
-                    <td data-label="Recettes">{t.recipeScope === 'ENSEIGNE' ? 'Enseigne' : 'Par boulangerie'}</td>
+                    <td data-label="Recettes">{t.recipeScope === 'ENSEIGNE' ? 'Enseigne' : 'Par etablissement'}</td>
                     <td data-label="Statut">{t.active ? 'Actif' : 'Inactif'}</td>
                   </tr>
                 ))}

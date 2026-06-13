@@ -44,7 +44,7 @@ export function Layout() {
           {isAdmin(me) && <NavLink to="/admin/tenants">Tenants</NavLink>}
           {isPatron(me) && (
             <>
-              <NavLink to="/boulangeries">Boulangeries</NavLink>
+              <NavLink to="/etablissements">Etablissements</NavLink>
               <NavLink to="/employees">Équipe</NavLink>
               <NavLink to="/articles">Articles</NavLink>
               <NavLink to="/materials">Matières</NavLink>

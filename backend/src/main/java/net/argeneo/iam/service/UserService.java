@@ -8,7 +8,7 @@ import java.util.Map;
 import net.argeneo.common.error.ConflictException;
 import net.argeneo.common.error.ResourceNotFoundException;
 import net.argeneo.iam.api.dto.UserDtos.AssignPermissionsRequest;
-import net.argeneo.iam.api.dto.UserDtos.BoulangeriePermissions;
+import net.argeneo.iam.api.dto.UserDtos.EtablissementPermissions;
 import net.argeneo.iam.api.dto.UserDtos.CreateEmployeeRequest;
 import net.argeneo.iam.api.dto.UserDtos.UserPermissionsResponse;
 import net.argeneo.iam.api.dto.UserDtos.UserResponse;
@@ -16,7 +16,7 @@ import net.argeneo.iam.domain.AppUser;
 import net.argeneo.iam.domain.PermissionGrant;
 import net.argeneo.iam.domain.UserRole;
 import net.argeneo.iam.repository.AppUserRepository;
-import net.argeneo.iam.repository.BoulangerieRepository;
+import net.argeneo.iam.repository.EtablissementRepository;
 import net.argeneo.iam.repository.PermissionGrantRepository;
 import net.argeneo.iam.repository.PermissionRepository;
 import net.argeneo.security.AuthAccountReader;
@@ -33,20 +33,20 @@ public class UserService {
 
     private final AppUserRepository userRepository;
     private final PermissionGrantRepository grantRepository;
-    private final BoulangerieRepository boulangerieRepository;
+    private final EtablissementRepository etablissementRepository;
     private final PermissionRepository permissionRepository;
     private final PasswordEncoder passwordEncoder;
     private final AuthAccountReader accountReader;
 
     public UserService(AppUserRepository userRepository,
                        PermissionGrantRepository grantRepository,
-                       BoulangerieRepository boulangerieRepository,
+                       EtablissementRepository etablissementRepository,
                        PermissionRepository permissionRepository,
                        PasswordEncoder passwordEncoder,
                        AuthAccountReader accountReader) {
         this.userRepository = userRepository;
         this.grantRepository = grantRepository;
-        this.boulangerieRepository = boulangerieRepository;
+        this.etablissementRepository = etablissementRepository;
         this.permissionRepository = permissionRepository;
         this.passwordEncoder = passwordEncoder;
         this.accountReader = accountReader;
@@ -81,14 +81,14 @@ public class UserService {
                 .stream().map(UserResponse::from).toList();
     }
 
-    /** Remplace l'ensemble des permissions d'un employé sur une boulangerie. */
+    /** Remplace l'ensemble des permissions d'un employé sur une etablissement. */
     @Transactional
     public void assignPermissions(Long userId, AssignPermissionsRequest request) {
         AppUser user = requireEmployee(userId);
 
-        boulangerieRepository.findById(request.boulangerieId())
+        etablissementRepository.findById(request.etablissementId())
                 .orElseThrow(() -> new ResourceNotFoundException(
-                        "Boulangerie introuvable: " + request.boulangerieId()));
+                        "Etablissement introuvable: " + request.etablissementId()));
 
         LinkedHashSet<String> codes = new LinkedHashSet<>(request.permissionCodes());
         for (String code : codes) {
@@ -97,10 +97,10 @@ public class UserService {
             }
         }
 
-        grantRepository.deleteByUserIdAndBoulangerieId(user.getId(), request.boulangerieId());
+        grantRepository.deleteByUserIdAndEtablissementId(user.getId(), request.etablissementId());
         grantRepository.flush();
         for (String code : codes) {
-            grantRepository.save(new PermissionGrant(user.getId(), request.boulangerieId(), code));
+            grantRepository.save(new PermissionGrant(user.getId(), request.etablissementId(), code));
         }
     }
 
@@ -109,14 +109,14 @@ public class UserService {
         AppUser user = userRepository.findById(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("Utilisateur introuvable: " + userId));
 
-        Map<Long, List<String>> byBoulangerie = new LinkedHashMap<>();
+        Map<Long, List<String>> byEtablissement = new LinkedHashMap<>();
         for (PermissionGrant grant : grantRepository.findByUserId(user.getId())) {
-            byBoulangerie.computeIfAbsent(grant.getBoulangerieId(), k -> new ArrayList<>())
+            byEtablissement.computeIfAbsent(grant.getEtablissementId(), k -> new ArrayList<>())
                     .add(grant.getPermissionCode());
         }
 
-        List<BoulangeriePermissions> result = byBoulangerie.entrySet().stream()
-                .map(e -> new BoulangeriePermissions(e.getKey(), e.getValue().stream().sorted().toList()))
+        List<EtablissementPermissions> result = byEtablissement.entrySet().stream()
+                .map(e -> new EtablissementPermissions(e.getKey(), e.getValue().stream().sorted().toList()))
                 .toList();
         return new UserPermissionsResponse(user.getId(), result);
     }

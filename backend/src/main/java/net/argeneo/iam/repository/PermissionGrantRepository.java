@@ -10,8 +10,8 @@ public interface PermissionGrantRepository extends JpaRepository<PermissionGrant
 
     List<PermissionGrant> findByUserId(Long userId);
 
-    List<PermissionGrant> findByUserIdAndBoulangerieId(Long userId, Long boulangerieId);
+    List<PermissionGrant> findByUserIdAndEtablissementId(Long userId, Long etablissementId);
 
     @Transactional
-    void deleteByUserIdAndBoulangerieId(Long userId, Long boulangerieId);
+    void deleteByUserIdAndEtablissementId(Long userId, Long etablissementId);
 }

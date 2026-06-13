@@ -14,7 +14,7 @@ import lombok.Setter;
 import org.hibernate.annotations.TenantId;
 
 /**
- * Attribution d'une permission à un (user, boulangerie). Unité d'autorisation
+ * Attribution d'une permission à un (user, etablissement). Unité d'autorisation
  * contextualisée : un employé peut être manager ici et vendeur là. Scopé tenant.
  */
 @Entity
@@ -35,8 +35,8 @@ public class PermissionGrant {
     @Column(name = "user_id", nullable = false)
     private Long userId;
 
-    @Column(name = "boulangerie_id", nullable = false)
-    private Long boulangerieId;
+    @Column(name = "etablissement_id", nullable = false)
+    private Long etablissementId;
 
     @Column(name = "permission_code", nullable = false, length = 50)
     private String permissionCode;
@@ -44,9 +44,9 @@ public class PermissionGrant {
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
-    public PermissionGrant(Long userId, Long boulangerieId, String permissionCode) {
+    public PermissionGrant(Long userId, Long etablissementId, String permissionCode) {
         this.userId = userId;
-        this.boulangerieId = boulangerieId;
+        this.etablissementId = etablissementId;
         this.permissionCode = permissionCode;
     }
 

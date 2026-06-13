@@ -82,7 +82,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                     authorities.add(new SimpleGrantedAuthority("ROLE_EMPLOYE"));
                     grantRepository.findByUserId(principal.id()).forEach(grant ->
                             authorities.add(new SimpleGrantedAuthority(
-                                    grant.getPermissionCode() + ":" + grant.getBoulangerieId())));
+                                    grant.getPermissionCode() + ":" + grant.getEtablissementId())));
                 }
             }
         }

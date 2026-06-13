@@ -1,6 +1,6 @@
 export type PrincipalType = 'ADMIN' | 'USER'
 export type UserRole = 'PATRON' | 'EMPLOYE'
-export type RecipeScope = 'ENSEIGNE' | 'BOULANGERIE'
+export type RecipeScope = 'ENSEIGNE' | 'ETABLISSEMENT'
 
 export interface LoginResponse {
   token: string
@@ -30,7 +30,7 @@ export interface Tenant {
   createdAt: string
 }
 
-export interface Boulangerie {
+export interface Etablissement {
   id: number
   name: string
   address: string | null
@@ -57,14 +57,14 @@ export interface Preset {
   permissionCodes: string[]
 }
 
-export interface BoulangeriePermissions {
-  boulangerieId: number
+export interface EtablissementPermissions {
+  etablissementId: number
   permissionCodes: string[]
 }
 
 export interface UserPermissions {
   userId: number
-  boulangeries: BoulangeriePermissions[]
+  etablissements: EtablissementPermissions[]
 }
 
 // --- Costing (matières, articles, recettes, PNET) ---

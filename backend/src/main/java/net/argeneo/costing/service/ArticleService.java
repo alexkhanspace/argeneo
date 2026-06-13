@@ -32,7 +32,7 @@ public class ArticleService {
         article.setName(request.name());
         article.setType(request.type());
         article.setUnit(request.unit());
-        article.setSalePrice(request.salePrice());
+        article.setSalePriceTtc(request.salePriceTtc());
         article.setVatRate(request.vatRate());
         if (request.type() == ArticleType.ACHAT_REVENTE) {
             article.setPurchasePrice(request.purchasePrice());

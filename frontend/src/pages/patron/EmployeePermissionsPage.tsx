@@ -4,17 +4,17 @@ import { errorMessage } from '../../api/client'
 import {
   assignPermissions,
   getUserPermissions,
-  listBoulangeries,
+  listEtablissements,
   listPermissions,
   listPresets,
 } from '../../api/iam'
-import type { Boulangerie, Permission, Preset, UserPermissions } from '../../api/types'
+import type { Etablissement, Permission, Preset, UserPermissions } from '../../api/types'
 
 export function EmployeePermissionsPage() {
   const { id } = useParams()
   const userId = Number(id)
 
-  const [boulangeries, setBoulangeries] = useState<Boulangerie[]>([])
+  const [etablissements, setEtablissements] = useState<Etablissement[]>([])
   const [permissions, setPermissions] = useState<Permission[]>([])
   const [presets, setPresets] = useState<Preset[]>([])
   const [userPerms, setUserPerms] = useState<UserPermissions | null>(null)
@@ -27,9 +27,9 @@ export function EmployeePermissionsPage() {
 
   // Chargement initial.
   useEffect(() => {
-    Promise.all([listBoulangeries(), listPermissions(), listPresets(), getUserPermissions(userId)])
+    Promise.all([listEtablissements(), listPermissions(), listPresets(), getUserPermissions(userId)])
       .then(([b, p, pr, up]) => {
-        setBoulangeries(b)
+        setEtablissements(b)
         setPermissions(p)
         setPresets(pr)
         setUserPerms(up)
@@ -38,10 +38,10 @@ export function EmployeePermissionsPage() {
       .catch((e) => setError(errorMessage(e)))
   }, [userId])
 
-  // À chaque changement de boulangerie sélectionnée, on recharge les droits courants.
+  // À chaque changement de etablissement sélectionnée, on recharge les droits courants.
   useEffect(() => {
     if (selected == null || !userPerms) return
-    const current = userPerms.boulangeries.find((x) => x.boulangerieId === selected)
+    const current = userPerms.etablissements.find((x) => x.etablissementId === selected)
     setChecked(new Set(current?.permissionCodes ?? []))
     setSaved(false)
   }, [selected, userPerms])
@@ -87,11 +87,11 @@ export function EmployeePermissionsPage() {
     }
   }
 
-  if (boulangeries.length === 0) {
+  if (etablissements.length === 0) {
     return (
       <div className="page">
         <h1>Permissions</h1>
-        <p className="muted">Créez d'abord au moins une boulangerie.</p>
+        <p className="muted">Créez d'abord au moins une etablissement.</p>
       </div>
     )
   }
@@ -100,12 +100,12 @@ export function EmployeePermissionsPage() {
     <div className="page">
       <h1>Permissions de l'employé #{userId}</h1>
       <p className="muted">
-        Les droits sont attribués <strong>par boulangerie</strong> : un employé peut être manager
+        Les droits sont attribués <strong>par etablissement</strong> : un employé peut être manager
         ici et vendeur ailleurs.
       </p>
 
       <div className="tabs">
-        {boulangeries.map((b) => (
+        {etablissements.map((b) => (
           <button
             key={b.id}
             className={`tab ${selected === b.id ? 'active' : ''}`}

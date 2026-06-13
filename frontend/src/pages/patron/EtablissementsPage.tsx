@@ -1,17 +1,17 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { errorMessage } from '../../api/client'
-import { createBoulangerie, listBoulangeries } from '../../api/iam'
-import type { Boulangerie } from '../../api/types'
+import { createEtablissement, listEtablissements } from '../../api/iam'
+import type { Etablissement } from '../../api/types'
 
-export function BoulangeriesPage() {
-  const [items, setItems] = useState<Boulangerie[]>([])
+export function EtablissementsPage() {
+  const [items, setItems] = useState<Etablissement[]>([])
   const [name, setName] = useState('')
   const [address, setAddress] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
   const refresh = () => {
-    listBoulangeries().then(setItems).catch((e) => setError(errorMessage(e)))
+    listEtablissements().then(setItems).catch((e) => setError(errorMessage(e)))
   }
   useEffect(refresh, [])
 
@@ -20,7 +20,7 @@ export function BoulangeriesPage() {
     setError(null)
     setBusy(true)
     try {
-      await createBoulangerie({ name, address: address || undefined })
+      await createEtablissement({ name, address: address || undefined })
       setName('')
       setAddress('')
       refresh()
@@ -33,12 +33,12 @@ export function BoulangeriesPage() {
 
   return (
     <div className="page">
-      <h1>Boulangeries</h1>
+      <h1>Etablissements</h1>
       <p className="muted">Les points de vente de votre enseigne.</p>
 
       <div className="grid">
         <section className="card">
-          <h2>Ajouter une boulangerie</h2>
+          <h2>Ajouter une etablissement</h2>
           <form onSubmit={onSubmit}>
             <label>
               Nom
@@ -56,9 +56,9 @@ export function BoulangeriesPage() {
         </section>
 
         <section className="card">
-          <h2>Mes boulangeries ({items.length})</h2>
+          <h2>Mes etablissements ({items.length})</h2>
           {items.length === 0 ? (
-            <p className="muted">Aucune boulangerie pour le moment.</p>
+            <p className="muted">Aucune etablissement pour le moment.</p>
           ) : (
             <table>
               <thead>

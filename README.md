@@ -1,6 +1,6 @@
 # Argeneo
 
-Back-office SaaS de gestion pour artisans des métiers de bouche (boulangerie,
+Back-office SaaS de gestion pour artisans des métiers de bouche (etablissement,
 boucherie, traiteur). Multi-tenant, isolation logique par `tenant_id`.
 
 Voir [`CDC_Argeneo.md`](./CDC_Argeneo.md) pour le cahier des charges complet.
@@ -66,7 +66,7 @@ admin@argeneo.local / Admin123!
 ```
 
 Le Super-Admin crée les tenants (avec leur patron). Le patron crée ses
-boulangeries, ses employés et attribue les permissions par boulangerie.
+etablissements, ses employés et attribue les permissions par etablissement.
 
 ## Endpoints (slice 1)
 
@@ -75,7 +75,7 @@ boulangeries, ses employés et attribue les permissions par boulangerie.
 | POST | `/api/auth/login` | public |
 | GET | `/api/me` | authentifié |
 | POST/GET | `/api/admin/tenants` | Super-Admin |
-| POST/GET | `/api/boulangeries` | Patron |
+| POST/GET | `/api/etablissements` | Patron |
 | POST/GET | `/api/users` | Patron |
 | GET/PUT | `/api/users/{id}/permissions` | Patron |
 | GET | `/api/permissions`, `/api/permission-presets` | Patron |

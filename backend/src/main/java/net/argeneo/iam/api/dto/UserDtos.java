@@ -32,20 +32,20 @@ public final class UserDtos {
         }
     }
 
-    /** Droits d'un user sur une boulangerie donnée. */
-    public record BoulangeriePermissions(
-            Long boulangerieId,
+    /** Droits d'un user sur une etablissement donnée. */
+    public record EtablissementPermissions(
+            Long etablissementId,
             List<String> permissionCodes) {
     }
 
-    /** Remplace l'ensemble des permissions d'un user sur une boulangerie. */
+    /** Remplace l'ensemble des permissions d'un user sur une etablissement. */
     public record AssignPermissionsRequest(
-            @NotNull Long boulangerieId,
+            @NotNull Long etablissementId,
             @NotNull List<String> permissionCodes) {
     }
 
     public record UserPermissionsResponse(
             Long userId,
-            List<BoulangeriePermissions> boulangeries) {
+            List<EtablissementPermissions> etablissements) {
     }
 }

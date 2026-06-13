@@ -7,7 +7,7 @@ import { AccountPage } from './pages/AccountPage'
 import { LoginPage } from './pages/LoginPage'
 import { TenantsPage } from './pages/admin/TenantsPage'
 import { ArticlesPage } from './pages/patron/ArticlesPage'
-import { BoulangeriesPage } from './pages/patron/BoulangeriesPage'
+import { EtablissementsPage } from './pages/patron/EtablissementsPage'
 import { EmployeePermissionsPage } from './pages/patron/EmployeePermissionsPage'
 import { EmployeesPage } from './pages/patron/EmployeesPage'
 import { MaterialsPage } from './pages/patron/MaterialsPage'
@@ -41,10 +41,10 @@ export default function App() {
           }
         />
         <Route
-          path="/boulangeries"
+          path="/etablissements"
           element={
             <ProtectedRoute allow={isPatron}>
-              <BoulangeriesPage />
+              <EtablissementsPage />
             </ProtectedRoute>
           }
         />

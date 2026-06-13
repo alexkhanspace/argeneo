@@ -4,17 +4,17 @@ import { useAuth } from '../auth/AuthContext'
 export function AccountPage() {
   const { me } = useAuth()
 
-  // Regroupe les autorités "code:boulangerieId" par boulangerie.
-  const byBoulangerie = useMemo(() => {
+  // Regroupe les autorités "code:etablissementId" par etablissement.
+  const byEtablissement = useMemo(() => {
     const map = new Map<string, string[]>()
     for (const authority of me?.authorities ?? []) {
       const sep = authority.lastIndexOf(':')
       if (sep === -1) continue // ROLE_*
-      const boulangerieId = authority.slice(sep + 1)
+      const etablissementId = authority.slice(sep + 1)
       const code = authority.slice(0, sep)
-      const list = map.get(boulangerieId) ?? []
+      const list = map.get(etablissementId) ?? []
       list.push(code)
-      map.set(boulangerieId, list)
+      map.set(etablissementId, list)
     }
     return [...map.entries()]
   }, [me])
@@ -32,13 +32,13 @@ export function AccountPage() {
       </section>
 
       <section className="card">
-        <h2>Mes permissions par boulangerie</h2>
-        {byBoulangerie.length === 0 ? (
+        <h2>Mes permissions par etablissement</h2>
+        {byEtablissement.length === 0 ? (
           <p className="muted">Aucune permission attribuée pour le moment.</p>
         ) : (
-          byBoulangerie.map(([boulangerieId, codes]) => (
-            <div key={boulangerieId} className="perm-group">
-              <h3>Boulangerie #{boulangerieId}</h3>
+          byEtablissement.map(([etablissementId, codes]) => (
+            <div key={etablissementId} className="perm-group">
+              <h3>Etablissement #{etablissementId}</h3>
               <ul>
                 {codes.sort().map((code) => (
                   <li key={code}>{code}</li>

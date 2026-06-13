@@ -15,11 +15,11 @@ import org.hibernate.annotations.TenantId;
 
 /** Point de vente rattaché à un tenant. Donnée métier scopée tenant. */
 @Entity
-@Table(name = "boulangerie")
+@Table(name = "etablissement")
 @Getter
 @Setter
 @NoArgsConstructor
-public class Boulangerie {
+public class Etablissement {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

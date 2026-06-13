@@ -6,7 +6,7 @@ import net.argeneo.costing.domain.CostingSnapshots.ComponentType;
 import net.argeneo.costing.domain.Unit;
 import net.argeneo.costing.entity.ArticleType;
 
-/** DTOs du coût de revient (PNET). */
+/** DTOs du coût de revient (PNET, HT) et de la marge vs prix de vente. */
 public final class PnetDtos {
 
     private PnetDtos() {
@@ -25,11 +25,20 @@ public final class PnetDtos {
             Long articleId,
             String articleName,
             ArticleType type,
+            // Coût de revient (HT)
             BigDecimal unitCost,
             Unit unit,
             BigDecimal batchCost,
             BigDecimal effectiveYield,
             Unit yieldUnit,
-            List<PnetLine> lines) {
+            List<PnetLine> lines,
+            // Prix de vente & marge
+            BigDecimal salePriceTtc,
+            BigDecimal salePriceHt,
+            BigDecimal vatRate,
+            BigDecimal marginHt,
+            BigDecimal markupRate,
+            BigDecimal marginRate,
+            BigDecimal coefficient) {
     }
 }
