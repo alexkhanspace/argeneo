@@ -99,7 +99,7 @@ export function ArticlesPage() {
           <p className="muted">Coût de revient (PNET, HT) et coefficient recalculés en direct.</p>
         </div>
         <button className="btn-primary" onClick={() => setOpen(true)}>
-          + Nouvel article
+          <i className="fa-solid fa-plus" /> Nouvel article
         </button>
       </div>
 
@@ -153,11 +153,11 @@ export function ArticlesPage() {
                       <td data-label="" className="actions">
                         {a.type === 'FABRIQUE' && (
                           <Link className="btn-link" to={`/articles/${a.id}/recipe`}>
-                            Recette
+                            <i className="fa-solid fa-list-check" /> Recette
                           </Link>
                         )}
                         <button className="btn-link danger" onClick={() => onDelete(a)}>
-                          Supprimer
+                          <i className="fa-solid fa-trash" /> Supprimer
                         </button>
                       </td>
                     </tr>

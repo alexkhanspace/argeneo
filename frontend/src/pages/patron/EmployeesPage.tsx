@@ -62,7 +62,7 @@ export function EmployeesPage() {
           <p className="muted">Créez vos employés, puis attribuez leurs permissions par établissement.</p>
         </div>
         <button className="btn-primary" onClick={() => setOpen(true)}>
-          + Nouvel employé
+          <i className="fa-solid fa-plus" /> Nouvel employé
         </button>
       </div>
 
@@ -97,10 +97,10 @@ export function EmployeesPage() {
                     <td data-label="E-mail">{u.email}</td>
                     <td data-label="" className="actions">
                       <Link className="btn-link" to={`/employees/${u.id}/permissions`}>
-                        Permissions
+                        <i className="fa-solid fa-key" /> Permissions
                       </Link>
                       <button className="btn-link danger" onClick={() => onDelete(u)}>
-                        Supprimer
+                        <i className="fa-solid fa-trash" /> Supprimer
                       </button>
                     </td>
                   </tr>

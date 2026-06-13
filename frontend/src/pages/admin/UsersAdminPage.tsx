@@ -89,7 +89,7 @@ export function UsersAdminPage() {
                   <td data-label="Enseigne">{u.tenantName ?? '—'}</td>
                   <td data-label="" className="actions">
                     <button className="btn-link" onClick={() => openReset(u)}>
-                      Réinitialiser MDP
+                      <i className="fa-solid fa-key" /> Réinitialiser MDP
                     </button>
                   </td>
                 </tr>

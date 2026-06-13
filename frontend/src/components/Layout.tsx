@@ -78,7 +78,7 @@ export function Layout() {
           <span className="user-name">{me.fullName}</span>
           <span className="badge">{roleLabel(me)}</span>
           <button className="btn-ghost" onClick={onLogout}>
-            Déconnexion
+            <i className="fa-solid fa-arrow-right-from-bracket" /> Déconnexion
           </button>
         </div>
       </header>

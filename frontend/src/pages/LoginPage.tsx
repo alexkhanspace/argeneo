@@ -56,7 +56,7 @@ export function LoginPage() {
         {error && <div className="alert">{error}</div>}
 
         <button className="btn-primary" type="submit" disabled={submitting}>
-          {submitting ? 'Connexion…' : 'Se connecter'}
+          <i className="fa-solid fa-right-to-bracket" /> {submitting ? 'Connexion…' : 'Se connecter'}
         </button>
       </form>
     </div>

@@ -54,7 +54,7 @@ function MaterialRow({
       </td>
       <td data-label="" className="actions">
         <button className="btn-link danger" onClick={() => onDelete(material)}>
-          Supprimer
+          <i className="fa-solid fa-trash" /> Supprimer
         </button>
       </td>
     </tr>
@@ -124,7 +124,7 @@ export function MaterialsPage() {
           </p>
         </div>
         <button className="btn-primary" onClick={() => setOpen(true)}>
-          + Nouvelle matière
+          <i className="fa-solid fa-plus" /> Nouvelle matière
         </button>
       </div>
 
