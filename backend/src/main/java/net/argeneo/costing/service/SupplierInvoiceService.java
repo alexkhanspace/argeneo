@@ -218,6 +218,7 @@ public class SupplierInvoiceService {
                     mat.setName(a.newName().trim());
                     mat.setReferenceUnit(a.newReferenceUnit());
                     mat.setPricePerUnit(a.pricePerUnit());
+                    mat.setSupplier(invoice.getSupplierName());
                     mat.setFamilleId(a.familleId());
                     mat.setSousFamilleId(a.sousFamilleId());
                     RawMaterial created = materialRepository.save(mat);

@@ -1,4 +1,4 @@
-import { getArticle, getCost, getRecipe, photoUrl } from '../api/costing'
+import { getArticle, getCost, getRecipe, listRawMaterials, photoUrl } from '../api/costing'
 import { getProfile, getSettings, logoUrl } from '../api/billing'
 
 async function toDataUrl(url: string | null): Promise<string | null> {
@@ -27,13 +27,18 @@ export async function buildRecipePdfBlob(
     import('@react-pdf/renderer'),
     import('./RecipePdf'),
   ])
-  const [article, recipe, pnet, profile, settings] = await Promise.all([
+  const [article, recipe, pnet, profile, settings, materials] = await Promise.all([
     getArticle(articleId),
     getRecipe(articleId).catch(() => null),
     getCost(articleId).catch(() => null),
     getProfile().catch(() => null),
     getSettings().catch(() => null),
+    listRawMaterials().catch(() => []),
   ])
+  // Fournisseur par id de matière, pour l'afficher dans la fiche coût.
+  const supplierById: Record<number, string | null> = Object.fromEntries(
+    materials.map((m) => [m.id, m.supplier]),
+  )
   const [photoData, logoData] = await Promise.all([
     toDataUrl(photoUrl(article.photoFile)),
     toDataUrl(profile?.logoFile ? logoUrl(profile.logoFile) : null),
@@ -44,6 +49,7 @@ export async function buildRecipePdfBlob(
     gtin: article.gtin,
     salePriceTtc: article.salePriceTtc,
     pnet,
+    supplierById,
     steps: recipe?.steps ?? [],
     method: recipe?.method ?? '',
     yieldQuantity: recipe ? String(recipe.yieldQuantity) : '1',

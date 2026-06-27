@@ -43,6 +43,10 @@ public class RawMaterial {
     @Column(name = "price_per_unit", nullable = false, precision = 12, scale = 4)
     private BigDecimal pricePerUnit = BigDecimal.ZERO;
 
+    /** Fournisseur / source d'appro (METRO, CGA…), optionnel. */
+    @Column(length = 120)
+    private String supplier;
+
     /** Famille de classement (premier niveau), optionnelle. */
     @Column(name = "famille_id")
     private Long familleId;

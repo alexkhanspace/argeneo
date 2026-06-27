@@ -48,6 +48,7 @@ public class MaterialService {
         material.setName(request.name());
         material.setReferenceUnit(request.referenceUnit());
         material.setPricePerUnit(request.pricePerUnit());
+        material.setSupplier(request.supplier());
         material.setFamilleId(request.familleId());
         material.setSousFamilleId(request.sousFamilleId());
         return toResponse(repository.save(material));
@@ -72,6 +73,7 @@ public class MaterialService {
         if (request.referenceUnit() != null) {
             material.setReferenceUnit(request.referenceUnit());
         }
+        material.setSupplier(request.supplier());
         material.setFamilleId(request.familleId());
         material.setSousFamilleId(request.sousFamilleId());
         if (request.active() != null) {

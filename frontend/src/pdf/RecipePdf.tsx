@@ -7,6 +7,8 @@ export interface RecipePdfData {
   gtin?: string | null
   salePriceTtc?: number | null
   pnet: Pnet | null
+  /** Fournisseur par id de matière (pour la colonne « Fournisseur » de la fiche coût). */
+  supplierById?: Record<number, string | null>
   steps: string[]
   method: string
   yieldQuantity: string
@@ -71,8 +73,9 @@ function makeStyles(color: string) {
     tRow: { flexDirection: 'row', paddingVertical: 4, paddingHorizontal: 6, borderBottomWidth: 1, borderBottomColor: '#eee' },
     tRowAlt: { backgroundColor: '#f7f7f7' },
     cName: { flex: 1 },
-    cQty: { width: 90, textAlign: 'right' },
-    cCost: { width: 90, textAlign: 'right' },
+    cSupplier: { width: 100 },
+    cQty: { width: 78, textAlign: 'right' },
+    cCost: { width: 78, textAlign: 'right' },
     tFoot: { flexDirection: 'row', paddingVertical: 6, paddingHorizontal: 6, borderTopWidth: 2, borderTopColor: color },
     muted: { color: '#888', fontStyle: 'italic' },
     step: { flexDirection: 'row', marginBottom: 6 },
@@ -161,12 +164,16 @@ function CostPage({ d, s }: { d: RecipePdfData; s: ReturnType<typeof makeStyles>
         <View>
           <View style={s.tHead}>
             <Text style={[s.tHeadCell, s.cName]}>Composant</Text>
+            <Text style={[s.tHeadCell, s.cSupplier]}>Fournisseur</Text>
             <Text style={[s.tHeadCell, s.cQty]}>Quantité</Text>
             <Text style={[s.tHeadCell, s.cCost]}>Coût</Text>
           </View>
           {d.pnet.lines.map((l, i) => (
             <View key={i} style={i % 2 === 1 ? [s.tRow, s.tRowAlt] : s.tRow}>
               <Text style={s.cName}>{l.label}</Text>
+              <Text style={s.cSupplier}>
+                {l.type === 'RAW' ? d.supplierById?.[l.refId] || '—' : '—'}
+              </Text>
               <Text style={s.cQty}>
                 {l.quantity} {l.unit}
               </Text>
@@ -175,6 +182,7 @@ function CostPage({ d, s }: { d: RecipePdfData; s: ReturnType<typeof makeStyles>
           ))}
           <View style={s.tFoot}>
             <Text style={[s.cName, { fontFamily: 'Helvetica-Bold' }]}>PNET / {d.pnet.unit}</Text>
+            <Text style={s.cSupplier}></Text>
             <Text style={s.cQty}></Text>
             <Text style={[s.cCost, { fontFamily: 'Helvetica-Bold' }]}>{eur(d.pnet.unitCost)}</Text>
           </View>

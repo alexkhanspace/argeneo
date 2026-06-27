@@ -140,6 +140,7 @@ export function MaterialsPage() {
   const [name, setName] = useState('')
   const [referenceUnit, setReferenceUnit] = useState<MeasureUnit>('KG')
   const [pricePerUnit, setPricePerUnit] = useState('')
+  const [cSupplier, setCSupplier] = useState('')
   const [cFamilleId, setCFamilleId] = useState<number | null>(null)
   const [cSousFamilleId, setCSousFamilleId] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -150,6 +151,7 @@ export function MaterialsPage() {
   const [eName, setEName] = useState('')
   const [eRefUnit, setERefUnit] = useState<MeasureUnit>('KG')
   const [ePrice, setEPrice] = useState('')
+  const [eSupplier, setESupplier] = useState('')
   const [eFamilleId, setEFamilleId] = useState<number | null>(null)
   const [eSousFamilleId, setESousFamilleId] = useState<number | null>(null)
   const [editError, setEditError] = useState<string | null>(null)
@@ -219,11 +221,13 @@ export function MaterialsPage() {
         name,
         referenceUnit,
         pricePerUnit: Number(pricePerUnit),
+        supplier: cSupplier.trim() || null,
         familleId: cFamilleId,
         sousFamilleId: cSousFamilleId,
       })
       setName('')
       setPricePerUnit('')
+      setCSupplier('')
       setCFamilleId(null)
       setCSousFamilleId(null)
       setOpen(false)
@@ -240,6 +244,7 @@ export function MaterialsPage() {
     setEName(m.name)
     setERefUnit(m.referenceUnit)
     setEPrice(String(m.pricePerUnit))
+    setESupplier(m.supplier ?? '')
     setEFamilleId(m.familleId)
     setESousFamilleId(m.sousFamilleId)
     setEditError(null)
@@ -255,6 +260,7 @@ export function MaterialsPage() {
         name: eName,
         pricePerUnit: Number(ePrice),
         referenceUnit: eRefUnit,
+        supplier: eSupplier.trim() || null,
         familleId: eFamilleId,
         sousFamilleId: eSousFamilleId,
       })
@@ -296,6 +302,12 @@ export function MaterialsPage() {
       valueGetter: (v) => (v as string | null) ?? '—',
     },
     { field: 'referenceUnit', headerName: 'Unité', width: 80 },
+    {
+      field: 'supplier',
+      headerName: 'Fournisseur',
+      width: 130,
+      valueGetter: (v) => (v as string | null) ?? '—',
+    },
     {
       field: 'pricePerUnit',
       headerName: 'Prix net HT',
@@ -494,6 +506,12 @@ export function MaterialsPage() {
             slotProps={{ htmlInput: { step: '0.0001', min: '0' } }}
             required
           />
+          <TextField
+            label="Fournisseur (optionnel)"
+            placeholder="Ex. METRO, CGA…"
+            value={cSupplier}
+            onChange={(e) => setCSupplier(e.target.value)}
+          />
           {familles.length > 0 && (
             <FamilleSelect
               familles={familles}
@@ -538,6 +556,12 @@ export function MaterialsPage() {
               onChange={(e) => setEPrice(e.target.value)}
               slotProps={{ htmlInput: { step: '0.0001', min: '0' } }}
               required
+            />
+            <TextField
+              label="Fournisseur (optionnel)"
+              placeholder="Ex. METRO, CGA…"
+              value={eSupplier}
+              onChange={(e) => setESupplier(e.target.value)}
             />
             {familles.length > 0 && (
               <FamilleSelect

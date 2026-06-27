@@ -17,6 +17,8 @@ public final class MaterialDtos {
             @NotBlank String name,
             @NotNull Unit referenceUnit,
             @NotNull @PositiveOrZero BigDecimal pricePerUnit,
+            /** Fournisseur / source d'appro (optionnel). */
+            String supplier,
             /** Famille de classement (optionnelle). */
             Long familleId,
             /** Sous-famille de classement (optionnelle, rattachée à familleId). */
@@ -30,6 +32,8 @@ public final class MaterialDtos {
             Boolean active,
             /** Unité de référence modifiable (optionnel) : null = inchangée. */
             Unit referenceUnit,
+            /** Fournisseur / source d'appro (optionnel). */
+            String supplier,
             /** Famille de classement (optionnelle). */
             Long familleId,
             /** Sous-famille de classement (optionnelle, rattachée à familleId). */
@@ -41,6 +45,7 @@ public final class MaterialDtos {
             String name,
             Unit referenceUnit,
             BigDecimal pricePerUnit,
+            String supplier,
             Long familleId,
             String familleName,
             Long sousFamilleId,
@@ -49,7 +54,7 @@ public final class MaterialDtos {
 
         public static RawMaterialResponse from(RawMaterial m, String familleName, String sousFamilleName) {
             return new RawMaterialResponse(m.getId(), m.getName(), m.getReferenceUnit(),
-                    m.getPricePerUnit(), m.getFamilleId(), familleName,
+                    m.getPricePerUnit(), m.getSupplier(), m.getFamilleId(), familleName,
                     m.getSousFamilleId(), sousFamilleName, m.isActive());
         }
     }

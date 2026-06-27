@@ -55,6 +55,7 @@ export async function createRawMaterial(input: {
   name: string
   referenceUnit: MeasureUnit
   pricePerUnit: number
+  supplier?: string | null
   familleId?: number | null
   sousFamilleId?: number | null
 }): Promise<RawMaterial> {
@@ -69,6 +70,7 @@ export async function updateRawMaterial(
     pricePerUnit: number
     active?: boolean
     referenceUnit?: MeasureUnit
+    supplier?: string | null
     familleId?: number | null
     sousFamilleId?: number | null
   },

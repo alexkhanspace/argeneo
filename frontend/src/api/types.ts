@@ -123,6 +123,7 @@ export interface RawMaterial {
   name: string
   referenceUnit: MeasureUnit
   pricePerUnit: number
+  supplier: string | null
   familleId: number | null
   familleName: string | null
   sousFamilleId: number | null
