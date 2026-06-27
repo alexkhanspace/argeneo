@@ -36,6 +36,19 @@ const FORMATS: Record<Fmt, { w: number; h: number; label: string }> = {
 
 const PLATFORMS = ['Instagram', 'Facebook']
 const TONES = ['Chaleureux', 'Fier', 'Festif', 'Informatif', 'Gourmand']
+const LENGTHS = [
+  { value: 'court', label: 'Courte' },
+  { value: 'moyen', label: 'Moyenne' },
+  { value: 'long', label: 'Longue' },
+]
+const AMBIANCES = [
+  "Garder le fond d'origine",
+  'Fond ardoise élégant',
+  'Planche en bois rustique',
+  'Fond clair épuré (studio)',
+  'Table dressée lifestyle',
+  "Fond aux couleurs de l'enseigne",
+]
 
 const safeColor = (c: string | null | undefined, fb: string) =>
   c && /^#[0-9a-fA-F]{3,8}$/.test(c) ? c : fb
@@ -117,6 +130,8 @@ export function CommunicationPage() {
   const [brief, setBrief] = useState('')
   const [platform, setPlatform] = useState('Instagram')
   const [tone, setTone] = useState('Chaleureux')
+  const [length, setLength] = useState('moyen')
+  const [ambiance, setAmbiance] = useState(AMBIANCES[0])
   const [instruction, setInstruction] = useState('')
   const [headline, setHeadline] = useState('')
   const [format, setFormat] = useState<Fmt>('square')
@@ -179,6 +194,7 @@ export function CommunicationPage() {
         brief: brief.trim(),
         platform,
         tone,
+        length,
       })
       if (!res.enabled) {
         setError(res.caption || 'Génération IA non disponible.')
@@ -198,6 +214,15 @@ export function CommunicationPage() {
     setPhotoImg(await imgFromBlob(file))
   }
 
+  // Traduit le choix de fond en consigne pour l'IA (vide = garder le fond d'origine).
+  const ambiancePrompt = (): string | undefined => {
+    if (ambiance.startsWith('Garder')) return undefined
+    if (ambiance.toLowerCase().includes('enseigne')) {
+      return `fond uni ou dégradé harmonieux aux couleurs de l'enseigne : ${colors.c1} et ${colors.c2}`
+    }
+    return ambiance
+  }
+
   const onEnhance = async () => {
     if (!sourceFile) {
       setError('Importe d’abord une photo à sublimer.')
@@ -206,7 +231,8 @@ export function CommunicationPage() {
     setError(null)
     setEnhancing(true)
     try {
-      const blob = await enhanceImage(sourceFile, undefined, instruction.trim() || undefined)
+      // mode "scene" : préserve la photo (personnes/objets), détoure/remplace le fond choisi.
+      const blob = await enhanceImage(sourceFile, ambiancePrompt(), instruction.trim() || undefined, 'scene')
       setPhotoImg(await imgFromBlob(blob))
     } catch (err) {
       setError(errorMessage(err))
@@ -216,7 +242,7 @@ export function CommunicationPage() {
   }
 
   const onGenerateImage = async () => {
-    const prompt = [brief.trim(), instruction.trim()].filter(Boolean).join('. ')
+    const prompt = [brief.trim(), instruction.trim(), ambiancePrompt()].filter(Boolean).join('. ')
     if (!prompt) {
       setError('Décris le sujet (ou une consigne visuelle) pour générer une image.')
       return
@@ -332,7 +358,7 @@ export function CommunicationPage() {
                 multiline
                 minRows={3}
               />
-              <Stack direction="row" spacing={1.5}>
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
                 <TextField select size="small" label="Réseau" value={platform} onChange={(e) => setPlatform(e.target.value)} sx={{ flex: 1 }}>
                   {PLATFORMS.map((p) => (
                     <MenuItem key={p} value={p}>{p}</MenuItem>
@@ -341,6 +367,11 @@ export function CommunicationPage() {
                 <TextField select size="small" label="Ton" value={tone} onChange={(e) => setTone(e.target.value)} sx={{ flex: 1 }}>
                   {TONES.map((t) => (
                     <MenuItem key={t} value={t}>{t}</MenuItem>
+                  ))}
+                </TextField>
+                <TextField select size="small" label="Longueur" value={length} onChange={(e) => setLength(e.target.value)} sx={{ flex: 1 }}>
+                  {LENGTHS.map((l) => (
+                    <MenuItem key={l.value} value={l.value}>{l.label}</MenuItem>
                   ))}
                 </TextField>
               </Stack>
@@ -384,13 +415,28 @@ export function CommunicationPage() {
               <Typography variant="subtitle2" color="text.secondary">
                 2. Le visuel
               </Typography>
-              <TextField
-                label="Consigne visuelle (optionnel)"
-                placeholder="Ex. mets en valeur les paniers garnis, ambiance solidaire"
-                value={instruction}
-                onChange={(e) => setInstruction(e.target.value)}
-                size="small"
-              />
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
+                <TextField
+                  select
+                  size="small"
+                  label="Fond / décor"
+                  value={ambiance}
+                  onChange={(e) => setAmbiance(e.target.value)}
+                  sx={{ flex: 1 }}
+                >
+                  {AMBIANCES.map((a) => (
+                    <MenuItem key={a} value={a}>{a}</MenuItem>
+                  ))}
+                </TextField>
+                <TextField
+                  label="Consigne visuelle (optionnel)"
+                  placeholder="Ex. mets en valeur les paniers, ambiance solidaire"
+                  value={instruction}
+                  onChange={(e) => setInstruction(e.target.value)}
+                  size="small"
+                  sx={{ flex: 1 }}
+                />
+              </Stack>
               <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', gap: 1 }}>
                 <Button size="small" variant="outlined" startIcon={<UploadIcon />} onClick={() => fileRef.current?.click()}>
                   Importer une photo

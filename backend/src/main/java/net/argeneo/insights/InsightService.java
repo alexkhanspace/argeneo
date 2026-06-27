@@ -285,12 +285,33 @@ public class InsightService {
             p.append("Ton souhaité : ").append(req.tone()).append(".\n");
         }
         p.append("Sujet / événement : ").append(req.brief()).append(".\n");
-        p.append("Consignes : accroche forte dès la 1re ligne ; 2 à 4 phrases COURTES, chaleureuses et ")
-                .append("authentiques ; emojis pertinents avec modération ; un appel à l'action simple si ")
-                .append("c'est utile ; puis, sur la DERNIÈRE ligne, 5 à 10 hashtags pertinents (métier + ")
-                .append("locaux). En français. N'invente aucun chiffre, prix ou détail non fourni. ")
-                .append("Rends UNIQUEMENT le texte de la publication, sans titre, sans guillemets, sans commentaire.\n");
+        p.append("Consignes : accroche forte dès la 1re ligne ; ").append(lengthRule(req.length()))
+                .append(" emojis pertinents avec modération ; un appel à l'action simple si c'est utile ; ")
+                .append("puis, sur la DERNIÈRE ligne, ").append(hashtagRule(req.length()))
+                .append(" hashtags pertinents (métier + locaux). En français. N'invente aucun chiffre, prix ou ")
+                .append("détail non fourni. Rends UNIQUEMENT le texte de la publication, sans titre, sans ")
+                .append("guillemets, sans commentaire.\n");
         return new SocialPostResponse(true, props.gemini().model(), gemini.generate(p.toString()));
+    }
+
+    /** Consigne de corps de texte selon la longueur demandée (court / moyen / long). */
+    private static String lengthRule(String length) {
+        String l = length == null ? "" : length.trim().toLowerCase(java.util.Locale.FRANCE);
+        return switch (l) {
+            case "court" -> "publication TRÈS COURTE : 1 à 2 phrases maximum, percutantes ;";
+            case "long" -> "publication DÉVELOPPÉE : 5 à 8 phrases, raconte un peu l'histoire/le contexte ;";
+            default -> "publication de longueur MOYENNE : 2 à 4 phrases courtes, chaleureuses et authentiques ;";
+        };
+    }
+
+    /** Nombre de hashtags selon la longueur (un texte plus long en porte un peu plus). */
+    private static String hashtagRule(String length) {
+        String l = length == null ? "" : length.trim().toLowerCase(java.util.Locale.FRANCE);
+        return switch (l) {
+            case "court" -> "3 à 5";
+            case "long" -> "8 à 12";
+            default -> "5 à 10";
+        };
     }
 
     /** Formate le contexte d'un jour en une ligne lisible pour le prompt. */

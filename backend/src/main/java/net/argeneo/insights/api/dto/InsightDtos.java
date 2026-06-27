@@ -104,7 +104,9 @@ public final class InsightDtos {
             /** Réseau visé (Instagram, Facebook…), optionnel. */
             String platform,
             /** Ton souhaité (chaleureux, fier, festif…), optionnel. */
-            String tone) {
+            String tone,
+            /** Longueur souhaitée : "court", "moyen" (défaut) ou "long". */
+            String length) {
     }
 
     public record SocialPostResponse(boolean enabled, String model, String caption) {

@@ -73,12 +73,21 @@ export interface AdCopyResponse {
   slogans: string[]
 }
 
-/** Sublime/met en scène une photo réelle (image-to-image). Renvoie l'image transformée (blob). */
-export async function enhanceImage(file: File, ambiance?: string, instruction?: string): Promise<Blob> {
+/**
+ * Sublime/met en scène une photo réelle (image-to-image). Renvoie l'image transformée (blob).
+ * `mode` = "scene" pour préserver une photo d'événement (personnes/objets) ; défaut = produit.
+ */
+export async function enhanceImage(
+  file: File,
+  ambiance?: string,
+  instruction?: string,
+  mode?: string,
+): Promise<Blob> {
   const form = new FormData()
   form.append('file', file)
   if (ambiance) form.append('ambiance', ambiance)
   if (instruction) form.append('instruction', instruction)
+  if (mode) form.append('mode', mode)
   const { data } = await api.post('/ai/enhance-image', form, { responseType: 'blob' })
   return data as Blob
 }

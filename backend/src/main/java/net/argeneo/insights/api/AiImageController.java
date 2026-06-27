@@ -28,7 +28,8 @@ public class AiImageController {
     @PostMapping("/api/ai/enhance-image")
     public ResponseEntity<byte[]> enhance(@RequestParam("file") MultipartFile file,
                                           @RequestParam(value = "ambiance", required = false) String ambiance,
-                                          @RequestParam(value = "instruction", required = false) String instruction) {
+                                          @RequestParam(value = "instruction", required = false) String instruction,
+                                          @RequestParam(value = "mode", required = false) String mode) {
         if (!gemini.isConfigured()) {
             throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "IA non configurée sur ce serveur");
         }
@@ -37,7 +38,7 @@ public class AiImageController {
         }
         try {
             String mime = file.getContentType() != null ? file.getContentType() : "image/png";
-            byte[] out = gemini.editImage(buildPrompt(ambiance, instruction), file.getBytes(), mime);
+            byte[] out = gemini.editImage(buildPrompt(ambiance, instruction, mode), file.getBytes(), mime);
             return ResponseEntity.ok().contentType(MediaType.IMAGE_PNG).body(out);
         } catch (IOException e) {
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Lecture du fichier impossible", e);
@@ -63,19 +64,30 @@ public class AiImageController {
         return ResponseEntity.ok().contentType(MediaType.IMAGE_PNG).body(out);
     }
 
-    private static String buildPrompt(String ambiance, String instruction) {
+    private static String buildPrompt(String ambiance, String instruction, String mode) {
         StringBuilder p = new StringBuilder();
-        p.append("Transforme cette photo en VISUEL PUBLICITAIRE soigné pour une boulangerie-pâtisserie française. ")
-                .append("GARDE EXACTEMENT le même produit (forme, couleur, garniture) — ne le modifie pas, ne le ")
-                .append("déstructure pas, ne change pas sa nature. Détoure proprement le produit de son fond ")
-                .append("d'origine. Tu PEUX le réorienter, l'incliner, le recadrer ou le repositionner pour la ")
-                .append("composition la plus flatteuse (par exemple le présenter couché ou en biais plutôt que ")
-                .append("droit et figé) tant que cela reste le même produit. METS-LE BIEN EN VALEUR : il doit être ")
-                .append("le héros de l'image, sublimé et mis en avant (textures appétissantes, fraîcheur, ")
-                .append("gourmandise, reflets et matières soignés), comme dans une vraie publicité. Améliore la ")
-                .append("lumière, la netteté et la mise en scène, façon photo studio appétissante. ");
+        if ("scene".equalsIgnoreCase(mode)) {
+            // Mode Communication : photo d'événement/scène (personnes, objets) à préserver fidèlement.
+            p.append("Transforme cette photo en VISUEL DE COMMUNICATION soigné pour une boulangerie-pâtisserie ")
+                    .append("française. GARDE FIDÈLEMENT la scène : les personnes, les objets et l'action présents ")
+                    .append("restent identiques (ne supprime personne, ne change pas leur nature ni leur nombre). ")
+                    .append("Tu peux détourer/nettoyer le fond, ou le REMPLACER si une ambiance est demandée. ")
+                    .append("Améliore la lumière, la netteté, les couleurs et le cadrage pour un rendu professionnel ")
+                    .append("et chaleureux. ");
+        } else {
+            // Mode produit (pub d'un article).
+            p.append("Transforme cette photo en VISUEL PUBLICITAIRE soigné pour une boulangerie-pâtisserie française. ")
+                    .append("GARDE EXACTEMENT le même produit (forme, couleur, garniture) — ne le modifie pas, ne le ")
+                    .append("déstructure pas, ne change pas sa nature. Détoure proprement le produit de son fond ")
+                    .append("d'origine. Tu PEUX le réorienter, l'incliner, le recadrer ou le repositionner pour la ")
+                    .append("composition la plus flatteuse (par exemple le présenter couché ou en biais plutôt que ")
+                    .append("droit et figé) tant que cela reste le même produit. METS-LE BIEN EN VALEUR : il doit être ")
+                    .append("le héros de l'image, sublimé et mis en avant (textures appétissantes, fraîcheur, ")
+                    .append("gourmandise, reflets et matières soignés), comme dans une vraie publicité. Améliore la ")
+                    .append("lumière, la netteté et la mise en scène, façon photo studio appétissante. ");
+        }
         if (ambiance != null && !ambiance.isBlank()) {
-            p.append("Ambiance / décor souhaités : ").append(ambiance.trim()).append(". ");
+            p.append("Ambiance / décor / fond souhaités : ").append(ambiance.trim()).append(". ");
         }
         if (instruction != null && !instruction.isBlank()) {
             p.append("CONSIGNE DU CLIENT (à respecter en priorité) : ").append(instruction.trim()).append(". ");

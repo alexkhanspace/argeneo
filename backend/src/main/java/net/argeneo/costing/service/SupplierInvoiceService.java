@@ -79,7 +79,14 @@ public class SupplierInvoiceService {
             - Ne mets dans "lines" que les articles/marchandises achetés (une ligne par produit). Ignore les
               lignes de sous-total, remise globale, acompte, transport/frais de port et éco-participation.
             - Montants en euros, HT de préférence, avec un POINT décimal (jamais de virgule, pas de symbole €).
-            - "unit" = l'unité d'achat telle qu'écrite (ex. "kg", "g", "L", "ml", "sac", "carton", "pièce", "u").
+            - TRÈS IMPORTANT — "quantity" et "unit" doivent exprimer la QUANTITÉ TOTALE NETTE de la ligne,
+              en MULTIPLIANT le conditionnement. Exemples :
+                * « 4 x 500 g » (ou 4 sachets de 500 g) -> quantity = 2000, unit = "g"
+                * « sac de 25 kg » -> quantity = 25, unit = "kg"
+                * « 6 bouteilles de 1 L » -> quantity = 6, unit = "L"
+                * article vendu à la pièce -> quantity = nombre de pièces, unit = "pièce"
+              Choisis une unité de mesure réelle ("g", "kg", "ml", "L", "pièce") — PAS "sac", "carton", "lot".
+            - "unitPriceHt" = prix unitaire tel qu'écrit (indicatif) ; "lineTotalHt" = total HT de la ligne.
             - "vatRate" en fraction décimale si visible (0.055, 0.10, 0.20), sinon null.
             - Si une valeur est illisible ou absente, mets null. N'invente rien.
             """;
@@ -397,10 +404,9 @@ public class SupplierInvoiceService {
         if (qty == null || qty.signum() <= 0) {
             return null;
         }
+        // quantity = quantité TOTALE NETTE (conditionnement déjà multiplié à l'extraction).
+        // On divise donc le total HT de la ligne par cette quantité convertie dans l'unité de réf.
         BigDecimal total = l.getLineTotalHt();
-        if (total == null && l.getUnitPriceHt() != null) {
-            total = l.getUnitPriceHt().multiply(qty, MC);
-        }
         if (total == null) {
             return null;
         }

@@ -14,6 +14,7 @@ export async function generateSocialPost(input: {
   brief: string
   platform?: string | null
   tone?: string | null
+  length?: string | null
 }): Promise<SocialPostResponse> {
   const { data } = await api.post<SocialPostResponse>('/insights/social', input)
   return data
