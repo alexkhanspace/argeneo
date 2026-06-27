@@ -145,6 +145,51 @@ public class GeminiClient {
         }
     }
 
+    /**
+     * Génère une image à partir d'un texte via le modèle Gemini image (et non Imagen) : il suit
+     * bien mieux la consigne « aucun texte », d'où des visuels sans charabia écrit.
+     */
+    public byte[] generateFromText(String prompt) {
+        try {
+            String token = accessToken();
+            String model = (cfg.imageEditModel() == null || cfg.imageEditModel().isBlank())
+                    ? "gemini-2.5-flash-image" : cfg.imageEditModel();
+            String url = "https://" + cfg.location() + "-aiplatform.googleapis.com/v1/projects/"
+                    + cfg.project() + "/locations/" + cfg.location()
+                    + "/publishers/google/models/" + model + ":generateContent";
+
+            Map<String, Object> body = Map.of(
+                    "contents", List.of(Map.of(
+                            "role", "user",
+                            "parts", List.of(Map.of("text", prompt)))),
+                    "generationConfig", Map.of("responseModalities", List.of("TEXT", "IMAGE")));
+
+            InlineResponse resp = http.post()
+                    .uri(url)
+                    .header("Authorization", "Bearer " + token)
+                    .header("Content-Type", "application/json")
+                    .body(body)
+                    .retrieve()
+                    .body(InlineResponse.class);
+
+            if (resp != null && resp.candidates() != null) {
+                for (InlineCandidate c : resp.candidates()) {
+                    if (c.content() == null || c.content().parts() == null) {
+                        continue;
+                    }
+                    for (InlinePart p : c.content().parts()) {
+                        if (p.inlineData() != null && p.inlineData().data() != null) {
+                            return java.util.Base64.getDecoder().decode(p.inlineData().data());
+                        }
+                    }
+                }
+            }
+            throw new IllegalStateException("Gemini n'a renvoyé aucune image");
+        } catch (Exception e) {
+            throw new IllegalStateException("Appel Vertex/Gemini image (texte) échoué : " + e.getMessage(), e);
+        }
+    }
+
     /** Édite/transforme une image existante à partir d'une consigne (Gemini image). */
     public byte[] editImage(String prompt, byte[] inputImage, String inputMime) {
         try {
