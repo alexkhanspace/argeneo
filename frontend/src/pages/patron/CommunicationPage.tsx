@@ -387,9 +387,14 @@ export function CommunicationPage() {
   }
 
   const onGenerateImage = async () => {
-    const prompt = [brief.trim(), instruction.trim(), ambiancePrompt()].filter(Boolean).join('. ')
+    const productText = selectedArticle
+      ? `${selectedArticle.name}${selectedArticle.description ? ', ' + selectedArticle.description : ''}`
+      : ''
+    const prompt = [brief.trim(), productText, instruction.trim(), ambiancePrompt()]
+      .filter(Boolean)
+      .join('. ')
     if (!prompt) {
-      setError('Décris le sujet (ou une consigne visuelle) pour générer une image.')
+      setError('Décris le sujet, choisis un produit ou saisis une consigne visuelle pour générer une image.')
       return
     }
     setError(null)
@@ -639,6 +644,7 @@ export function CommunicationPage() {
                 value={headline}
                 onChange={(e) => setHeadline(e.target.value)}
                 size="small"
+                helperText="L'image IA est générée SANS texte ; ce texte-ci est ajouté proprement par l'appli (en français)."
               />
 
               <ToggleButtonGroup size="small" exclusive value={format} onChange={(_, v) => v && setFormat(v)} fullWidth>

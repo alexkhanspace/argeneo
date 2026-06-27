@@ -58,8 +58,10 @@ public class AiImageController {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Brief vide");
         }
         String prompt = "Visuel publicitaire soigné et appétissant pour une boulangerie-pâtisserie française "
-                + "artisanale, style photo professionnelle, haute qualité, lumière naturelle douce, "
-                + "sans aucun texte ni logo ajouté. Sujet : " + req.prompt().trim() + ".";
+                + "artisanale, style photo professionnelle, haute qualité, lumière naturelle douce. "
+                + "IMPÉRATIF : AUCUN texte, AUCUNE lettre, AUCUN mot, AUCUN chiffre, AUCUNE écriture ni "
+                + "typographie sur l'image, et AUCUN logo — uniquement un visuel graphique/photographique. "
+                + "Sujet : " + req.prompt().trim() + ".";
         byte[] out = gemini.generateImage(prompt);
         return ResponseEntity.ok().contentType(MediaType.IMAGE_PNG).body(out);
     }
