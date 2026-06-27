@@ -191,7 +191,7 @@ function CostPage({ d, s }: { d: RecipePdfData; s: ReturnType<typeof makeStyles>
         <Text style={s.muted}>PNET non calculé (enregistrez la recette).</Text>
       )}
 
-      <Text style={s.footer}>Fiche coût — usage interne (gérant)</Text>
+      <Text style={s.footer}>Fiche coût — usage interne (gérant){'\n'}Généré par ARGÉNEO</Text>
     </Page>
   )
 }
@@ -226,7 +226,7 @@ function PrepPage({ d, s }: { d: RecipePdfData; s: ReturnType<typeof makeStyles>
         </View>
       ) : null}
 
-      <Text style={s.footer}>Fiche préparation — atelier</Text>
+      <Text style={s.footer}>Fiche préparation — atelier{'\n'}Généré par ARGÉNEO</Text>
     </Page>
   )
 }
