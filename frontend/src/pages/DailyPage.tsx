@@ -134,7 +134,42 @@ export function DailyPage() {
   const [editorOk, setEditorOk] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [ticketScanning, setTicketScanning] = useState(false)
+  const [scanMsg, setScanMsg] = useState<string | null>(null)
   const ticketFileRef = useRef<HTMLInputElement | null>(null)
+  const ticketGlobalRef = useRef<HTMLInputElement | null>(null)
+
+  // Scan « global » : l'IA lit la date du ticket et ouvre le bon jour, sans sélection préalable.
+  const onScanTicketGlobal = async (file: File | undefined) => {
+    if (!file || etabId == null) return
+    setScanMsg(null)
+    setTicketScanning(true)
+    try {
+      const r = await scanTicket(etabId, file)
+      const date = r.date ?? selected
+      if (!date) {
+        setScanMsg(
+          "Date non détectée sur le ticket. Ouvre d'abord le jour concerné, ou réessaie avec une photo plus nette.",
+        )
+        return
+      }
+      const d = await getDay(etabId, date)
+      setSelected(date)
+      setDay(d)
+      setLossRows((d.losses ?? []).map((l) => ({ articleId: l.articleId, quantity: String(l.quantity) })))
+      setNoteProdInput(d.noteProd ?? '')
+      setNoteSaleInput(d.noteSale ?? '')
+      setRevenueInput(r.revenue != null ? String(r.revenue) : d.revenue == null ? '' : String(d.revenue))
+      setClientCountInput(
+        r.clientCount != null ? String(r.clientCount) : d.clientCount == null ? '' : String(d.clientCount),
+      )
+      setEditorError(null)
+      setEditorOk(`Ticket Z lu pour le ${date}. Vérifie puis enregistre.`)
+    } catch (e) {
+      setScanMsg(errorMessage(e))
+    } finally {
+      setTicketScanning(false)
+    }
+  }
 
   const onScanTicket = async (file: File | undefined) => {
     if (!file || etabId == null) return
@@ -617,6 +652,38 @@ export function DailyPage() {
       {loadError && (
         <Alert severity="error" sx={{ mb: 2 }}>
           {loadError}
+        </Alert>
+      )}
+
+      {etabId != null && can('saisir_ca') && (
+        <Stack direction="row" sx={{ mb: 2, alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+          <Button
+            variant="outlined"
+            startIcon={ticketScanning ? <CircularProgress size={16} /> : <DocumentScannerIcon />}
+            onClick={() => ticketGlobalRef.current?.click()}
+            disabled={ticketScanning}
+          >
+            {ticketScanning ? 'Lecture du ticket…' : 'Scanner un ticket Z'}
+          </Button>
+          <Typography variant="caption" color="text.secondary">
+            L'IA lit la date et ouvre le bon jour.
+          </Typography>
+          <input
+            ref={ticketGlobalRef}
+            type="file"
+            accept="image/*"
+            hidden
+            onChange={(e) => {
+              const f = e.target.files?.[0]
+              e.target.value = ''
+              void onScanTicketGlobal(f)
+            }}
+          />
+        </Stack>
+      )}
+      {scanMsg && (
+        <Alert severity="warning" sx={{ mb: 2 }} onClose={() => setScanMsg(null)}>
+          {scanMsg}
         </Alert>
       )}
 
