@@ -264,6 +264,7 @@ export function InvoicesPage() {
             refresh()
             listRawMaterials().then(setMaterials).catch(() => undefined)
           }}
+          onFamillesChanged={setFamilles}
         />
       )}
     </>
@@ -290,12 +291,14 @@ function InvoiceReview({
   familles,
   onClose,
   onApplied,
+  onFamillesChanged,
 }: {
   detail: InvoiceDetail
   materials: RawMaterial[]
   familles: Famille[]
   onClose: () => void
   onApplied: (updated: InvoiceDetail) => void
+  onFamillesChanged: (familles: Famille[]) => void
 }) {
   const [decisions, setDecisions] = useState<Record<number, LineDecision>>(() =>
     Object.fromEntries(detail.lines.map((l) => [l.id, initDecision(l)])),
@@ -477,16 +480,17 @@ function InvoiceReview({
                                 onChange={(v) => set(line.id, { pricePerUnit: v })}
                               />
                             </Stack>
-                            {familles.length > 0 && (
-                              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
-                                <FamilleSelect
-                                  familles={familles}
-                                  familleId={dec.familleId}
-                                  sousFamilleId={dec.sousFamilleId}
-                                  onChange={(f, sf) => set(line.id, { familleId: f, sousFamilleId: sf })}
-                                />
-                              </Stack>
-                            )}
+                            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
+                              <FamilleSelect
+                                familles={familles}
+                                familleId={dec.familleId}
+                                sousFamilleId={dec.sousFamilleId}
+                                onChange={(f, sf) => set(line.id, { familleId: f, sousFamilleId: sf })}
+                                creatable
+                                scope="RAW_MATERIAL"
+                                onFamillesChanged={onFamillesChanged}
+                              />
+                            </Stack>
                           </Stack>
                         )}
                       </Stack>

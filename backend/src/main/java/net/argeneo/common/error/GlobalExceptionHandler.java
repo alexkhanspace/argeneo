@@ -47,7 +47,8 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(DataIntegrityViolationException.class)
     ResponseEntity<ApiError> handleIntegrity(DataIntegrityViolationException ex) {
-        return build(HttpStatus.CONFLICT, "Violation de contrainte d'intégrité", null);
+        return build(HttpStatus.CONFLICT,
+                "Suppression impossible : cet élément est encore utilisé ailleurs (recette, document…).", null);
     }
 
     @ExceptionHandler(CostingException.class)
