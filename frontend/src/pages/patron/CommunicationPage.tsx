@@ -6,6 +6,7 @@ import {
   Card,
   CardContent,
   CircularProgress,
+  Divider,
   IconButton,
   MenuItem,
   Stack,
@@ -20,11 +21,26 @@ import UploadIcon from '@mui/icons-material/Upload'
 import DownloadIcon from '@mui/icons-material/Download'
 import ContentCopyIcon from '@mui/icons-material/ContentCopy'
 import ImageIcon from '@mui/icons-material/Image'
+import SaveIcon from '@mui/icons-material/Save'
+import DeleteIcon from '@mui/icons-material/Delete'
+import NoteAddIcon from '@mui/icons-material/NoteAdd'
 import { errorMessage } from '../../api/client'
-import { generateImageFromPrompt, generateSocialPost } from '../../api/communication'
+import {
+  deleteCommunication,
+  generateImageFromPrompt,
+  generateSocialPost,
+  getCommunication,
+  getCommunicationImage,
+  listCommunications,
+  saveCommunication,
+  updateCommunication,
+  type CommunicationSummary,
+} from '../../api/communication'
 import { enhanceImage } from '../../api/insights'
+import { listArticles, photoUrl } from '../../api/costing'
 import { getProfile, getSettings, logoUrl } from '../../api/billing'
 import { listMyEtablissements } from '../../api/daily'
+import type { Article } from '../../api/types'
 import { PageHeader } from '../../components/PageHeader'
 
 type Fmt = 'square' | 'story' | 'poster'
@@ -149,6 +165,24 @@ export function CommunicationPage() {
   const [error, setError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
 
+  // Produit éventuellement mis en avant + archivage des communications.
+  const [articles, setArticles] = useState<Article[]>([])
+  const [articleId, setArticleId] = useState<number | ''>('')
+  const [archives, setArchives] = useState<CommunicationSummary[]>([])
+  const [savedId, setSavedId] = useState<number | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [savedMsg, setSavedMsg] = useState<string | null>(null)
+
+  const selectedArticle = articles.find((a) => a.id === articleId) ?? null
+
+  const refreshArchives = () => {
+    listCommunications().then(setArchives).catch(() => undefined)
+  }
+  useEffect(() => {
+    listArticles().then(setArticles).catch(() => undefined)
+    refreshArchives()
+  }, [])
+
   // Chargement initial : charte (couleurs + logo) et contexte établissement.
   useEffect(() => {
     let cancelled = false
@@ -180,8 +214,8 @@ export function CommunicationPage() {
   }, [])
 
   const onGenerateCaption = async () => {
-    if (!brief.trim()) {
-      setError('Décris d’abord le sujet de la publication.')
+    if (!brief.trim() && !selectedArticle) {
+      setError('Décris un sujet ou choisis un produit.')
       return
     }
     setError(null)
@@ -191,10 +225,13 @@ export function CommunicationPage() {
         etablissement: etab.name ?? 'boulangerie',
         description: etab.description ?? null,
         location: etab.address ?? null,
-        brief: brief.trim(),
+        brief: brief.trim() || null,
         platform,
         tone,
         length,
+        articleName: selectedArticle?.name ?? null,
+        articleDescription: selectedArticle?.description ?? null,
+        priceTtc: selectedArticle?.salePriceTtc ?? null,
       })
       if (!res.enabled) {
         setError(res.caption || 'Génération IA non disponible.')
@@ -208,10 +245,118 @@ export function CommunicationPage() {
     }
   }
 
+  // Sélection d'un produit : pré-remplit le contexte et charge sa photo comme base du visuel.
+  const onSelectArticle = async (id: number | '') => {
+    setArticleId(id)
+    setSavedMsg(null)
+    if (id === '') return
+    const a = articles.find((x) => x.id === id)
+    if (!a?.photoFile) return
+    try {
+      const url = photoUrl(a.photoFile)
+      if (!url) return
+      const res = await fetch(url)
+      const blob = await res.blob()
+      setSourceFile(new File([blob], 'photo.png', { type: blob.type || 'image/png' }))
+      setPhotoImg(await imgFromBlob(blob))
+    } catch {
+      // pas de photo exploitable : on garde le visuel courant
+    }
+  }
+
   const onChangePhoto = async (file: File | undefined) => {
     if (!file) return
     setSourceFile(file)
     setPhotoImg(await imgFromBlob(file))
+  }
+
+  /** Rend le canevas courant en blob PNG (le visuel composé à archiver/télécharger). */
+  const canvasBlob = (): Promise<Blob | null> =>
+    new Promise((resolve) => {
+      const canvas = canvasRef.current
+      if (!canvas) return resolve(null)
+      canvas.toBlob((b) => resolve(b), 'image/png')
+    })
+
+  const onSave = async () => {
+    setError(null)
+    setSavedMsg(null)
+    setSaving(true)
+    try {
+      const blob = await canvasBlob()
+      const input = {
+        brief: brief.trim() || null,
+        platform,
+        tone,
+        length,
+        ambiance,
+        instruction: instruction.trim() || null,
+        headline: headline.trim() || null,
+        caption: caption || null,
+        articleId: articleId === '' ? null : articleId,
+      }
+      const saved = savedId
+        ? await updateCommunication(savedId, input, blob)
+        : await saveCommunication(input, blob)
+      setSavedId(saved.id)
+      setSavedMsg('Communication enregistrée.')
+      refreshArchives()
+    } catch (err) {
+      setError(errorMessage(err))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const resetForm = () => {
+    setSavedId(null)
+    setBrief('')
+    setCaption('')
+    setHeadline('')
+    setInstruction('')
+    setArticleId('')
+    setSourceFile(null)
+    setPhotoImg(null)
+    setSavedMsg(null)
+    setError(null)
+  }
+
+  const onOpenArchive = async (id: number) => {
+    setError(null)
+    try {
+      const d = await getCommunication(id)
+      setSavedId(d.id)
+      setBrief(d.brief ?? '')
+      setPlatform(d.platform ?? 'Instagram')
+      setTone(d.tone ?? 'Chaleureux')
+      setLength(d.length ?? 'moyen')
+      setAmbiance(d.ambiance ?? AMBIANCES[0])
+      setInstruction(d.instruction ?? '')
+      setHeadline(d.headline ?? '')
+      setCaption(d.caption ?? '')
+      setArticleId(d.articleId ?? '')
+      setSavedMsg(null)
+      if (d.hasImage) {
+        const blob = await getCommunicationImage(d.id)
+        setSourceFile(null)
+        setPhotoImg(await imgFromBlob(blob))
+      } else {
+        setPhotoImg(null)
+      }
+    } catch (err) {
+      setError(errorMessage(err))
+    }
+  }
+
+  const onDeleteArchive = async (id: number) => {
+    if (!window.confirm('Supprimer cette communication ?')) return
+    try {
+      await deleteCommunication(id)
+      if (savedId === id) setSavedId(null)
+      refreshArchives()
+    } catch (err) {
+      setError(errorMessage(err))
+    }
   }
 
   // Traduit le choix de fond en consigne pour l'IA (vide = garder le fond d'origine).
@@ -350,6 +495,22 @@ export function CommunicationPage() {
               <Typography variant="subtitle2" color="text.secondary">
                 1. Décris ta publication
               </Typography>
+              <TextField
+                select
+                size="small"
+                label="Produit mis en avant (optionnel)"
+                value={articleId === '' ? '' : String(articleId)}
+                onChange={(e) => void onSelectArticle(e.target.value === '' ? '' : Number(e.target.value))}
+              >
+                <MenuItem value="">
+                  <em>— Aucun (publication libre)</em>
+                </MenuItem>
+                {articles.map((a) => (
+                  <MenuItem key={a.id} value={String(a.id)}>
+                    {a.code} — {a.name}
+                  </MenuItem>
+                ))}
+              </TextField>
               <TextField
                 label="Sujet / événement"
                 placeholder="Ex. Nous avons offert 170 paniers au don du sang de Mulhouse"
@@ -490,14 +651,21 @@ export function CommunicationPage() {
                 <canvas ref={canvasRef} style={{ maxWidth: '100%', maxHeight: 360, height: 'auto', borderRadius: 6 }} />
               </Box>
 
-              <Stack direction="row" spacing={1} sx={{ justifyContent: 'flex-end' }}>
-                <Tooltip title="Télécharger le visuel">
-                  <span>
-                    <IconButton color="primary" onClick={download}>
-                      <DownloadIcon />
-                    </IconButton>
-                  </span>
-                </Tooltip>
+              {savedMsg && <Alert severity="success">{savedMsg}</Alert>}
+              <Stack direction="row" spacing={1} sx={{ justifyContent: 'flex-end', flexWrap: 'wrap', gap: 1 }}>
+                {savedId && (
+                  <Button startIcon={<NoteAddIcon />} onClick={resetForm}>
+                    Nouvelle
+                  </Button>
+                )}
+                <Button
+                  variant="outlined"
+                  startIcon={saving ? <CircularProgress size={16} /> : <SaveIcon />}
+                  onClick={() => void onSave()}
+                  disabled={saving}
+                >
+                  {savedId ? 'Mettre à jour' : 'Enregistrer'}
+                </Button>
                 <Button variant="contained" startIcon={<DownloadIcon />} onClick={download}>
                   Télécharger
                 </Button>
@@ -506,6 +674,44 @@ export function CommunicationPage() {
           </CardContent>
         </Card>
       </Box>
+
+      {/* Communications archivées */}
+      {archives.length > 0 && (
+        <Card sx={{ mt: 2 }}>
+          <CardContent>
+            <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1.5 }}>
+              Mes communications
+            </Typography>
+            <Stack divider={<Divider flexItem />} spacing={0}>
+              {archives.map((c) => (
+                <Stack
+                  key={c.id}
+                  direction="row"
+                  spacing={1}
+                  sx={{ py: 1, alignItems: 'center' }}
+                >
+                  <Box sx={{ flex: 1, minWidth: 0 }}>
+                    <Typography noWrap sx={{ fontWeight: savedId === c.id ? 700 : 500 }}>
+                      {c.title}
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      {c.platform ?? '—'} · {new Date(c.createdAt).toLocaleDateString('fr-FR')}
+                    </Typography>
+                  </Box>
+                  <Button size="small" onClick={() => void onOpenArchive(c.id)}>
+                    Ouvrir
+                  </Button>
+                  <Tooltip title="Supprimer">
+                    <IconButton size="small" color="error" onClick={() => void onDeleteArchive(c.id)}>
+                      <DeleteIcon fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
+                </Stack>
+              ))}
+            </Stack>
+          </CardContent>
+        </Card>
+      )}
     </>
   )
 }

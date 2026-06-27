@@ -273,6 +273,9 @@ public class InsightService {
         if (!gemini.isConfigured()) {
             return new SocialPostResponse(false, null, "Génération IA non configurée sur ce serveur.");
         }
+        if (!notBlank(req.brief()) && !notBlank(req.articleName())) {
+            return new SocialPostResponse(false, null, "Décris un sujet ou choisis un produit.");
+        }
         String platform = notBlank(req.platform()) ? req.platform() : "Instagram";
         StringBuilder p = new StringBuilder();
         p.append(header(req.etablissement(), req.location()));
@@ -284,7 +287,20 @@ public class InsightService {
         if (notBlank(req.tone())) {
             p.append("Ton souhaité : ").append(req.tone()).append(".\n");
         }
-        p.append("Sujet / événement : ").append(req.brief()).append(".\n");
+        if (notBlank(req.articleName())) {
+            p.append("La publication met en avant le PRODUIT : « ").append(req.articleName()).append(" »");
+            if (notBlank(req.articleDescription())) {
+                p.append(" (").append(req.articleDescription()).append(")");
+            }
+            if (req.priceTtc() != null) {
+                p.append(", au prix de ").append(String.format(java.util.Locale.FRANCE, "%.2f", req.priceTtc()))
+                        .append(" €");
+            }
+            p.append(".\n");
+        }
+        if (notBlank(req.brief())) {
+            p.append("Sujet / message : ").append(req.brief()).append(".\n");
+        }
         p.append("Consignes : accroche forte dès la 1re ligne ; ").append(lengthRule(req.length()))
                 .append(" emojis pertinents avec modération ; un appel à l'action simple si c'est utile ; ")
                 .append("puis, sur la DERNIÈRE ligne, ").append(hashtagRule(req.length()))

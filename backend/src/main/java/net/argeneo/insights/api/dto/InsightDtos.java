@@ -99,14 +99,18 @@ public final class InsightDtos {
             @NotBlank String etablissement,
             String description,
             String location,
-            /** Sujet / brief libre (ex. « 170 paniers offerts au don du sang de Mulhouse »). */
-            @NotBlank String brief,
+            /** Sujet / brief libre (optionnel si un produit est fourni). */
+            String brief,
             /** Réseau visé (Instagram, Facebook…), optionnel. */
             String platform,
             /** Ton souhaité (chaleureux, fier, festif…), optionnel. */
             String tone,
             /** Longueur souhaitée : "court", "moyen" (défaut) ou "long". */
-            String length) {
+            String length,
+            /** Produit mis en avant (optionnel) : la publication est cadrée dessus. */
+            String articleName,
+            String articleDescription,
+            Double priceTtc) {
     }
 
     public record SocialPostResponse(boolean enabled, String model, String caption) {
