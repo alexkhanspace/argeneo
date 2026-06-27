@@ -1,7 +1,9 @@
 package net.argeneo.costing.service;
 
+import java.text.Normalizer;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.stream.Collectors;
 import net.argeneo.common.error.ConflictException;
@@ -125,6 +127,40 @@ public class FamilleService {
     public Map<Long, String> namesByScope(FamilleScope scope) {
         return repository.findByScopeOrderByPositionAscNameAsc(scope).stream()
                 .collect(Collectors.toMap(Famille::getId, Famille::getName));
+    }
+
+    /**
+     * Renvoie l'id d'une famille (ou sous-famille si {@code parentId} non nul) du nom donné,
+     * en la créant si elle n'existe pas. La comparaison ignore casse et accents pour éviter les
+     * doublons. Utilisé par le classement automatique des matières au scan de facture.
+     */
+    @Transactional
+    public Long findOrCreateByName(FamilleScope scope, String name, Long parentId) {
+        if (name == null || name.isBlank()) {
+            return null;
+        }
+        String norm = normalize(name);
+        List<Famille> all = repository.findByScopeOrderByPositionAscNameAsc(scope);
+        for (Famille f : all) {
+            boolean sameParent = parentId == null ? f.getParentId() == null : parentId.equals(f.getParentId());
+            if (sameParent && normalize(f.getName()).equals(norm)) {
+                return f.getId();
+            }
+        }
+        Famille f = new Famille();
+        f.setScope(scope);
+        f.setParentId(parentId);
+        f.setName(name.trim());
+        f.setPosition(all.size());
+        return repository.save(f).getId();
+    }
+
+    private static String normalize(String s) {
+        return Normalizer.normalize(s, Normalizer.Form.NFD)
+                .replaceAll("\\p{M}", "")
+                .toLowerCase(Locale.ROOT)
+                .replaceAll("\\s+", " ")
+                .trim();
     }
 
     private boolean isUsed(FamilleScope scope, Long id, boolean isTopLevel) {

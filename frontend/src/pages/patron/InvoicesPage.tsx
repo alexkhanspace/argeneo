@@ -87,8 +87,9 @@ function initDecision(line: InvoiceLine): LineDecision {
     pricePerUnit: String(price),
     newName: line.designation,
     newReferenceUnit: line.suggestedReferenceUnit ?? 'KG',
-    familleId: null,
-    sousFamilleId: null,
+    // Classement proposé par l'IA (familles déjà créées au scan), modifiable.
+    familleId: line.suggestedFamilleId,
+    sousFamilleId: line.suggestedSousFamilleId,
   }
 }
 
@@ -136,6 +137,7 @@ export function InvoicesPage() {
           setScanning(true)
           const detail = await scanInvoice(file)
           refresh()
+          listFamilles('RAW_MATERIAL').then(setFamilles).catch(() => undefined)
           setReview(detail)
         }
       } catch (err) {
@@ -154,6 +156,8 @@ export function InvoicesPage() {
     try {
       const detail = await scanInvoice(file)
       refresh()
+      // L'IA a pu créer des familles/sous-familles : on recharge pour les afficher.
+      listFamilles('RAW_MATERIAL').then(setFamilles).catch(() => undefined)
       setReview(detail) // ouvre directement la revue
     } catch (err) {
       setError(errorMessage(err))

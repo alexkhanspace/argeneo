@@ -67,7 +67,12 @@ public final class InvoiceDtos {
             Long suggestedRawMaterialId,
             String suggestedRawMaterialName,
             Unit suggestedReferenceUnit,
-            BigDecimal suggestedPricePerUnit) {
+            BigDecimal suggestedPricePerUnit,
+            // Classement proposé par l'IA et créé au scan.
+            Long suggestedFamilleId,
+            String suggestedFamilleName,
+            Long suggestedSousFamilleId,
+            String suggestedSousFamilleName) {
     }
 
     public enum ApplyAction {

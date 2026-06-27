@@ -234,6 +234,10 @@ export interface InvoiceLine {
   suggestedRawMaterialName: string | null
   suggestedReferenceUnit: MeasureUnit | null
   suggestedPricePerUnit: number | null
+  suggestedFamilleId: number | null
+  suggestedFamilleName: string | null
+  suggestedSousFamilleId: number | null
+  suggestedSousFamilleName: string | null
 }
 
 export interface InvoiceDetail {

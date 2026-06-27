@@ -60,4 +60,11 @@ public class SupplierInvoiceLine {
 
     @Column(nullable = false)
     private boolean applied = false;
+
+    /** Famille proposée par l'IA et créée au scan (référence souple, sans contrainte FK). */
+    @Column(name = "suggested_famille_id")
+    private Long suggestedFamilleId;
+
+    @Column(name = "suggested_sous_famille_id")
+    private Long suggestedSousFamilleId;
 }

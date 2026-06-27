@@ -71,11 +71,19 @@ public class SupplierInvoiceService {
                   "unit": string|null,
                   "unitPriceHt": number|null,
                   "lineTotalHt": number|null,
-                  "vatRate": number|null
+                  "vatRate": number|null,
+                  "famille": string|null,
+                  "sousFamille": string|null
                 }
               ]
             }
             Règles :
+            - "famille" et "sousFamille" : classe chaque produit pour une boulangerie-pâtisserie, avec des
+              catégories COURTES et RÉUTILISABLES (réutilise les mêmes libellés d'une ligne à l'autre).
+              Exemples : « Farine de blé T65 » -> famille "Farines", sousFamille "Farines de blé" ;
+              « Beurre doux plaquette » -> famille "Produits laitiers", sousFamille "Beurres" ;
+              « Chocolat noir 70% » -> famille "Chocolats", sousFamille "Chocolat noir" ;
+              « Levure fraîche » -> famille "Levures & ferments", sousFamille null.
             - Ne mets dans "lines" que les articles/marchandises achetés (une ligne par produit). Ignore les
               lignes de sous-total, remise globale, acompte, transport/frais de port et éco-participation.
             - Montants en euros, HT de préférence, avec un POINT décimal (jamais de virgule, pas de symbole €).
@@ -288,6 +296,13 @@ public class SupplierInvoiceService {
                 line.setUnitPriceHt(num(l, "unitPriceHt"));
                 line.setLineTotalHt(num(l, "lineTotalHt"));
                 line.setVatRate(num(l, "vatRate"));
+                // Classement automatique : crée (ou réutilise) la famille/sous-famille proposée par l'IA.
+                Long famId = familleService.findOrCreateByName(FamilleScope.RAW_MATERIAL, text(l, "famille"), null);
+                line.setSuggestedFamilleId(famId);
+                if (famId != null) {
+                    line.setSuggestedSousFamilleId(
+                            familleService.findOrCreateByName(FamilleScope.RAW_MATERIAL, text(l, "sousFamille"), famId));
+                }
                 invoice.getLines().add(line);
             }
         }
@@ -372,8 +387,9 @@ public class SupplierInvoiceService {
 
     private InvoiceResponse toResponse(SupplierInvoice inv) {
         List<RawMaterial> materials = materialRepository.findAllByOrderByNameAsc();
+        Map<Long, String> familleNames = familleService.namesByScope(FamilleScope.RAW_MATERIAL);
         List<InvoiceLineResponse> lines = inv.getLines().stream()
-                .map(l -> lineResponse(l, materials))
+                .map(l -> lineResponse(l, materials, familleNames))
                 .toList();
         return new InvoiceResponse(inv.getId(), inv.getEtablissementId(), inv.getSupplierName(),
                 inv.getInvoiceNumber(), inv.getInvoiceDate(), inv.getTotalHt(), inv.getTotalVat(),
@@ -381,7 +397,8 @@ public class SupplierInvoiceService {
                 inv.getAppliedAt(), lines);
     }
 
-    private InvoiceLineResponse lineResponse(SupplierInvoiceLine l, List<RawMaterial> materials) {
+    private InvoiceLineResponse lineResponse(SupplierInvoiceLine l, List<RawMaterial> materials,
+                                             Map<Long, String> familleNames) {
         RawMaterial match = bestMatch(l.getDesignation(), materials);
         Unit parsed = parseUnit(l.getUnit());
         Unit refUnit = match != null ? match.getReferenceUnit() : parsed;
@@ -392,7 +409,9 @@ public class SupplierInvoiceService {
                 l.isApplied(), l.getRawMaterialId(), l.getAppliedPricePerUnit(),
                 match != null ? match.getId() : null,
                 match != null ? match.getName() : null,
-                refUnit, suggestedPrice);
+                refUnit, suggestedPrice,
+                l.getSuggestedFamilleId(), familleNames.get(l.getSuggestedFamilleId()),
+                l.getSuggestedSousFamilleId(), familleNames.get(l.getSuggestedSousFamilleId()));
     }
 
     /** Prix par unité de référence quand l'unité facture est convertible vers l'unité MP. */
