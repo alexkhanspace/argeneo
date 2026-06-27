@@ -2,11 +2,15 @@ package net.argeneo.iam.service;
 
 import java.util.ArrayList;
 import java.util.List;
+import net.argeneo.audit.AuditService;
 import net.argeneo.common.error.ResourceNotFoundException;
+import org.springframework.dao.EmptyResultDataAccessException;
+import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 /**
  * Vue Super-Admin sur TOUS les comptes (toutes enseignes) + réinitialisation de
@@ -30,10 +34,12 @@ public class AdminUserService {
 
     private final JdbcTemplate jdbc;
     private final PasswordEncoder passwordEncoder;
+    private final AuditService audit;
 
-    public AdminUserService(JdbcTemplate jdbc, PasswordEncoder passwordEncoder) {
+    public AdminUserService(JdbcTemplate jdbc, PasswordEncoder passwordEncoder, AuditService audit) {
         this.jdbc = jdbc;
         this.passwordEncoder = passwordEncoder;
+        this.audit = audit;
     }
 
     @Transactional(readOnly = true)
@@ -56,6 +62,50 @@ public class AdminUserService {
                 .forEach(rows::add);
 
         return rows;
+    }
+
+    /**
+     * Désactive (soft-delete) un utilisateur métier, ce qui coupe sa connexion.
+     * Opération cross-tenant délibérée via {@link JdbcTemplate} (hors filtre
+     * {@code @TenantId}). On se borne aux comptes {@code app_user} : les comptes
+     * Super-Admin ({@code platform_admin}) ne peuvent pas être désactivés ici.
+     */
+    @Transactional
+    public void deactivateUser(Long id) {
+        int updated = jdbc.update("UPDATE app_user SET active = false WHERE id = ?", id);
+        if (updated == 0) {
+            throw new ResourceNotFoundException("Utilisateur introuvable : USER/" + id);
+        }
+        audit.record("USER_DEACTIVATE", "USER", id, "Désactivation de l'utilisateur " + id);
+    }
+
+    /**
+     * Change le rôle d'un utilisateur métier ({@code app_user}) entre PATRON et EMPLOYE.
+     * Opération cross-tenant (Super-Admin). Refuse de retirer le dernier patron actif d'une
+     * enseigne pour éviter de la rendre ingérable. Les Super-Admins ne sont pas concernés.
+     */
+    @Transactional
+    public void setUserRole(Long id, String role) {
+        if (!"PATRON".equals(role) && !"EMPLOYE".equals(role)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Rôle invalide : " + role);
+        }
+        Long tenantId;
+        try {
+            tenantId = jdbc.queryForObject("SELECT tenant_id FROM app_user WHERE id = ?", Long.class, id);
+        } catch (EmptyResultDataAccessException e) {
+            throw new ResourceNotFoundException("Utilisateur introuvable : USER/" + id);
+        }
+        if ("EMPLOYE".equals(role)) {
+            Integer otherPatrons = jdbc.queryForObject(
+                    "SELECT count(*) FROM app_user WHERE tenant_id = ? AND role = 'PATRON' AND active = true AND id <> ?",
+                    Integer.class, tenantId, id);
+            if (otherPatrons == null || otherPatrons == 0) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                        "Impossible de rétrograder le dernier patron de l'enseigne.");
+            }
+        }
+        jdbc.update("UPDATE app_user SET role = ? WHERE id = ?", role, id);
+        audit.record("USER_ROLE_CHANGE", "USER", id, "Rôle changé en " + role + " pour l'utilisateur " + id);
     }
 
     @Transactional

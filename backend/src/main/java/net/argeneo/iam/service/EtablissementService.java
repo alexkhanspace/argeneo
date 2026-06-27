@@ -1,8 +1,10 @@
 package net.argeneo.iam.service;
 
 import java.util.List;
-import net.argeneo.iam.api.dto.EtablissementDtos.EtablissementResponse;
+import net.argeneo.common.error.ResourceNotFoundException;
 import net.argeneo.iam.api.dto.EtablissementDtos.CreateEtablissementRequest;
+import net.argeneo.iam.api.dto.EtablissementDtos.EtablissementResponse;
+import net.argeneo.iam.api.dto.EtablissementDtos.UpdateEtablissementRequest;
 import net.argeneo.iam.domain.Etablissement;
 import net.argeneo.iam.repository.EtablissementRepository;
 import org.springframework.stereotype.Service;
@@ -23,6 +25,21 @@ public class EtablissementService {
         Etablissement etablissement = new Etablissement();
         etablissement.setName(request.name());
         etablissement.setAddress(request.address());
+        etablissement.setLatitude(request.latitude());
+        etablissement.setLongitude(request.longitude());
+        etablissement.setDescription(request.description());
+        return EtablissementResponse.from(etablissementRepository.save(etablissement));
+    }
+
+    @Transactional
+    public EtablissementResponse update(Long id, UpdateEtablissementRequest request) {
+        Etablissement etablissement = etablissementRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Etablissement introuvable : " + id));
+        etablissement.setName(request.name());
+        etablissement.setAddress(request.address());
+        etablissement.setLatitude(request.latitude());
+        etablissement.setLongitude(request.longitude());
+        etablissement.setDescription(request.description());
         return EtablissementResponse.from(etablissementRepository.save(etablissement));
     }
 

@@ -7,18 +7,27 @@ import { AccountPage } from './pages/AccountPage'
 import { DashboardPage } from './pages/DashboardPage'
 import { DailyPage } from './pages/DailyPage'
 import { LoginPage } from './pages/LoginPage'
+import { AuditPage } from './pages/admin/AuditPage'
 import { TenantsPage } from './pages/admin/TenantsPage'
+import { TenantEtablissementsPage } from './pages/admin/TenantEtablissementsPage'
 import { UsersAdminPage } from './pages/admin/UsersAdminPage'
+import { BillingPage } from './pages/billing/BillingPage'
+import { BillingSettingsPage } from './pages/billing/BillingSettingsPage'
+import { ClientsPage } from './pages/billing/ClientsPage'
+import { DocumentEditorPage } from './pages/billing/DocumentEditorPage'
 import { ArticlesPage } from './pages/patron/ArticlesPage'
+import { CommunicationPage } from './pages/patron/CommunicationPage'
+import { InvoicesPage } from './pages/patron/InvoicesPage'
 import { EtablissementsPage } from './pages/patron/EtablissementsPage'
 import { EmployeePermissionsPage } from './pages/patron/EmployeePermissionsPage'
 import { EmployeesPage } from './pages/patron/EmployeesPage'
 import { MaterialsPage } from './pages/patron/MaterialsPage'
 import { RecipeEditorPage } from './pages/patron/RecipeEditorPage'
+import { MenuEditorPage } from './pages/patron/MenuEditorPage'
 
 function HomeRedirect() {
   const { me, loading } = useAuth()
-  if (loading) return <div className="center muted">Chargement…</div>
+  if (loading) return null
   if (!me) return <Navigate to="/login" replace />
   return <Navigate to={homePathFor(me)} replace />
 }
@@ -60,10 +69,26 @@ export default function App() {
           }
         />
         <Route
+          path="/admin/tenants/:id/etablissements"
+          element={
+            <ProtectedRoute allow={isAdmin}>
+              <TenantEtablissementsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
           path="/admin/users"
           element={
             <ProtectedRoute allow={isAdmin}>
               <UsersAdminPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin/audit"
+          element={
+            <ProtectedRoute allow={isAdmin}>
+              <AuditPage />
             </ProtectedRoute>
           }
         />
@@ -108,10 +133,74 @@ export default function App() {
           }
         />
         <Route
+          path="/articles/:id/menu"
+          element={
+            <ProtectedRoute allow={isPatron}>
+              <MenuEditorPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
           path="/materials"
           element={
             <ProtectedRoute allow={isPatron}>
               <MaterialsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/factures"
+          element={
+            <ProtectedRoute allow={isPatron}>
+              <InvoicesPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/communication"
+          element={
+            <ProtectedRoute allow={isPatron}>
+              <CommunicationPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/clients"
+          element={
+            <ProtectedRoute allow={isPatron}>
+              <ClientsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/billing"
+          element={
+            <ProtectedRoute allow={isPatron}>
+              <BillingPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/billing/documents/new"
+          element={
+            <ProtectedRoute allow={isPatron}>
+              <DocumentEditorPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/billing/documents/:id"
+          element={
+            <ProtectedRoute allow={isPatron}>
+              <DocumentEditorPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/billing/settings"
+          element={
+            <ProtectedRoute allow={isPatron}>
+              <BillingSettingsPage />
             </ProtectedRoute>
           }
         />

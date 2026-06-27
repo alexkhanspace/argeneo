@@ -2,6 +2,13 @@ spring:
   application:
     name: argeneo-backend
 
+  # Upload de fichiers (photos d'articles, logo) : la valeur par défaut (1 Mo) est
+  # trop basse — une photo de téléphone dépasse et l'erreur ressort en 401 trompeur.
+  servlet:
+    multipart:
+      max-file-size: 12MB
+      max-request-size: 15MB
+
   datasource:
     url: jdbc:postgresql://localhost:5432/argeneo
     username: argeneo
@@ -46,6 +53,17 @@ argeneo:
       email: "${ARGENEO_BOOTSTRAP_ADMIN_EMAIL:alexkhan.yog@icloud.com}"
       password: "${ARGENEO_BOOTSTRAP_ADMIN_PASSWORD:Argénéo90251@}"
       full-name: Super Admin
+  # Stockage des fichiers uploadés (photos d'articles). Dossier créé au démarrage s'il manque.
+  uploads:
+    dir: "${ARGENEO_UPLOADS_DIR:./uploads}"
+  # Vertex AI (Gemini) — avis de tendance. Chemin vide => fonctionnalité désactivée proprement.
+  gemini:
+    service-account-path: "${ARGENEO_GEMINI_SA_PATH:}"
+    project: "${ARGENEO_GEMINI_PROJECT:lec-sin-test-ai}"
+    location: "${ARGENEO_GEMINI_LOCATION:us-central1}"
+    model: "${ARGENEO_GEMINI_MODEL:gemini-2.5-flash}"
+    image-model: "${ARGENEO_GEMINI_IMAGE_MODEL:imagen-3.0-generate-002}"
+    image-edit-model: "${ARGENEO_GEMINI_IMAGE_EDIT_MODEL:gemini-2.5-flash-image}"
 
 logging:
   level:

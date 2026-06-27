@@ -55,9 +55,28 @@ public class Article {
     @Column(name = "vat_rate", precision = 5, scale = 4)
     private BigDecimal vatRate;
 
+    /** Code-barres GTIN (EAN/UPC), optionnel. */
+    @Column(length = 14)
+    private String gtin;
+
+    /** Nom du fichier photo uploadé (servi via /api/media/{file}). Géré par l'upload. */
+    @Column(name = "photo_file", length = 120)
+    private String photoFile;
+
+    @Column(columnDefinition = "text")
+    private String description;
+
     /** Prix d'achat pour les articles ACHAT_REVENTE (= PNET). */
     @Column(name = "purchase_price", precision = 12, scale = 4)
     private BigDecimal purchasePrice;
+
+    /** Famille de classement (premier niveau), optionnelle. */
+    @Column(name = "famille_id")
+    private Long familleId;
+
+    /** Sous-famille de classement (rattachée à {@link #familleId}), optionnelle. */
+    @Column(name = "sous_famille_id")
+    private Long sousFamilleId;
 
     @Column(nullable = false)
     private boolean active = true;

@@ -6,9 +6,15 @@ import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
+import jakarta.persistence.CascadeType;
 import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.OneToMany;
+import jakarta.persistence.OrderBy;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.List;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -49,4 +55,11 @@ public class Recipe {
 
     @Column(name = "duration_minutes")
     private Integer durationMinutes;
+
+    /** Étapes de préparation ordonnées (gérées par cascade depuis la recette).
+     *  nullable=false : Hibernate inclut recipe_id dans l'INSERT (sinon insert null + update → NOT NULL violé). */
+    @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true)
+    @JoinColumn(name = "recipe_id", nullable = false)
+    @OrderBy("position ASC")
+    private List<RecipeStep> steps = new ArrayList<>();
 }

@@ -1,53 +1,100 @@
 import { useEffect, useState } from 'react'
+import {
+  Alert,
+  Box,
+  Card,
+  CardContent,
+  Stack,
+  Typography,
+  useMediaQuery,
+} from '@mui/material'
+import { useTheme } from '@mui/material/styles'
+import { DataGrid, type GridColDef } from '@mui/x-data-grid'
 import { errorMessage } from '../../api/client'
 import { listEtablissements } from '../../api/iam'
 import type { Etablissement } from '../../api/types'
+import { PageHeader } from '../../components/PageHeader'
 
 export function EtablissementsPage() {
   const [items, setItems] = useState<Etablissement[]>([])
   const [error, setError] = useState<string | null>(null)
 
+  // Mobile : liste de fiches (lecture seule) au lieu du tableau.
+  const theme = useTheme()
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'))
+
   useEffect(() => {
     listEtablissements().then(setItems).catch((e) => setError(errorMessage(e)))
   }, [])
 
+  const columns: GridColDef<Etablissement>[] = [
+    { field: 'id', headerName: '#', width: 80 },
+    { field: 'name', headerName: 'Nom', flex: 1, minWidth: 160 },
+    {
+      field: 'address',
+      headerName: 'Adresse',
+      flex: 1,
+      minWidth: 200,
+      valueGetter: (value) => (value as string | null) ?? '—',
+    },
+  ]
+
   return (
-    <div className="page">
-      <h1>Établissements</h1>
-      <p className="muted">
-        Les points de vente de votre enseigne. L'ajout d'un établissement se fait
-        sous licence, à la souscription — contactez l'éditeur.
-      </p>
+    <>
+      <PageHeader
+        title="Établissements"
+      />
 
-      {error && <div className="alert">{error}</div>}
+      {error && (
+        <Alert severity="error" sx={{ mb: 2 }}>
+          {error}
+        </Alert>
+      )}
 
-      <section className="card">
-        <h2>Mes établissements ({items.length})</h2>
-        {items.length === 0 ? (
-          <p className="muted">Aucun établissement pour le moment.</p>
-        ) : (
-          <div className="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>#</th>
-                  <th>Nom</th>
-                  <th>Adresse</th>
-                </tr>
-              </thead>
-              <tbody>
-                {items.map((b) => (
-                  <tr key={b.id}>
-                    <td data-label="#">{b.id}</td>
-                    <td data-label="Nom">{b.name}</td>
-                    <td data-label="Adresse">{b.address ?? '—'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
-    </div>
+      <Card sx={{ mb: 3 }}>
+        <CardContent>
+          <Typography variant="h2" gutterBottom>
+            Mes établissements ({items.length})
+          </Typography>
+          {items.length === 0 ? (
+            <Typography color="text.secondary">Aucun établissement pour le moment.</Typography>
+          ) : isMobile ? (
+            <Stack spacing={1.5}>
+              {items.map((e) => (
+                <Card key={e.id} variant="outlined">
+                  <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
+                    <Stack
+                      direction="row"
+                      sx={{ alignItems: 'baseline', gap: 1, flexWrap: 'wrap' }}
+                    >
+                      <Typography sx={{ fontWeight: 600 }}>{e.name}</Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        #{e.id}
+                      </Typography>
+                    </Stack>
+                    <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                      {e.address ?? '—'}
+                    </Typography>
+                  </CardContent>
+                </Card>
+              ))}
+            </Stack>
+          ) : (
+            <Box sx={{ height: 480, width: '100%' }}>
+              <DataGrid
+                rows={items}
+                columns={columns}
+                showToolbar
+                disableRowSelectionOnClick
+                sortingOrder={['asc', 'desc', null]}
+                pageSizeOptions={[25, 50, 100]}
+                initialState={{ pagination: { paginationModel: { pageSize: 25 } } }}
+                sx={{ border: 0 }}
+              />
+            </Box>
+          )}
+        </CardContent>
+      </Card>
+    </>
   )
 }

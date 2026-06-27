@@ -8,4 +8,8 @@ import org.springframework.data.jpa.repository.JpaRepository;
 public interface RawMaterialRepository extends JpaRepository<RawMaterial, Long> {
 
     List<RawMaterial> findAllByOrderByNameAsc();
+
+    boolean existsByFamilleId(Long familleId);
+
+    boolean existsBySousFamilleId(Long sousFamilleId);
 }

@@ -1,9 +1,44 @@
 import { useEffect, useState } from 'react'
+import {
+  Alert,
+  Box,
+  Button,
+  Card,
+  CardContent,
+  Chip,
+  CircularProgress,
+  Divider,
+  Popover,
+  Stack,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableRow,
+  Typography,
+} from '@mui/material'
+import { DataGrid, type GridColDef } from '@mui/x-data-grid'
+import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome'
 import { errorMessage } from '../api/client'
+import { PageHeader } from '../components/PageHeader'
 import { getCost, listArticles, listRawMaterials } from '../api/costing'
 import { listEmployees, listEtablissements } from '../api/iam'
 import { getDay, listMonth, listMyEtablissements } from '../api/daily'
-import type { DailyEntry, Pnet } from '../api/types'
+import {
+  getHourlyWeather,
+  getMonthWeather,
+  getWeatherRange,
+  summarizeHourly,
+  weatherIcon,
+  type HourWeather,
+  type MonthWeather,
+} from '../api/weather'
+import { getHolidays } from '../api/holidays'
+import { getMuslimDays, getJewishDays } from '../api/religiousCalendar'
+import { getCuratedEvents } from '../api/observances'
+import { getDayAnalysis, getTrend, type DayContextInput } from '../api/insights'
+import { useSettings } from '../settings/SettingsContext'
+import type { DailyEntry, MyEtablissement, Pnet } from '../api/types'
 
 function formatEur(value: number | null | undefined): string {
   if (value == null) return '—'
@@ -31,6 +66,59 @@ function formatDateFr(iso: string): string {
   })
 }
 
+/** ISO YYYY-MM-DD à partir d'une Date locale. */
+function toISO(d: Date): string {
+  return toISODate(d)
+}
+
+/** Nouvelle Date décalée de `n` jours. */
+function addDays(d: Date, n: number): Date {
+  const r = new Date(d)
+  r.setDate(r.getDate() + n)
+  return r
+}
+
+/** Date longue fr (ex. « dimanche 14 juin 2026 »). */
+function formatDateLongFr(iso: string): string {
+  const [y, m, d] = iso.split('-').map(Number)
+  return new Date(y, m - 1, d).toLocaleDateString('fr-FR', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  })
+}
+
+/** Nom long du jour de la semaine (ex. « dimanche »). */
+function weekdayLongFr(iso: string): string {
+  const [y, m, d] = iso.split('-').map(Number)
+  return new Date(y, m - 1, d).toLocaleDateString('fr-FR', { weekday: 'long' })
+}
+
+/** Récap d'un jour avec son équivalent N-1 et la météo N-1. */
+/** Un repère « l'an dernier » : date, CA, météo, événements et saisie du jour. */
+interface DayRef {
+  iso: string
+  ca: number | null
+  tMax: number | null
+  events: string | null
+  entry: DailyEntry | null
+}
+
+interface DayData {
+  iso: string
+  entry: DailyEntry | null
+  tMaxJ: number | null
+  ar: DayRef // même jour de semaine l'an dernier (référence prioritaire)
+  aa: DayRef // même date l'an dernier
+  analysis: string
+  analysisLoading: boolean
+  /** Détail météo horaire du jour (pour le popup au clic sur la météo). */
+  hourly?: HourWeather[]
+  /** Contexte envoyé à l'IA (réutilisé pour « Développer l'analyse »). */
+  ctx?: DayContextInput
+}
+
 interface MarginRow {
   id: number
   code: string
@@ -41,13 +129,65 @@ interface MarginRow {
   coefficient: number | null
 }
 
+const MARGIN_COLUMNS: GridColDef<MarginRow>[] = [
+  { field: 'code', headerName: 'Code', width: 90 },
+  { field: 'name', headerName: 'Article', flex: 1, minWidth: 140 },
+  {
+    field: 'pnet',
+    headerName: 'PNET HT',
+    width: 110,
+    type: 'number',
+    valueFormatter: (v) => formatEur(v as number | null),
+  },
+  {
+    field: 'pvTtc',
+    headerName: 'PV TTC',
+    width: 110,
+    type: 'number',
+    valueFormatter: (v) => formatEur(v as number | null),
+  },
+  {
+    field: 'marginHt',
+    headerName: 'Marge €',
+    width: 110,
+    type: 'number',
+    valueFormatter: (v) => formatEur(v as number | null),
+  },
+  {
+    field: 'coefficient',
+    headerName: 'Coef',
+    width: 90,
+    type: 'number',
+    valueFormatter: (v) => (v == null ? '—' : (v as number).toFixed(2)),
+  },
+]
+
 export function DashboardPage() {
+  const { baseline } = useSettings()
   const [error, setError] = useState<string | null>(null)
   const [counts, setCounts] = useState({ etabs: 0, articles: 0, employees: 0, materials: 0 })
   const [caJour, setCaJour] = useState<number | null>(null)
   const [margins, setMargins] = useState<MarginRow[]>([])
   const [recent, setRecent] = useState<DailyEntry[]>([])
   const [recentEtab, setRecentEtab] = useState<string | null>(null)
+
+  // Cockpit du matin.
+  const [etab, setEtab] = useState<MyEtablissement | null>(null)
+  const [weather, setWeather] = useState<MonthWeather>({})
+  const [today, setToday] = useState<DayData | null>(null)
+  const [tomorrow, setTomorrow] = useState<DayData | null>(null)
+  const [yesterday, setYesterday] = useState<DayData | null>(null)
+  const [dayBefore, setDayBefore] = useState<DayData | null>(null)
+  const [dayBeforeLoading, setDayBeforeLoading] = useState(false)
+  // Analyses « développées » à la demande, par date (bouton « Développer »).
+  const [details, setDetails] = useState<Record<string, { loading: boolean; text: string }>>({})
+  // Popup météo horaire (clic sur la météo d'une carte).
+  const [hourlyAnchor, setHourlyAnchor] = useState<{ el: HTMLElement; day: DayData } | null>(null)
+  // Prévision longue (anticipation des prochaines semaines), chargée à la demande.
+  const [longForecast, setLongForecast] = useState<
+    { date: string; weeks: number; label: string; conseil: string }[] | null
+  >(null)
+  const [longLoading, setLongLoading] = useState(false)
 
   useEffect(() => {
     const today = toISODate(new Date())
@@ -110,113 +250,776 @@ export function DashboardPage() {
             marginHt: p.marginHt ?? null,
             coefficient: p.coefficient ?? null,
           }))
-          .sort((a, b) => (b.coefficient ?? -Infinity) - (a.coefficient ?? -Infinity))
-          .slice(0, 8)
+        // Le DataGrid gère tri (par défaut sur le coef) et pagination : on envoie tout.
         setMargins(rows)
       })
       .catch(() => undefined)
+
+    // Cockpit du matin : météo, événements et analyse IA pour J et J-1.
+    void loadCockpit()
   }, [])
 
+  async function buildDayData(
+    e: MyEtablissement,
+    iso: string,
+    weatherMap: MonthWeather,
+    eventsFor: (iso: string) => string | null,
+    mode: 'action' | 'bilan' | 'prep',
+  ): Promise<DayData> {
+    // Deux repères l'an dernier : AR = même jour de SEMAINE (−364 j), AA = même DATE (année −1).
+    const refDate = new Date(iso + 'T00:00:00')
+    const isoEquiv = toISO(addDays(refDate, -364)) // AR : jour équivalent (même jour de semaine)
+    const isoSame = toISO(
+      new Date(refDate.getFullYear() - 1, refDate.getMonth(), refDate.getDate()),
+    ) // AA : même date
+    const [entry, entryEquiv, entrySame, wxN1, hourlyJ] = await Promise.all([
+      getDay(e.id, iso).catch(() => null),
+      getDay(e.id, isoEquiv).catch(() => null),
+      getDay(e.id, isoSame).catch(() => null),
+      e.latitude != null && e.longitude != null
+        ? getWeatherRange(e.latitude, e.longitude, isoSame, isoEquiv).catch(() => ({}) as MonthWeather)
+        : Promise.resolve({} as MonthWeather),
+      e.latitude != null && e.longitude != null
+        ? getHourlyWeather(e.latitude, e.longitude, iso).catch(() => [] as HourWeather[])
+        : Promise.resolve([] as HourWeather[]),
+    ])
+    const wxJ = weatherMap[iso]
+    const wxAr = wxN1[isoEquiv]
+    const ar: DayRef = { iso: isoEquiv, ca: entryEquiv?.revenue ?? null, tMax: wxAr?.tMax ?? null, events: eventsFor(isoEquiv), entry: entryEquiv }
+    const aa: DayRef = { iso: isoSame, ca: entrySame?.revenue ?? null, tMax: wxN1[isoSame]?.tMax ?? null, events: eventsFor(isoSame), entry: entrySame }
+    const tMaxJ = wxJ?.tMax ?? null
+
+    const day: DayContextInput = {
+      date: iso,
+      weekday: weekdayLongFr(iso),
+      revenue: entry?.revenue ?? null,
+      clientCount: entry?.clientCount ?? null,
+      tMax: tMaxJ,
+      tMaxN1: ar.tMax, // météo l'an dernier = même jour de semaine (priorité)
+      events: eventsFor(iso),
+      caN1Date: aa.ca, // AA : même date
+      caN1Equiv: ar.ca, // AR : jour équivalent (même jour de semaine)
+      noteProd: entry?.noteProd ?? null,
+      noteSale: entry?.noteSale ?? null,
+      noteProdN1: ar.entry?.noteProd ?? null, // mots du jour du même jour N-1
+      noteSaleN1: ar.entry?.noteSale ?? null,
+      eventsAr: eventsFor(isoEquiv), // événements du même jour de semaine N-1
+      eventsAa: eventsFor(isoSame), // événements de la même date N-1
+      sky: wxJ ? weatherIcon(wxJ.code).label : null, // condition du ciel (pluie/soleil…) du jour
+      skyN1: wxAr ? weatherIcon(wxAr.code).label : null, // condition du même jour N-1
+      hourly: summarizeHourly(hourlyJ) || null, // résumé horaire (matin/midi/aprem/soir)
+    }
+    let analysis = ''
+    let enabled = true
+    try {
+      const res = await getDayAnalysis({
+        etablissement: e.name,
+        description: e.description,
+        location: e.address,
+        mode,
+        baseline,
+        day,
+      })
+      analysis = res.analysis
+      enabled = res.enabled
+    } catch (err) {
+      analysis = errorMessage(err)
+      enabled = false
+    }
+    void enabled
+
+    return { iso, entry, tMaxJ, ar, aa, analysis, analysisLoading: false, hourly: hourlyJ, ctx: day }
+  }
+
+  async function loadCockpit() {
+    let etabs: MyEtablissement[]
+    try {
+      etabs = await listMyEtablissements()
+    } catch {
+      return
+    }
+    if (etabs.length === 0) return
+    const e = etabs[0]
+    setEtab(e)
+
+    const now = new Date()
+    const year = now.getFullYear()
+    const month = now.getMonth()
+    const todayIso = toISO(now)
+    const yIso = toISO(addDays(now, -1))
+    const tIso = toISO(addDays(now, 1))
+
+    // Météo du mois courant (couvre J-1/J/J+1).
+    const weatherMap: MonthWeather =
+      e.latitude != null && e.longitude != null
+        ? await getMonthWeather(e.latitude, e.longitude, year, month).catch((): MonthWeather => ({}))
+        : {}
+    setWeather(weatherMap)
+
+    // Maps d'événements sur 2 ANS (année courante + N-1) : les jours de référence (AR/AA)
+    // tombent l'an dernier, et les fêtes mobiles (Mères/Pères, Pâques…) y diffèrent.
+    const [holidays, muslim, jewish, fetes, holidaysN1, muslimN1, jewishN1, fetesN1] = await Promise.all([
+      getHolidays(year).catch((): Record<string, string> => ({})),
+      getMuslimDays(year, month).catch((): Record<string, string> => ({})),
+      getJewishDays(year, month).catch((): Record<string, string> => ({})),
+      Promise.resolve(getCuratedEvents(year)),
+      getHolidays(year - 1).catch((): Record<string, string> => ({})),
+      getMuslimDays(year - 1, month).catch((): Record<string, string> => ({})),
+      getJewishDays(year - 1, month).catch((): Record<string, string> => ({})),
+      Promise.resolve(getCuratedEvents(year - 1)),
+    ])
+    // Cartes fusionnées par date ISO complète (clé YYYY-MM-DD → pas de collision entre années).
+    const allHolidays = { ...holidaysN1, ...holidays }
+    const allMuslim = { ...muslimN1, ...muslim }
+    const allJewish = { ...jewishN1, ...jewish }
+    const allFetes = { ...fetesN1, ...fetes }
+    const eventsFor = (iso: string): string | null => {
+      const parts = [allHolidays[iso], allMuslim[iso] || allJewish[iso], allFetes[iso]].filter(Boolean)
+      return parts.length > 0 ? parts.join(' · ') : null
+    }
+
+    // Squelettes en chargement pour afficher les cartes immédiatement.
+    const emptyRef = (): DayRef => ({ iso: '', ca: null, tMax: null, events: null, entry: null })
+    const skeleton = (iso: string): DayData => ({
+      iso, entry: null, tMaxJ: null, ar: emptyRef(), aa: emptyRef(), analysis: '', analysisLoading: true,
+    })
+    setToday(skeleton(todayIso))
+    setYesterday(skeleton(yIso))
+    setTomorrow(skeleton(tIso))
+
+    const [d0, d1, d2] = await Promise.all([
+      buildDayData(e, todayIso, weatherMap, eventsFor, 'action'),
+      buildDayData(e, yIso, weatherMap, eventsFor, 'bilan'),
+      buildDayData(e, tIso, weatherMap, eventsFor, 'prep'),
+    ])
+    setToday(d0)
+    setYesterday(d1)
+    setTomorrow(d2)
+  }
+
+  async function loadDayBefore() {
+    if (!etab) return
+    setDayBeforeLoading(true)
+    const now = new Date()
+    const year = now.getFullYear()
+    const month = now.getMonth()
+    const dbIso = toISO(addDays(now, -2))
+    const [holidays, muslim, jewish, fetes, holidaysN1, muslimN1, jewishN1, fetesN1] = await Promise.all([
+      getHolidays(year).catch((): Record<string, string> => ({})),
+      getMuslimDays(year, month).catch((): Record<string, string> => ({})),
+      getJewishDays(year, month).catch((): Record<string, string> => ({})),
+      Promise.resolve(getCuratedEvents(year)),
+      getHolidays(year - 1).catch((): Record<string, string> => ({})),
+      getMuslimDays(year - 1, month).catch((): Record<string, string> => ({})),
+      getJewishDays(year - 1, month).catch((): Record<string, string> => ({})),
+      Promise.resolve(getCuratedEvents(year - 1)),
+    ])
+    const allHolidays = { ...holidaysN1, ...holidays }
+    const allMuslim = { ...muslimN1, ...muslim }
+    const allJewish = { ...jewishN1, ...jewish }
+    const allFetes = { ...fetesN1, ...fetes }
+    const eventsFor = (iso: string): string | null => {
+      const parts = [allHolidays[iso], allMuslim[iso] || allJewish[iso], allFetes[iso]].filter(Boolean)
+      return parts.length > 0 ? parts.join(' · ') : null
+    }
+    const data = await buildDayData(etab, dbIso, weather, eventsFor, 'bilan')
+    setDayBefore(data)
+    setDayBeforeLoading(false)
+  }
+
+  /** Prévision longue : balaie ~6 semaines, repère les jours à enjeu et demande des conseils. */
+  async function loadLongForecast() {
+    if (!etab) return
+    setLongLoading(true)
+    try {
+      const now = new Date()
+      const horizon = 42 // 6 semaines
+      // Cartes d'événements couvrant l'horizon (mois courant + 2 suivants).
+      const months = [0, 1, 2].map((k) => {
+        const d = new Date(now.getFullYear(), now.getMonth() + k, 1)
+        return { y: d.getFullYear(), m: d.getMonth() }
+      })
+      const years = [...new Set(months.map((mm) => mm.y))]
+      const holidaysByYear: Record<number, Record<string, string>> = {}
+      const fetesByYear: Record<number, Record<string, string>> = {}
+      await Promise.all(
+        years.map(async (y) => {
+          holidaysByYear[y] = await getHolidays(y).catch((): Record<string, string> => ({}))
+          fetesByYear[y] = getCuratedEvents(y)
+        }),
+      )
+      const muslimMaps = await Promise.all(
+        months.map((mm) => getMuslimDays(mm.y, mm.m).catch((): Record<string, string> => ({}))),
+      )
+      const jewishMaps = await Promise.all(
+        months.map((mm) => getJewishDays(mm.y, mm.m).catch((): Record<string, string> => ({}))),
+      )
+      const muslim: Record<string, string> = Object.assign({}, ...muslimMaps)
+      const jewish: Record<string, string> = Object.assign({}, ...jewishMaps)
+      const eventsFor = (iso: string): string | null => {
+        const y = Number(iso.slice(0, 4))
+        const parts = [holidaysByYear[y]?.[iso], muslim[iso] || jewish[iso], fetesByYear[y]?.[iso]].filter(Boolean)
+        return parts.length ? parts.join(' · ') : null
+      }
+      const days: DayContextInput[] = []
+      for (let i = 1; i <= horizon; i++) {
+        const iso = toISO(addDays(now, i))
+        const w = weather[iso]
+        days.push({
+          date: iso,
+          weekday: weekdayLongFr(iso),
+          tMax: w?.tMax ?? null,
+          sky: w ? weatherIcon(w.code).label : null,
+          events: eventsFor(iso),
+        })
+      }
+      const res = await getTrend({
+        etablissement: etab.name,
+        description: etab.description,
+        location: etab.address,
+        periode: 'prochaines semaines',
+        baseline,
+        days,
+      })
+      const out = res.days
+        .map((a) => {
+          const dt = new Date(a.date + 'T00:00:00')
+          const diffDays = Math.round((dt.getTime() - now.getTime()) / 86400000)
+          return {
+            date: a.date,
+            weeks: Math.max(0, Math.round(diffDays / 7)),
+            label: formatDateLongFr(a.date),
+            conseil: a.conseil,
+          }
+        })
+        .sort((a, b) => a.date.localeCompare(b.date))
+      setLongForecast(out)
+    } catch {
+      setLongForecast([])
+    } finally {
+      setLongLoading(false)
+    }
+  }
+
+  // Bande météo 3 jours autour d'une date de référence (offsets -1/0/+1).
+  // Météo du jour de la carte (J) + repères an dernier : même jour de semaine (AR) et même date (AA).
+  function renderRefs(day: DayData) {
+    const jCa = day.entry?.revenue ?? null
+    const wj = weather[day.iso]
+    const refRow = (label: string, r: DayRef) => {
+      const delta = jCa != null && r.ca != null && r.ca !== 0 ? ((jCa - r.ca) / r.ca) * 100 : null
+      return (
+        <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
+          <Typography variant="caption" color="text.secondary" sx={{ minWidth: 118 }}>
+            {label}
+            {r.iso ? ` · ${formatDateFr(r.iso)}` : ''}
+          </Typography>
+          <Typography variant="body2">{r.tMax != null ? `~${Math.round(r.tMax)}°` : '—'}</Typography>
+          <Chip size="small" variant="outlined" label={`CA ${formatEur(r.ca)}`} />
+          {delta != null && (
+            <Typography
+              variant="body2"
+              sx={{ fontWeight: 'bold' }}
+              color={delta >= 0 ? 'success.main' : 'error.main'}
+            >
+              {delta >= 0 ? '+' : ''}
+              {delta.toFixed(1)} %
+            </Typography>
+          )}
+          {r.events && (
+            <Typography variant="caption" sx={{ color: '#1565c0' }}>
+              🎉 {r.events}
+            </Typography>
+          )}
+        </Stack>
+      )
+    }
+    return (
+      <Box>
+        <Stack spacing={0.5}>
+          <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+            <Typography variant="caption" color="text.secondary" sx={{ minWidth: 118 }}>
+              Météo du jour (J)
+            </Typography>
+            <Box
+              component="span"
+              onClick={
+                day.hourly && day.hourly.length > 0
+                  ? (e) => setHourlyAnchor({ el: e.currentTarget, day })
+                  : undefined
+              }
+              sx={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 0.75,
+                cursor: day.hourly && day.hourly.length > 0 ? 'pointer' : 'default',
+                px: day.hourly && day.hourly.length > 0 ? 0.5 : 0,
+                borderRadius: 1,
+                '&:hover': day.hourly && day.hourly.length > 0 ? { bgcolor: 'action.hover' } : undefined,
+              }}
+            >
+              <Typography variant="h6" component="span" sx={{ lineHeight: 1 }}>
+                {wj ? weatherIcon(wj.code).emoji : '—'}
+              </Typography>
+              <Typography variant="body2">{day.tMaxJ != null ? `~${Math.round(day.tMaxJ)}°` : '—'}</Typography>
+              {day.hourly && day.hourly.length > 0 && (
+                <Typography variant="caption" color="primary">
+                  détail ▾
+                </Typography>
+              )}
+            </Box>
+            {day.ctx?.events && (
+              <Typography variant="caption" sx={{ color: '#1565c0' }}>
+                🎉 {day.ctx.events}
+              </Typography>
+            )}
+          </Stack>
+          {refRow('Même jour N-1', day.ar)}
+          {refRow('Même date N-1', day.aa)}
+        </Stack>
+        {(day.ar.entry?.noteProd || day.ar.entry?.noteSale) && (
+          <Box sx={{ mt: 0.5 }}>
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+              Mots du jour (même jour N-1) :
+            </Typography>
+            {day.ar.entry?.noteProd && (
+              <Typography variant="caption" sx={{ display: 'block', overflowWrap: 'anywhere' }}>
+                🥖 {day.ar.entry.noteProd}
+              </Typography>
+            )}
+            {day.ar.entry?.noteSale && (
+              <Typography variant="caption" sx={{ display: 'block', overflowWrap: 'anywhere' }}>
+                🛒 {day.ar.entry.noteSale}
+              </Typography>
+            )}
+          </Box>
+        )}
+      </Box>
+    )
+  }
+
+  // Récap court d'un jour (CA, casse, mots du jour).
+  function renderRecap(entry: DailyEntry | null) {
+    return (
+      <Stack spacing={0.5} sx={{ overflowWrap: 'anywhere' }}>
+        <Typography variant="body2">CA : {formatEur(entry?.revenue)}</Typography>
+        <Typography variant="body2">
+          Clients : {entry?.clientCount ?? '—'}
+          {entry?.revenue != null && entry?.clientCount != null && entry.clientCount > 0
+            ? ` — ticket moyen ${formatEur(entry.revenue / entry.clientCount)}`
+            : ''}
+        </Typography>
+        <Typography variant="body2">
+          Perte :{' '}
+          {entry?.losses && entry.losses.length > 0
+            ? entry.losses.map((l) => `${l.articleName} ×${l.quantity}`).join(', ')
+            : '—'}
+        </Typography>
+        {entry?.noteProd && <Typography variant="body2">🥖 {entry.noteProd}</Typography>}
+        {entry?.noteSale && <Typography variant="body2">🛒 {entry.noteSale}</Typography>}
+      </Stack>
+    )
+  }
+
+
+  // Bloc analyse IA (spinner ou texte encadré).
+  function renderAnalysis(loading: boolean, analysis: string) {
+    // Met en valeur un verdict de performance en tête (mode bilan) ; sinon rendu normal.
+    const m = analysis.match(/^\s*(.{0,40}?[.!])\s*([\s\S]*)$/)
+    const head = m ? m[1] : ''
+    const rest = m ? m[2] : ''
+    const low = head.toLowerCase()
+    let verdictColor: string | null = null
+    if (/bonne|très bonne|excellente|solide|belle|record/.test(low)) verdictColor = 'success.main'
+    else if (/déce|mauvaise|faible|morose|en baisse|difficile/.test(low)) verdictColor = 'error.main'
+    else if (/correcte|moyenne|mitigée|stable/.test(low)) verdictColor = 'warning.main'
+
+    return (
+      <Box>
+        <Typography variant="subtitle2" gutterBottom>
+          🔮 Analyse IA
+        </Typography>
+        {loading ? (
+          <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+            <CircularProgress size={18} />
+            <Typography variant="body2" color="text.secondary">
+              Analyse…
+            </Typography>
+          </Stack>
+        ) : (
+          <Typography
+            variant="body2"
+            sx={{ bgcolor: 'action.hover', p: 1.5, borderRadius: 1, whiteSpace: 'pre-line', overflowWrap: 'anywhere' }}
+          >
+            {verdictColor ? (
+              <>
+                <Box component="span" sx={{ fontWeight: 700, color: verdictColor }}>
+                  {head}
+                </Box>{' '}
+                {rest}
+              </>
+            ) : (
+              analysis
+            )}
+          </Typography>
+        )}
+      </Box>
+    )
+  }
+
+  // Demande à l'IA une analyse plus développée pour un jour (réutilise son contexte).
+  async function develop(day: DayData, mode: 'action' | 'bilan' | 'prep') {
+    if (!etab || !day.ctx) return
+    setDetails((m) => ({ ...m, [day.iso]: { loading: true, text: '' } }))
+    try {
+      const res = await getDayAnalysis({
+        etablissement: etab.name,
+        description: etab.description,
+        location: etab.address,
+        mode,
+        baseline,
+        detail: true,
+        day: day.ctx,
+      })
+      setDetails((m) => ({ ...m, [day.iso]: { loading: false, text: res.analysis } }))
+    } catch (e) {
+      setDetails((m) => ({ ...m, [day.iso]: { loading: false, text: errorMessage(e) } }))
+    }
+  }
+
+  /** Analyse courte + bouton « Développer » (et le texte développé une fois chargé). */
+  function analysisBlock(day: DayData, mode: 'action' | 'bilan' | 'prep') {
+    const det = details[day.iso]
+    return (
+      <Box>
+        {renderAnalysis(day.analysisLoading, day.analysis)}
+        {!day.analysisLoading && day.ctx && (
+          det?.text ? (
+            <Typography
+              variant="body2"
+              sx={{ mt: 1, p: 1.5, bgcolor: 'action.hover', borderRadius: 1, whiteSpace: 'pre-line', overflowWrap: 'anywhere' }}
+            >
+              {det.text}
+            </Typography>
+          ) : (
+            <Button
+              size="small"
+              variant="text"
+              onClick={() => void develop(day, mode)}
+              disabled={det?.loading}
+              startIcon={det?.loading ? <CircularProgress size={14} /> : <AutoAwesomeIcon fontSize="small" />}
+              sx={{ mt: 0.5 }}
+            >
+              {det?.loading ? 'Analyse en cours…' : "Développer l'analyse"}
+            </Button>
+          )
+        )}
+      </Box>
+    )
+  }
+
+  const kpis: Array<{ value: string; label: string; accent?: boolean }> = [
+    { value: String(counts.etabs), label: 'Établissements' },
+    { value: String(counts.articles), label: 'Articles' },
+    { value: String(counts.employees), label: 'Employés' },
+    { value: String(counts.materials), label: 'Matières premières' },
+    { value: caJour == null ? '…' : formatEur(caJour), label: 'CA du jour (TTC, total)', accent: true },
+  ]
+
   return (
-    <div className="page">
-      <h1>Tableau de bord</h1>
-      <p className="muted">Vue d'ensemble de votre enseigne.</p>
+    <>
+      <PageHeader title="Tableau de bord" />
 
-      {error && <div className="alert">{error}</div>}
+      {error && (
+        <Alert severity="error" sx={{ mb: 2 }}>
+          {error}
+        </Alert>
+      )}
 
-      <div className="kpi-grid">
-        <div className="card kpi">
-          <span className="kpi-value">{counts.etabs}</span>
-          <span className="kpi-label">Établissements</span>
-        </div>
-        <div className="card kpi">
-          <span className="kpi-value">{counts.articles}</span>
-          <span className="kpi-label">Articles</span>
-        </div>
-        <div className="card kpi">
-          <span className="kpi-value">{counts.employees}</span>
-          <span className="kpi-label">Employés</span>
-        </div>
-        <div className="card kpi">
-          <span className="kpi-value">{counts.materials}</span>
-          <span className="kpi-label">Matières premières</span>
-        </div>
-        <div className="card kpi kpi-accent">
-          <span className="kpi-value">{caJour == null ? '…' : formatEur(caJour)}</span>
-          <span className="kpi-label">CA du jour (TTC, total)</span>
-        </div>
-      </div>
+      <Box
+        sx={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))',
+          gap: 2,
+          mb: 3,
+        }}
+      >
+        {kpis.map((k) => (
+          <Card key={k.label}>
+            <CardContent>
+              <Typography
+                variant="h4"
+                sx={{
+                  fontWeight: 'bold',
+                  // Police compacte sur mobile pour que le montant ne déborde pas de la carte.
+                  fontSize: { xs: '1.35rem', sm: '2.125rem' },
+                  lineHeight: 1.15,
+                }}
+                color={k.accent ? 'primary' : 'text.primary'}
+              >
+                {k.value}
+              </Typography>
+              <Typography
+                variant="body2"
+                color="text.secondary"
+                sx={{ fontSize: { xs: '0.78rem', sm: '0.875rem' } }}
+              >
+                {k.label}
+              </Typography>
+            </CardContent>
+          </Card>
+        ))}
+      </Box>
 
-      <div className="grid grid-dash">
-        <section className="card">
-          <h2>Marges (articles fabriqués)</h2>
-          {margins.length === 0 ? (
-            <p className="muted">Aucune donnée de marge disponible.</p>
+      {etab && today && yesterday && (() => {
+        // Après 16h, « Demain » passe au-dessus d'« Aujourd'hui » (on prépare le lendemain).
+        const afterCutoff = new Date().getHours() >= 16
+        const order: Array<'tomorrow' | 'today' | 'yesterday'> = afterCutoff
+          ? ['tomorrow', 'today', 'yesterday']
+          : ['today', 'tomorrow', 'yesterday']
+
+        const todayCard = (
+          <Card key="today" sx={{ borderTop: 3, borderColor: 'primary.main' }}>
+            <CardContent>
+              <Typography variant="h2" gutterBottom>
+                Aujourd'hui — {formatDateLongFr(today.iso)}
+              </Typography>
+              <Stack spacing={1.5}>
+                {renderRecap(today.entry)}
+                {renderRefs(today)}
+                {analysisBlock(today, 'action')}
+              </Stack>
+            </CardContent>
+          </Card>
+        )
+
+        // Demain (J+1) — préparation : pas de CA (jour futur), on montre météo + repère N-1 + conseil.
+        const tomorrowCard = tomorrow ? (
+          <Card key="tomorrow" sx={{ borderTop: 3, borderColor: 'success.main' }}>
+            <CardContent>
+              <Typography variant="h2" gutterBottom>
+                Demain — {formatDateLongFr(tomorrow.iso)}
+              </Typography>
+              <Stack spacing={1.5}>
+                {renderRefs(tomorrow)}
+                {analysisBlock(tomorrow, 'prep')}
+              </Stack>
+            </CardContent>
+          </Card>
+        ) : null
+
+        const yesterdayCard = (
+          <Card key="yesterday" sx={{ borderTop: 3, borderColor: 'secondary.main' }}>
+            <CardContent>
+              <Typography variant="h2" gutterBottom>
+                Hier — {formatDateLongFr(yesterday.iso)}
+              </Typography>
+              <Stack spacing={1.5}>
+                {renderRecap(yesterday.entry)}
+                {renderRefs(yesterday)}
+                {analysisBlock(yesterday, 'bilan')}
+
+                {dayBefore ? (
+                  <Box>
+                    <Divider sx={{ my: 1 }} />
+                    <Typography variant="subtitle1" gutterBottom>
+                      Avant-hier — {formatDateLongFr(dayBefore.iso)}
+                    </Typography>
+                    <Stack spacing={1.5}>
+                      {renderRecap(dayBefore.entry)}
+                      {renderRefs(dayBefore)}
+                      {analysisBlock(dayBefore, 'bilan')}
+                    </Stack>
+                  </Box>
+                ) : (
+                  <Button
+                    variant="outlined"
+                    onClick={() => void loadDayBefore()}
+                    disabled={dayBeforeLoading}
+                    startIcon={dayBeforeLoading ? <CircularProgress size={16} /> : undefined}
+                    sx={{ alignSelf: 'flex-start' }}
+                  >
+                    Analyser aussi avant-hier (J-2)
+                  </Button>
+                )}
+              </Stack>
+            </CardContent>
+          </Card>
+        )
+
+        const cards = { today: todayCard, tomorrow: tomorrowCard, yesterday: yesterdayCard }
+        return (
+          <Box sx={{ display: 'grid', gridTemplateColumns: '1fr', gap: 3, mb: 3 }}>
+            {order.map((k) => cards[k])}
+          </Box>
+        )
+      })()}
+
+      {/* Prévision longue — anticipation des prochaines semaines */}
+      <Card sx={{ mb: 3 }}>
+        <CardContent>
+          <Typography variant="h2" gutterBottom>
+            Prévision longue — prochaines semaines
+          </Typography>
+          {longForecast === null ? (
+            <Button
+              variant="outlined"
+              onClick={() => void loadLongForecast()}
+              disabled={longLoading || !etab}
+              startIcon={longLoading ? <CircularProgress size={16} /> : <AutoAwesomeIcon />}
+            >
+              {longLoading ? 'Analyse…' : 'Voir la prévision longue'}
+            </Button>
+          ) : longForecast.length === 0 ? (
+            <Typography color="text.secondary">
+              Rien de particulier à anticiper dans les prochaines semaines.
+            </Typography>
           ) : (
-            <div className="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Code</th>
-                    <th>Article</th>
-                    <th>PNET (HT)</th>
-                    <th>PV (TTC)</th>
-                    <th>Marge €</th>
-                    <th>Coef.</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {margins.map((m) => (
-                    <tr key={m.id}>
-                      <td data-label="Code">{m.code}</td>
-                      <td data-label="Article">{m.name}</td>
-                      <td data-label="PNET (HT)">{formatEur(m.pnet)}</td>
-                      <td data-label="PV (TTC)">{formatEur(m.pvTtc)}</td>
-                      <td data-label="Marge €">{formatEur(m.marginHt)}</td>
-                      <td data-label="Coef.">
-                        {m.coefficient == null ? '—' : m.coefficient.toFixed(2)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <Stack spacing={1}>
+              {longForecast.map((f) => (
+                <Stack
+                  key={f.date}
+                  direction="row"
+                  spacing={1}
+                  sx={{ alignItems: 'baseline', flexWrap: 'wrap' }}
+                >
+                  <Chip
+                    size="small"
+                    color="primary"
+                    variant="outlined"
+                    label={f.weeks <= 0 ? 'cette semaine' : `dans ${f.weeks} sem.`}
+                  />
+                  <Typography variant="body2" sx={{ fontWeight: 600, textTransform: 'capitalize' }}>
+                    {f.label}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    — {f.conseil}
+                  </Typography>
+                </Stack>
+              ))}
+            </Stack>
           )}
-        </section>
+        </CardContent>
+      </Card>
 
-        <section className="card">
-          <h2>Activité récente</h2>
-          <p className="muted small">
-            {recentEtab ? `7 derniers jours — ${recentEtab}` : 'Aucun établissement.'}
-          </p>
-          {recent.length === 0 ? (
-            <p className="muted">Aucune saisie sur les 7 derniers jours.</p>
-          ) : (
-            <div className="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Jour</th>
-                    <th>CA (TTC)</th>
-                    <th>Perte</th>
-                    <th>Mot du jour</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {recent.map((r) => (
-                    <tr key={r.date}>
-                      <td data-label="Jour">{formatDateFr(r.date)}</td>
-                      <td data-label="CA (TTC)">{formatEur(r.revenue)}</td>
-                      <td data-label="Perte">{formatEur(r.loss)}</td>
-                      <td data-label="Mot du jour">{r.noteOfDay || '—'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </section>
-      </div>
-    </div>
+      <Box
+        sx={{
+          display: 'grid',
+          gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' },
+          gap: 3,
+        }}
+      >
+        <Card>
+          <CardContent>
+            <Typography variant="h2" gutterBottom>
+              Marges (articles fabriqués)
+            </Typography>
+            {margins.length === 0 ? (
+              <Typography color="text.secondary">Aucune donnée de marge disponible.</Typography>
+            ) : (
+              <Box sx={{ height: 420, width: '100%' }}>
+                <DataGrid
+                  rows={margins}
+                  columns={MARGIN_COLUMNS}
+                  showToolbar
+                  disableRowSelectionOnClick
+                  sortingOrder={['asc', 'desc', null]}
+                  pageSizeOptions={[10, 25, 50]}
+                  initialState={{
+                    pagination: { paginationModel: { pageSize: 10 } },
+                    sorting: { sortModel: [{ field: 'coefficient', sort: 'desc' }] },
+                  }}
+                  sx={{ border: 0 }}
+                />
+              </Box>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent>
+            <Typography variant="h2" gutterBottom>
+              Activité récente
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              {recentEtab ? `7 derniers jours — ${recentEtab}` : 'Aucun établissement.'}
+            </Typography>
+            {recent.length === 0 ? (
+              <Typography color="text.secondary">
+                Aucune saisie sur les 7 derniers jours.
+              </Typography>
+            ) : (
+              <Box sx={{ overflowX: 'auto' }}>
+                <Table sx={{ minWidth: 480 }}>
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Jour</TableCell>
+                      <TableCell>CA (TTC)</TableCell>
+                      <TableCell>Perte</TableCell>
+                      <TableCell>Mot du jour</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {recent.map((r) => (
+                      <TableRow key={r.date}>
+                        <TableCell>{formatDateFr(r.date)}</TableCell>
+                        <TableCell>{formatEur(r.revenue)}</TableCell>
+                        <TableCell>
+                          {r.losses && r.losses.length > 0
+                            ? `${r.losses.length} article${r.losses.length > 1 ? 's' : ''}`
+                            : '—'}
+                        </TableCell>
+                        <TableCell>{r.noteProd || r.noteSale || '—'}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </Box>
+            )}
+          </CardContent>
+        </Card>
+      </Box>
+
+      {/* Popup météo heure par heure (clic sur la météo d'une carte) */}
+      <Popover
+        open={Boolean(hourlyAnchor)}
+        anchorEl={hourlyAnchor?.el}
+        onClose={() => setHourlyAnchor(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+      >
+        <Box sx={{ p: 1.5, maxWidth: 360 }}>
+          <Typography variant="subtitle2" gutterBottom>
+            Météo heure par heure{hourlyAnchor ? ` — ${formatDateLongFr(hourlyAnchor.day.iso)}` : ''}
+          </Typography>
+          <Box
+            sx={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(2, 1fr)',
+              columnGap: 2,
+              rowGap: 0.25,
+              maxHeight: 320,
+              overflowY: 'auto',
+            }}
+          >
+            {(hourlyAnchor?.day.hourly ?? [])
+              .filter((h) => h.hour >= 5 && h.hour <= 23)
+              .map((h) => (
+                <Stack key={h.hour} direction="row" spacing={0.75} sx={{ alignItems: 'center' }}>
+                  <Typography variant="caption" sx={{ minWidth: 30 }}>
+                    {String(h.hour).padStart(2, '0')}h
+                  </Typography>
+                  <Box component="span">{weatherIcon(h.code).emoji}</Box>
+                  <Typography variant="caption">{h.temp != null ? `${Math.round(h.temp)}°` : '—'}</Typography>
+                  {h.precipProb != null && h.precipProb >= 30 && (
+                    <Typography variant="caption" color="primary">
+                      {h.precipProb}%
+                    </Typography>
+                  )}
+                </Stack>
+              ))}
+          </Box>
+        </Box>
+      </Popover>
+    </>
   )
 }

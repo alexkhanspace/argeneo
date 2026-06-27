@@ -4,15 +4,19 @@ import jakarta.validation.Valid;
 import java.util.List;
 import net.argeneo.iam.api.dto.EtablissementDtos.CreateEtablissementRequest;
 import net.argeneo.iam.api.dto.EtablissementDtos.EtablissementResponse;
+import net.argeneo.iam.api.dto.EtablissementDtos.UpdateEtablissementRequest;
 import net.argeneo.iam.api.dto.TenantDtos.CreateTenantRequest;
 import net.argeneo.iam.api.dto.TenantDtos.TenantResponse;
+import net.argeneo.iam.api.dto.TenantDtos.UpdateTenantRequest;
 import net.argeneo.iam.service.ImpersonationService;
 import net.argeneo.iam.service.TenantService;
 import net.argeneo.security.AuthDtos.LoginResponse;
 import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
@@ -43,6 +47,23 @@ public class TenantController {
         return tenantService.listTenants();
     }
 
+    @PutMapping("/{id}")
+    public TenantResponse update(@PathVariable Long id,
+                                 @Valid @RequestBody UpdateTenantRequest request) {
+        return tenantService.updateTenant(id, request);
+    }
+
+    /** Archive le tenant (désactivation) et coupe l'accès de ses utilisateurs. */
+    @DeleteMapping("/{id}")
+    public TenantResponse archive(@PathVariable Long id) {
+        return tenantService.archiveTenant(id);
+    }
+
+    @PostMapping("/{id}/restore")
+    public TenantResponse restore(@PathVariable Long id) {
+        return tenantService.restoreTenant(id);
+    }
+
     // --- Établissements d'un tenant (création à la souscription) ---
 
     @PostMapping("/{tenantId}/etablissements")
@@ -50,6 +71,13 @@ public class TenantController {
     public EtablissementResponse addEtablissement(@PathVariable Long tenantId,
                                                   @Valid @RequestBody CreateEtablissementRequest request) {
         return tenantService.addEtablissement(tenantId, request);
+    }
+
+    @PutMapping("/{tenantId}/etablissements/{etablissementId}")
+    public EtablissementResponse updateEtablissement(@PathVariable Long tenantId,
+                                                     @PathVariable Long etablissementId,
+                                                     @Valid @RequestBody UpdateEtablissementRequest request) {
+        return tenantService.updateEtablissement(tenantId, etablissementId, request);
     }
 
     @GetMapping("/{tenantId}/etablissements")

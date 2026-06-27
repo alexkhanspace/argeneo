@@ -42,6 +42,26 @@ export async function createTenant(input: CreateTenantInput): Promise<Tenant> {
   return data
 }
 
+export async function updateTenant(
+  id: number,
+  input: { name: string; recipeScope: RecipeScope },
+): Promise<Tenant> {
+  const { data } = await api.put<Tenant>(`/admin/tenants/${id}`, input)
+  return data
+}
+
+/** Archive un tenant (active=false) et coupe la connexion de ses utilisateurs. */
+export async function archiveTenant(id: number): Promise<Tenant> {
+  const { data } = await api.delete<Tenant>(`/admin/tenants/${id}`)
+  return data
+}
+
+/** Réactive un tenant archivé et ses utilisateurs. */
+export async function restoreTenant(id: number): Promise<Tenant> {
+  const { data } = await api.post<Tenant>(`/admin/tenants/${id}/restore`)
+  return data
+}
+
 // --- Patron : etablissements (lecture seule ; création réservée au Super-Admin) ---
 export async function listEtablissements(): Promise<Etablissement[]> {
   const { data } = await api.get<Etablissement[]>('/etablissements')
@@ -54,11 +74,31 @@ export async function listTenantEtablissements(tenantId: number): Promise<Etabli
   return data
 }
 
+export interface EtablissementInput {
+  name: string
+  address?: string | null
+  latitude?: number | null
+  longitude?: number | null
+  description?: string | null
+}
+
 export async function createTenantEtablissement(
   tenantId: number,
-  input: { name: string; address?: string },
+  input: EtablissementInput,
 ): Promise<Etablissement> {
   const { data } = await api.post<Etablissement>(`/admin/tenants/${tenantId}/etablissements`, input)
+  return data
+}
+
+export async function updateTenantEtablissement(
+  tenantId: number,
+  etablissementId: number,
+  input: EtablissementInput,
+): Promise<Etablissement> {
+  const { data } = await api.put<Etablissement>(
+    `/admin/tenants/${tenantId}/etablissements/${etablissementId}`,
+    input,
+  )
   return data
 }
 
@@ -81,6 +121,16 @@ export async function resetUserPassword(
   await api.put('/admin/users/reset-password', { kind, id, newPassword })
 }
 
+/** Désactive un utilisateur (soft-delete : coupe la connexion, réversible). */
+export async function deactivateUser(id: number): Promise<void> {
+  await api.delete(`/admin/users/${id}`)
+}
+
+/** Change le rôle d'un utilisateur métier (PATRON ↔ EMPLOYE). */
+export async function setUserRole(id: number, role: 'PATRON' | 'EMPLOYE'): Promise<void> {
+  await api.put(`/admin/users/${id}/role`, { role })
+}
+
 // --- Patron : employés ---
 export async function listEmployees(): Promise<AppUser[]> {
   const { data } = await api.get<AppUser[]>('/users')
@@ -93,6 +143,14 @@ export async function createEmployee(input: {
   fullName: string
 }): Promise<AppUser> {
   const { data } = await api.post<AppUser>('/users', input)
+  return data
+}
+
+export async function updateEmployee(
+  id: number,
+  input: { fullName: string; email: string },
+): Promise<AppUser> {
+  const { data } = await api.put<AppUser>(`/users/${id}`, input)
   return data
 }
 

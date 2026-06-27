@@ -16,14 +16,22 @@ public final class MaterialDtos {
     public record CreateRawMaterialRequest(
             @NotBlank String name,
             @NotNull Unit referenceUnit,
-            @NotNull @PositiveOrZero BigDecimal pricePerUnit) {
+            @NotNull @PositiveOrZero BigDecimal pricePerUnit,
+            /** Famille de classement (optionnelle). */
+            Long familleId,
+            /** Sous-famille de classement (optionnelle, rattachée à familleId). */
+            Long sousFamilleId) {
     }
 
     /** Mise à jour (renseigner le nouveau prix = enregistrer le dernier achat). */
     public record UpdateRawMaterialRequest(
             @NotBlank String name,
             @NotNull @PositiveOrZero BigDecimal pricePerUnit,
-            Boolean active) {
+            Boolean active,
+            /** Famille de classement (optionnelle). */
+            Long familleId,
+            /** Sous-famille de classement (optionnelle, rattachée à familleId). */
+            Long sousFamilleId) {
     }
 
     public record RawMaterialResponse(
@@ -31,11 +39,16 @@ public final class MaterialDtos {
             String name,
             Unit referenceUnit,
             BigDecimal pricePerUnit,
+            Long familleId,
+            String familleName,
+            Long sousFamilleId,
+            String sousFamilleName,
             boolean active) {
 
-        public static RawMaterialResponse from(RawMaterial m) {
+        public static RawMaterialResponse from(RawMaterial m, String familleName, String sousFamilleName) {
             return new RawMaterialResponse(m.getId(), m.getName(), m.getReferenceUnit(),
-                    m.getPricePerUnit(), m.isActive());
+                    m.getPricePerUnit(), m.getFamilleId(), familleName,
+                    m.getSousFamilleId(), sousFamilleName, m.isActive());
         }
     }
 }

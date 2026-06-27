@@ -20,7 +20,8 @@ import org.springframework.transaction.annotation.Transactional;
 public class MeAccessService {
 
     /** Une etablissement accessible + les permissions de l'utilisateur courant dessus. */
-    public record AccessibleEtablissement(Long id, String name, List<String> permissions) {
+    public record AccessibleEtablissement(Long id, String name, Double latitude, Double longitude,
+                                          String description, String address, List<String> permissions) {
     }
 
     private final EtablissementRepository etablissementRepository;
@@ -48,7 +49,8 @@ public class MeAccessService {
             List<String> allCodes = permissionRepository.findAllByOrderByCategoryAscCodeAsc()
                     .stream().map(Permission::getCode).sorted().toList();
             return etablissementRepository.findAllByOrderByNameAsc().stream()
-                    .map(b -> new AccessibleEtablissement(b.getId(), b.getName(), allCodes))
+                    .map(b -> new AccessibleEtablissement(b.getId(), b.getName(),
+                            b.getLatitude(), b.getLongitude(), b.getDescription(), b.getAddress(), allCodes))
                     .toList();
         }
 
@@ -60,9 +62,14 @@ public class MeAccessService {
 
         List<AccessibleEtablissement> result = new ArrayList<>();
         byEtablissement.forEach((etablissementId, codes) -> {
-            String name = etablissementRepository.findById(etablissementId)
-                    .map(Etablissement::getName).orElse("Etablissement #" + etablissementId);
-            result.add(new AccessibleEtablissement(etablissementId, name, codes.stream().sorted().toList()));
+            Etablissement etab = etablissementRepository.findById(etablissementId).orElse(null);
+            String name = etab != null ? etab.getName() : "Etablissement #" + etablissementId;
+            result.add(new AccessibleEtablissement(etablissementId, name,
+                    etab != null ? etab.getLatitude() : null,
+                    etab != null ? etab.getLongitude() : null,
+                    etab != null ? etab.getDescription() : null,
+                    etab != null ? etab.getAddress() : null,
+                    codes.stream().sorted().toList()));
         });
         return result;
     }

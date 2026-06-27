@@ -4,9 +4,7 @@ import jakarta.validation.Valid;
 import java.time.LocalDate;
 import java.util.List;
 import net.argeneo.daily.api.dto.DailyDtos.DailyEntryResponse;
-import net.argeneo.daily.api.dto.DailyDtos.SetLossRequest;
-import net.argeneo.daily.api.dto.DailyDtos.SetNoteRequest;
-import net.argeneo.daily.api.dto.DailyDtos.SetRevenueRequest;
+import net.argeneo.daily.api.dto.DailyDtos.UpsertDailyRequest;
 import net.argeneo.daily.service.DailyEntryService;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -49,30 +47,16 @@ public class DailyEntryController {
         return service.listRange(etablissementId, from, to);
     }
 
-    @PutMapping("/{date}/revenue")
-    @PreAuthorize("@etablissementAccess.canRevenue(#etablissementId)")
-    public DailyEntryResponse setRevenue(
+    /**
+     * Enregistrement global de la journée (CA, casse par article, mots du jour)
+     * en une seule requête. Le service n'applique que les parties autorisées.
+     */
+    @PutMapping("/{date}")
+    @PreAuthorize("@etablissementAccess.canReadDaily(#etablissementId)")
+    public DailyEntryResponse upsert(
             @PathVariable Long etablissementId,
             @PathVariable @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
-            @Valid @RequestBody SetRevenueRequest request) {
-        return service.setRevenue(etablissementId, date, request.revenue());
-    }
-
-    @PutMapping("/{date}/loss")
-    @PreAuthorize("@etablissementAccess.canLoss(#etablissementId)")
-    public DailyEntryResponse setLoss(
-            @PathVariable Long etablissementId,
-            @PathVariable @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
-            @Valid @RequestBody SetLossRequest request) {
-        return service.setLoss(etablissementId, date, request.loss());
-    }
-
-    @PutMapping("/{date}/note")
-    @PreAuthorize("@etablissementAccess.canNote(#etablissementId)")
-    public DailyEntryResponse setNote(
-            @PathVariable Long etablissementId,
-            @PathVariable @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
-            @RequestBody SetNoteRequest request) {
-        return service.setNote(etablissementId, date, request.note());
+            @Valid @RequestBody UpsertDailyRequest request) {
+        return service.upsert(etablissementId, date, request);
     }
 }

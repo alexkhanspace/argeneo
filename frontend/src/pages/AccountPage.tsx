@@ -1,5 +1,7 @@
 import { useMemo } from 'react'
+import { Box, Card, CardContent, List, ListItem, ListItemText, Typography } from '@mui/material'
 import { useAuth } from '../auth/AuthContext'
+import { PageHeader } from '../components/PageHeader'
 
 export function AccountPage() {
   const { me } = useAuth()
@@ -22,32 +24,43 @@ export function AccountPage() {
   if (!me) return null
 
   return (
-    <div className="page">
-      <h1>Mon compte</h1>
-      <section className="card">
-        <p>
-          <strong>{me.fullName}</strong> — {me.email}
-        </p>
-        <p className="muted">Rôle : Employé</p>
-      </section>
+    <>
+      <PageHeader title="Mon compte" />
 
-      <section className="card">
-        <h2>Mes permissions par Établissement</h2>
-        {byEtablissement.length === 0 ? (
-          <p className="muted">Aucune permission attribuée pour le moment.</p>
-        ) : (
-          byEtablissement.map(([etablissementId, codes]) => (
-            <div key={etablissementId} className="perm-group">
-              <h3>Etablissement #{etablissementId}</h3>
-              <ul>
-                {codes.sort().map((code) => (
-                  <li key={code}>{code}</li>
-                ))}
-              </ul>
-            </div>
-          ))
-        )}
-      </section>
-    </div>
+      <Card sx={{ mb: 3 }}>
+        <CardContent>
+          <Typography>
+            <strong>{me.fullName}</strong> — {me.email}
+          </Typography>
+          <Typography color="text.secondary">Rôle : Employé</Typography>
+        </CardContent>
+      </Card>
+
+      <Card sx={{ mb: 3 }}>
+        <CardContent>
+          <Typography variant="h2" gutterBottom>
+            Mes permissions par Établissement
+          </Typography>
+          {byEtablissement.length === 0 ? (
+            <Typography color="text.secondary">
+              Aucune permission attribuée pour le moment.
+            </Typography>
+          ) : (
+            byEtablissement.map(([etablissementId, codes]) => (
+              <Box key={etablissementId} sx={{ mb: 2 }}>
+                <Typography variant="h3">Etablissement #{etablissementId}</Typography>
+                <List dense disablePadding>
+                  {codes.sort().map((code) => (
+                    <ListItem key={code} disablePadding>
+                      <ListItemText primary={code} />
+                    </ListItem>
+                  ))}
+                </List>
+              </Box>
+            ))
+          )}
+        </CardContent>
+      </Card>
+    </>
   )
 }

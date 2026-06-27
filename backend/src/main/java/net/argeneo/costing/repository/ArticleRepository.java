@@ -12,4 +12,8 @@ public interface ArticleRepository extends JpaRepository<Article, Long> {
 
     /** Dernier code attribué pour un préfixe ('A' ou 'R') dans le tenant courant. */
     Optional<Article> findFirstByCodeStartingWithOrderByCodeDesc(String prefix);
+
+    boolean existsByFamilleId(Long familleId);
+
+    boolean existsBySousFamilleId(Long sousFamilleId);
 }

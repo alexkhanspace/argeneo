@@ -1,5 +1,18 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useParams } from 'react-router-dom'
+import {
+  Alert,
+  Box,
+  Button,
+  Card,
+  CardContent,
+  Checkbox,
+  FormControlLabel,
+  Stack,
+  Tab,
+  Tabs,
+  Typography,
+} from '@mui/material'
 import { errorMessage } from '../../api/client'
 import {
   assignPermissions,
@@ -9,6 +22,7 @@ import {
   listPresets,
 } from '../../api/iam'
 import type { Etablissement, Permission, Preset, UserPermissions } from '../../api/types'
+import { PageHeader } from '../../components/PageHeader'
 
 export function EmployeePermissionsPage() {
   const { id } = useParams()
@@ -89,71 +103,97 @@ export function EmployeePermissionsPage() {
 
   if (etablissements.length === 0) {
     return (
-      <div className="page">
-        <h1>Permissions</h1>
-        <p className="muted">Créez d'abord au moins un Établissement.</p>
-      </div>
+      <>
+        <PageHeader title="Permissions" />
+      </>
     )
   }
 
   return (
-    <div className="page">
-      <h1>Permissions de l'employé #{userId}</h1>
-      <p className="muted">
-        Les droits sont attribués <strong>par Établissement</strong> : un employé peut être manager
-        ici et vendeur ailleurs.
-      </p>
+    <>
+      <PageHeader
+        title={`Permissions de l'employé #${userId}`}
+      />
 
-      <div className="tabs">
+      <Tabs
+        value={selected ?? false}
+        onChange={(_, value) => setSelected(value)}
+        variant="scrollable"
+        scrollButtons="auto"
+        sx={{ mb: 2 }}
+      >
         {etablissements.map((b) => (
-          <button
-            key={b.id}
-            className={`tab ${selected === b.id ? 'active' : ''}`}
-            onClick={() => setSelected(b.id)}
-          >
-            {b.name}
-          </button>
+          <Tab key={b.id} value={b.id} label={b.name} />
         ))}
-      </div>
+      </Tabs>
 
-      <section className="card">
-        <div className="presets">
-          <span className="muted small">Presets :</span>
-          {presets.map((preset) => (
-            <button key={preset.code} className="btn-ghost small" onClick={() => applyPreset(preset)}>
-              {preset.label}
-            </button>
-          ))}
-          <button className="btn-ghost small" onClick={() => setChecked(new Set())}>
-            Tout décocher
-          </button>
-        </div>
+      <Card sx={{ mb: 3 }}>
+        <CardContent>
+          <Stack
+            direction="row"
+            sx={{ flexWrap: 'wrap', alignItems: 'center', gap: 1, mb: 3 }}
+          >
+            <Typography variant="body2" color="text.secondary">
+              Presets :
+            </Typography>
+            {presets.map((preset) => (
+              <Button
+                key={preset.code}
+                variant="outlined"
+                size="small"
+                onClick={() => applyPreset(preset)}
+              >
+                {preset.label}
+              </Button>
+            ))}
+            <Button variant="outlined" size="small" onClick={() => setChecked(new Set())}>
+              Tout décocher
+            </Button>
+          </Stack>
 
-        <div className="perm-groups">
-          {byCategory.map(([category, perms]) => (
-            <div key={category} className="perm-group">
-              <h3>{category}</h3>
-              {perms.map((perm) => (
-                <label key={perm.code} className="checkbox">
-                  <input
-                    type="checkbox"
-                    checked={checked.has(perm.code)}
-                    onChange={() => toggle(perm.code)}
-                  />
-                  {perm.label}
-                </label>
-              ))}
-            </div>
-          ))}
-        </div>
+          <Box
+            sx={{
+              display: 'grid',
+              gridTemplateColumns: { xs: '1fr', sm: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)' },
+              gap: 3,
+            }}
+          >
+            {byCategory.map(([category, perms]) => (
+              <Box key={category}>
+                <Typography variant="h3" gutterBottom>
+                  {category}
+                </Typography>
+                <Stack>
+                  {perms.map((perm) => (
+                    <FormControlLabel
+                      key={perm.code}
+                      control={
+                        <Checkbox
+                          checked={checked.has(perm.code)}
+                          onChange={() => toggle(perm.code)}
+                        />
+                      }
+                      label={perm.label}
+                    />
+                  ))}
+                </Stack>
+              </Box>
+            ))}
+          </Box>
 
-        {error && <div className="alert">{error}</div>}
-        {saved && <div className="success">Permissions enregistrées.</div>}
+          {error && <Alert severity="error" sx={{ mb: 2, mt: 2 }}>{error}</Alert>}
+          {saved && <Alert severity="success" sx={{ mb: 2, mt: 2 }}>Permissions enregistrées.</Alert>}
 
-        <button className="btn-primary" onClick={save} disabled={busy}>
-          {busy ? 'Enregistrement…' : 'Enregistrer'}
-        </button>
-      </section>
-    </div>
+          <Button
+            variant="contained"
+            onClick={save}
+            disabled={busy}
+            sx={{ mt: 3, width: { xs: '100%', sm: 'auto' } }}
+          >
+            {busy ? 'Enregistrement…' : 'Enregistrer'}
+          </Button>
+        </CardContent>
+      </Card>
+    </>
   )
 }

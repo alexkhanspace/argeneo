@@ -22,6 +22,12 @@ public final class TenantDtos {
             @NotBlank String patronFullName) {
     }
 
+    /** Met à jour l'enseigne (nom + portée des recettes). */
+    public record UpdateTenantRequest(
+            @NotBlank String name,
+            RecipeScope recipeScope) {
+    }
+
     public record TenantResponse(
             Long id,
             String name,

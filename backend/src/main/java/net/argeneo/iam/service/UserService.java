@@ -5,11 +5,13 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import net.argeneo.audit.AuditService;
 import net.argeneo.common.error.ConflictException;
 import net.argeneo.common.error.ResourceNotFoundException;
 import net.argeneo.iam.api.dto.UserDtos.AssignPermissionsRequest;
 import net.argeneo.iam.api.dto.UserDtos.EtablissementPermissions;
 import net.argeneo.iam.api.dto.UserDtos.CreateEmployeeRequest;
+import net.argeneo.iam.api.dto.UserDtos.UpdateEmployeeRequest;
 import net.argeneo.iam.api.dto.UserDtos.UserPermissionsResponse;
 import net.argeneo.iam.api.dto.UserDtos.UserResponse;
 import net.argeneo.iam.domain.AppUser;
@@ -37,19 +39,22 @@ public class UserService {
     private final PermissionRepository permissionRepository;
     private final PasswordEncoder passwordEncoder;
     private final AuthAccountReader accountReader;
+    private final AuditService audit;
 
     public UserService(AppUserRepository userRepository,
                        PermissionGrantRepository grantRepository,
                        EtablissementRepository etablissementRepository,
                        PermissionRepository permissionRepository,
                        PasswordEncoder passwordEncoder,
-                       AuthAccountReader accountReader) {
+                       AuthAccountReader accountReader,
+                       AuditService audit) {
         this.userRepository = userRepository;
         this.grantRepository = grantRepository;
         this.etablissementRepository = etablissementRepository;
         this.permissionRepository = permissionRepository;
         this.passwordEncoder = passwordEncoder;
         this.accountReader = accountReader;
+        this.audit = audit;
     }
 
     /** Crée le patron d'un tenant. À appeler avec le TenantContext déjà positionné. */
@@ -72,7 +77,25 @@ public class UserService {
         employee.setPasswordHash(passwordEncoder.encode(request.password()));
         employee.setFullName(request.fullName());
         employee.setRole(UserRole.EMPLOYE);
-        return UserResponse.from(userRepository.save(employee));
+        AppUser saved = userRepository.save(employee);
+        audit.record("USER_CREATE", "USER", saved.getId(), "Employé " + saved.getFullName());
+        return UserResponse.from(saved);
+    }
+
+    /** Met à jour le nom complet et l'e-mail d'un employé. */
+    @Transactional
+    public UserResponse updateEmployee(Long userId, UpdateEmployeeRequest request) {
+        AppUser employee = requireEmployee(userId);
+        String newEmail = normalize(request.email());
+        // Vérifie la disponibilité de l'e-mail seulement s'il change réellement.
+        if (!newEmail.equals(employee.getEmail())) {
+            requireEmailAvailable(newEmail);
+            employee.setEmail(newEmail);
+        }
+        employee.setFullName(request.fullName());
+        AppUser saved = userRepository.save(employee);
+        audit.record("USER_UPDATE", "USER", saved.getId(), "Employé " + saved.getFullName());
+        return UserResponse.from(saved);
     }
 
     @Transactional(readOnly = true)
@@ -86,6 +109,7 @@ public class UserService {
         AppUser user = requireEmployee(userId);
         // Les attributions de permissions sont supprimées en cascade (FK ON DELETE CASCADE).
         userRepository.delete(user);
+        audit.record("USER_DELETE", "USER", userId, "Employé " + user.getFullName());
     }
 
     /** Remplace l'ensemble des permissions d'un employé sur une etablissement. */

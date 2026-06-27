@@ -5,5 +5,7 @@ public enum ArticleType {
     /** Acheté-revendu (ex. canette) : pas de recette, PNET = prix d'achat. */
     ACHAT_REVENTE,
     /** Fabriqué (ex. croissant) : possède une recette, PNET calculé par le moteur. */
-    FABRIQUE
+    FABRIQUE,
+    /** Menu / formule : bundle d'autres articles, PNET = somme des composants. */
+    MENU
 }

@@ -25,19 +25,23 @@ export async function listMonth(
   return data
 }
 
-// CA (TTC).
-export async function setRevenue(
+// Enregistrement global de la journée (CA, casse par article, mots du jour) — 1 requête.
+export interface UpsertDailyInput {
+  revenue?: number | null
+  clientCount?: number | null
+  losses: Array<{ articleId: number; quantity: number }>
+  noteProd?: string | null
+  noteSale?: string | null
+}
+
+export async function saveDay(
   etablissementId: number,
   date: string,
-  revenue: number,
-): Promise<void> {
-  await api.put(`/etablissements/${etablissementId}/daily/${date}/revenue`, { revenue })
-}
-
-export async function setLoss(etablissementId: number, date: string, loss: number): Promise<void> {
-  await api.put(`/etablissements/${etablissementId}/daily/${date}/loss`, { loss })
-}
-
-export async function setNote(etablissementId: number, date: string, note: string): Promise<void> {
-  await api.put(`/etablissements/${etablissementId}/daily/${date}/note`, { note })
+  input: UpsertDailyInput,
+): Promise<DailyEntry> {
+  const { data } = await api.put<DailyEntry>(
+    `/etablissements/${etablissementId}/daily/${date}`,
+    input,
+  )
+  return data
 }

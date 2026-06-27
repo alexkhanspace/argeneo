@@ -1,5 +1,5 @@
 // Service worker Argéneo — coquille hors-ligne + passthrough API.
-const CACHE = 'argeneo-v1'
+const CACHE = 'argeneo-v2'
 const SHELL = ['/', '/index.html', '/argeneo-logo.png', '/manifest.webmanifest']
 
 self.addEventListener('install', (event) => {
@@ -32,6 +32,12 @@ self.addEventListener('fetch', (event) => {
   // Navigation (HTML) : réseau d'abord, repli sur la coquille en cache.
   if (request.mode === 'navigate') {
     event.respondWith(fetch(request).catch(() => caches.match('/index.html')))
+    return
+  }
+
+  // Manifest : réseau d'abord (sinon l'orientation/les icônes restent figées).
+  if (url.pathname === '/manifest.webmanifest') {
+    event.respondWith(fetch(request).catch(() => caches.match(request)))
     return
   }
 

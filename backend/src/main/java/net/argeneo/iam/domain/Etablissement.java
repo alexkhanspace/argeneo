@@ -36,6 +36,17 @@ public class Etablissement {
     @Column(length = 500)
     private String address;
 
+    /** Description libre (type d'établissement, spécialités) — contexte pour l'IA. */
+    @Column(columnDefinition = "text")
+    private String description;
+
+    /** Latitude/longitude (issues de la BAN) — alimentent la météo du calendrier. */
+    @Column
+    private Double latitude;
+
+    @Column
+    private Double longitude;
+
     @Column(nullable = false)
     private boolean active = true;
 

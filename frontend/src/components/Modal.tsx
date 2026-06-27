@@ -1,4 +1,14 @@
-import { useEffect, type ReactNode } from 'react'
+import type { ReactNode } from 'react'
+import {
+  Dialog,
+  DialogContent,
+  DialogTitle,
+  IconButton,
+  Typography,
+  useMediaQuery,
+} from '@mui/material'
+import CloseIcon from '@mui/icons-material/Close'
+import { theme } from '../theme'
 
 interface ModalProps {
   open: boolean
@@ -7,34 +17,29 @@ interface ModalProps {
   children: ReactNode
 }
 
-/** Modale générique : overlay, fermeture par Échap / clic extérieur / croix. */
+/**
+ * Modale générique adossée à MUI Dialog (overlay, Échap, clic extérieur, croix).
+ * Plein écran sur mobile ; croix positionnée proprement en haut à droite.
+ * Même signature que l'ancienne version maison — les pages appelantes sont inchangées.
+ */
 export function Modal({ open, title, onClose, children }: ModalProps) {
-  useEffect(() => {
-    if (!open) return
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
-    }
-    document.addEventListener('keydown', onKey)
-    document.body.style.overflow = 'hidden'
-    return () => {
-      document.removeEventListener('keydown', onKey)
-      document.body.style.overflow = ''
-    }
-  }, [open, onClose])
-
-  if (!open) return null
-
+  const fullScreen = useMediaQuery(theme.breakpoints.down('sm'))
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-header">
-          <h2 className="modal-title">{title}</h2>
-          <button className="modal-close" aria-label="Fermer" onClick={onClose}>
-            ×
-          </button>
-        </div>
-        <div className="modal-body">{children}</div>
-      </div>
-    </div>
+    <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm" fullScreen={fullScreen}>
+      {/* pr réservé pour la croix afin que le titre ne passe pas dessous. */}
+      <DialogTitle component="div" sx={{ pr: 7 }}>
+        <Typography variant="h6" component="span" sx={{ textTransform: 'capitalize' }}>
+          {title}
+        </Typography>
+        <IconButton
+          aria-label="Fermer"
+          onClick={onClose}
+          sx={{ position: 'absolute', right: 8, top: 8, color: 'text.secondary' }}
+        >
+          <CloseIcon />
+        </IconButton>
+      </DialogTitle>
+      <DialogContent dividers>{children}</DialogContent>
+    </Dialog>
   )
 }

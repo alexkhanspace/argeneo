@@ -11,6 +11,7 @@ import net.argeneo.costing.entity.Article;
 import net.argeneo.costing.entity.ArticleType;
 import net.argeneo.costing.entity.Recipe;
 import net.argeneo.costing.entity.RecipeComponent;
+import net.argeneo.costing.entity.RecipeStep;
 import net.argeneo.costing.repository.ArticleRepository;
 import net.argeneo.costing.repository.RawMaterialRepository;
 import net.argeneo.costing.repository.RecipeComponentRepository;
@@ -68,6 +69,20 @@ public class RecipeService {
         recipe.setLossRate(request.lossRate());
         recipe.setMethod(request.method());
         recipe.setDurationMinutes(request.durationMinutes());
+
+        // Remplace les étapes : on vide la collection (orphanRemoval) et on recrée par ordre d'index.
+        recipe.getSteps().clear();
+        List<String> steps = request.steps() == null ? List.of() : request.steps();
+        int position = 0;
+        for (String instruction : steps) {
+            if (instruction == null || instruction.isBlank()) {
+                continue;
+            }
+            RecipeStep step = new RecipeStep();
+            step.setPosition(position++);
+            step.setInstruction(instruction.trim());
+            recipe.getSteps().add(step);
+        }
         recipe = recipeRepository.save(recipe);
 
         componentRepository.deleteByRecipeId(recipe.getId());
@@ -114,8 +129,12 @@ public class RecipeService {
         List<ComponentResponse> components = componentRepository.findByRecipeId(recipe.getId()).stream()
                 .map(this::toComponentResponse)
                 .toList();
+        List<String> steps = recipe.getSteps().stream()
+                .sorted(java.util.Comparator.comparing(RecipeStep::getPosition))
+                .map(RecipeStep::getInstruction)
+                .toList();
         return new RecipeResponse(recipe.getArticleId(), recipe.getYieldQuantity(), recipe.getYieldUnit(),
-                recipe.getLossRate(), recipe.getMethod(), recipe.getDurationMinutes(), components);
+                recipe.getLossRate(), recipe.getMethod(), recipe.getDurationMinutes(), components, steps);
     }
 
     private ComponentResponse toComponentResponse(RecipeComponent c) {

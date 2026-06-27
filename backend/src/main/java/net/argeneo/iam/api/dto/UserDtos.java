@@ -20,6 +20,12 @@ public final class UserDtos {
             @NotBlank String fullName) {
     }
 
+    /** Édition d'un employé (parcours Patron) : nom complet + e-mail. */
+    public record UpdateEmployeeRequest(
+            @NotBlank String fullName,
+            @NotBlank @Email String email) {
+    }
+
     public record UserResponse(
             Long id,
             String email,

@@ -4,6 +4,7 @@ import jakarta.validation.Valid;
 import java.util.List;
 import net.argeneo.iam.api.dto.UserDtos.AssignPermissionsRequest;
 import net.argeneo.iam.api.dto.UserDtos.CreateEmployeeRequest;
+import net.argeneo.iam.api.dto.UserDtos.UpdateEmployeeRequest;
 import net.argeneo.iam.api.dto.UserDtos.UserPermissionsResponse;
 import net.argeneo.iam.api.dto.UserDtos.UserResponse;
 import net.argeneo.iam.service.UserService;
@@ -40,6 +41,12 @@ public class UserController {
     @GetMapping
     public List<UserResponse> listEmployees() {
         return userService.listEmployees();
+    }
+
+    @PutMapping("/{id}")
+    public UserResponse updateEmployee(@PathVariable Long id,
+                                       @Valid @RequestBody UpdateEmployeeRequest request) {
+        return userService.updateEmployee(id, request);
     }
 
     @GetMapping("/{id}/permissions")

@@ -1,14 +1,38 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { Link } from 'react-router-dom'
+import { useNavigate } from 'react-router-dom'
+import {
+  Alert,
+  Box,
+  Button,
+  Card,
+  CardContent,
+  IconButton,
+  Stack,
+  TextField,
+  Tooltip,
+  Typography,
+  useMediaQuery,
+} from '@mui/material'
+import { useTheme } from '@mui/material/styles'
+import { DataGrid, type GridColDef } from '@mui/x-data-grid'
+import AddIcon from '@mui/icons-material/Add'
+import EditIcon from '@mui/icons-material/Edit'
+import TuneIcon from '@mui/icons-material/Tune'
+import DeleteIcon from '@mui/icons-material/Delete'
 import { errorMessage } from '../../api/client'
-import { createEmployee, deleteEmployee, listEmployees } from '../../api/iam'
+import { createEmployee, deleteEmployee, listEmployees, updateEmployee } from '../../api/iam'
 import type { AppUser } from '../../api/types'
 import { Modal } from '../../components/Modal'
+import { PageHeader } from '../../components/PageHeader'
 
 export function EmployeesPage() {
+  const navigate = useNavigate()
   const [items, setItems] = useState<AppUser[]>([])
   const [listError, setListError] = useState<string | null>(null)
-  const [search, setSearch] = useState('')
+
+  // Mobile : liste de cartes (fiches) au lieu du tableau.
+  const theme = useTheme()
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'))
 
   const [open, setOpen] = useState(false)
   const [fullName, setFullName] = useState('')
@@ -16,6 +40,37 @@ export function EmployeesPage() {
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+
+  const [editOpen, setEditOpen] = useState(false)
+  const [editId, setEditId] = useState<number | null>(null)
+  const [editFullName, setEditFullName] = useState('')
+  const [editEmail, setEditEmail] = useState('')
+  const [editError, setEditError] = useState<string | null>(null)
+  const [editBusy, setEditBusy] = useState(false)
+
+  const onEdit = (u: AppUser) => {
+    setEditId(u.id)
+    setEditFullName(u.fullName)
+    setEditEmail(u.email)
+    setEditError(null)
+    setEditOpen(true)
+  }
+
+  const onEditSubmit = async (e: FormEvent) => {
+    e.preventDefault()
+    if (editId == null) return
+    setEditError(null)
+    setEditBusy(true)
+    try {
+      await updateEmployee(editId, { fullName: editFullName, email: editEmail })
+      setEditOpen(false)
+      refresh()
+    } catch (err) {
+      setEditError(errorMessage(err))
+    } finally {
+      setEditBusy(false)
+    }
+  }
 
   const refresh = () => {
     listEmployees().then(setItems).catch((e) => setListError(errorMessage(e)))
@@ -32,9 +87,43 @@ export function EmployeesPage() {
     }
   }
 
-  const filtered = items.filter((u) =>
-    `${u.fullName} ${u.email}`.toLowerCase().includes(search.trim().toLowerCase()),
-  )
+  const columns: GridColDef<AppUser>[] = [
+    { field: 'fullName', headerName: 'Nom', flex: 1, minWidth: 160 },
+    {
+      field: 'email',
+      headerName: 'E-mail',
+      flex: 1,
+      minWidth: 200,
+      renderCell: (p) => (p.row.email ? p.row.email : '—'),
+    },
+    {
+      field: 'actions',
+      headerName: '',
+      width: 140,
+      sortable: false,
+      filterable: false,
+      disableColumnMenu: true,
+      renderCell: (p) => (
+        <Stack direction="row" sx={{ gap: 0.5, justifyContent: 'flex-end', width: '100%' }}>
+          <Tooltip title="Modifier">
+            <IconButton size="small" onClick={() => onEdit(p.row)}>
+              <EditIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Permissions">
+            <IconButton size="small" onClick={() => navigate(`/employees/${p.row.id}/permissions`)}>
+              <TuneIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Supprimer">
+            <IconButton size="small" color="error" onClick={() => onDelete(p.row)}>
+              <DeleteIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+        </Stack>
+      ),
+    },
+  ]
 
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault()
@@ -55,88 +144,157 @@ export function EmployeesPage() {
   }
 
   return (
-    <div className="page">
-      <div className="page-head">
-        <div>
-          <h1>Équipe</h1>
-          <p className="muted">Créez vos employés, puis attribuez leurs permissions par établissement.</p>
-        </div>
-        <button className="btn-primary" onClick={() => setOpen(true)}>
-          <i className="fa-solid fa-plus" /> Nouvel employé
-        </button>
-      </div>
+    <>
+      <PageHeader
+        title="Équipe"
+        action={
+          <Button variant="contained" startIcon={<AddIcon />} onClick={() => setOpen(true)}>
+            Nouvel employé
+          </Button>
+        }
+      />
 
-      {listError && <div className="alert">{listError}</div>}
+      {listError && (
+        <Alert severity="error" sx={{ mb: 2 }}>
+          {listError}
+        </Alert>
+      )}
 
-      <section className="card">
-        <input
-          className="search"
-          type="search"
-          placeholder="Rechercher un employé…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
-        {items.length === 0 ? (
-          <p className="muted">Aucun employé. Cliquez sur « + Nouvel employé ».</p>
-        ) : filtered.length === 0 ? (
-          <p className="muted">Aucun résultat pour « {search} ».</p>
-        ) : (
-          <div className="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Nom</th>
-                  <th>E-mail</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((u) => (
-                  <tr key={u.id}>
-                    <td data-label="Nom">{u.fullName}</td>
-                    <td data-label="E-mail">{u.email}</td>
-                    <td data-label="" className="actions">
-                      <Link className="btn-link" to={`/employees/${u.id}/permissions`}>
-                        <i className="fa-solid fa-key" /> Permissions
-                      </Link>
-                      <button className="btn-link danger" onClick={() => onDelete(u)}>
-                        <i className="fa-solid fa-trash" /> Supprimer
-                      </button>
-                    </td>
-                  </tr>
+      <Card sx={{ mb: 3 }}>
+        <CardContent>
+          {items.length === 0 ? (
+            <Typography color="text.secondary">
+              Aucun employé. Cliquez sur « + Nouvel employé ».
+            </Typography>
+          ) : isMobile ? (
+            <Stack spacing={1.5}>
+              {[...items]
+                .sort((a, b) => a.fullName.localeCompare(b.fullName))
+                .map((u) => (
+                  <Card
+                    key={u.id}
+                    variant="outlined"
+                    onClick={() => onEdit(u)}
+                    sx={{ cursor: 'pointer' }}
+                  >
+                    <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
+                      <Box sx={{ minWidth: 0 }}>
+                        <Typography sx={{ fontWeight: 600 }}>{u.fullName}</Typography>
+                        <Typography variant="body2" color="text.secondary" sx={{ wordBreak: 'break-all' }}>
+                          {u.email || '—'}
+                        </Typography>
+                      </Box>
+                      <Stack direction="row" sx={{ justifyContent: 'flex-end', gap: 0.5, mt: 0.5 }}>
+                        <IconButton
+                          size="small"
+                          aria-label="Modifier"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            onEdit(u)
+                          }}
+                        >
+                          <EditIcon fontSize="small" />
+                        </IconButton>
+                        <IconButton
+                          size="small"
+                          aria-label="Permissions"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            navigate(`/employees/${u.id}/permissions`)
+                          }}
+                        >
+                          <TuneIcon fontSize="small" />
+                        </IconButton>
+                        <IconButton
+                          size="small"
+                          color="error"
+                          aria-label="Supprimer"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            onDelete(u)
+                          }}
+                        >
+                          <DeleteIcon fontSize="small" />
+                        </IconButton>
+                      </Stack>
+                    </CardContent>
+                  </Card>
                 ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
+            </Stack>
+          ) : (
+            <Box sx={{ height: 560, width: '100%' }}>
+              <DataGrid
+                rows={items}
+                columns={columns}
+                showToolbar
+                disableRowSelectionOnClick
+                sortingOrder={['asc', 'desc', null]}
+                pageSizeOptions={[25, 50, 100]}
+                initialState={{ pagination: { paginationModel: { pageSize: 25 } } }}
+                sx={{ border: 0 }}
+              />
+            </Box>
+          )}
+        </CardContent>
+      </Card>
 
       <Modal open={open} onClose={() => setOpen(false)} title="Nouvel employé">
         <form onSubmit={onSubmit}>
-          <label>
-            Nom complet
-            <input value={fullName} onChange={(e) => setFullName(e.target.value)} required autoFocus />
-          </label>
-          <label>
-            E-mail
-            <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
-          </label>
-          <label>
-            Mot de passe (8+ car.)
-            <input
-              type="password"
-              value={password}
-              minLength={8}
-              onChange={(e) => setPassword(e.target.value)}
+          <Stack spacing={2} sx={{ mt: 1 }}>
+            <TextField
+              label="Nom complet"
+              value={fullName}
+              onChange={(e) => setFullName(e.target.value)}
+              required
+              autoFocus
+            />
+            <TextField
+              label="E-mail"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
               required
             />
-          </label>
-          {error && <div className="alert">{error}</div>}
-          <button className="btn-primary" type="submit" disabled={busy}>
-            {busy ? 'Création…' : 'Créer l\'employé'}
-          </button>
+            <TextField
+              label="Mot de passe (8+ car.)"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              slotProps={{ htmlInput: { minLength: 8 } }}
+            />
+            {error && <Alert severity="error">{error}</Alert>}
+            <Button type="submit" variant="contained" disabled={busy}>
+              {busy ? 'Création…' : "Créer l'employé"}
+            </Button>
+          </Stack>
         </form>
       </Modal>
-    </div>
+
+      <Modal open={editOpen} onClose={() => setEditOpen(false)} title="Modifier l'employé">
+        <form onSubmit={onEditSubmit}>
+          <Stack spacing={2} sx={{ mt: 1 }}>
+            <TextField
+              label="Nom complet"
+              value={editFullName}
+              onChange={(e) => setEditFullName(e.target.value)}
+              required
+              autoFocus
+            />
+            <TextField
+              label="E-mail"
+              type="email"
+              value={editEmail}
+              onChange={(e) => setEditEmail(e.target.value)}
+              required
+            />
+            {editError && <Alert severity="error">{editError}</Alert>}
+            <Button type="submit" variant="contained" disabled={editBusy}>
+              {editBusy ? 'Enregistrement…' : 'Enregistrer'}
+            </Button>
+          </Stack>
+        </form>
+      </Modal>
+    </>
   )
 }

@@ -29,7 +29,9 @@ public final class RecipeDtos {
             @NotNull @PositiveOrZero BigDecimal lossRate,
             String method,
             Integer durationMinutes,
-            @Valid List<ComponentRequest> components) {
+            @Valid List<ComponentRequest> components,
+            /** Étapes de préparation ordonnées (instructions). */
+            List<String> steps) {
     }
 
     public record ComponentResponse(
@@ -49,6 +51,8 @@ public final class RecipeDtos {
             BigDecimal lossRate,
             String method,
             Integer durationMinutes,
-            List<ComponentResponse> components) {
+            List<ComponentResponse> components,
+            /** Étapes de préparation ordonnées par position. */
+            List<String> steps) {
     }
 }

@@ -1,0 +1,86 @@
+package net.argeneo.insights.api;
+
+import java.io.IOException;
+import net.argeneo.insights.GeminiClient;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.server.ResponseStatusException;
+
+/** Édition d'image par IA (mise en scène d'une photo réelle pour une pub). */
+@RestController
+@PreAuthorize("hasRole('PATRON')")
+public class AiImageController {
+
+    private final GeminiClient gemini;
+
+    public AiImageController(GeminiClient gemini) {
+        this.gemini = gemini;
+    }
+
+    /** Sublime/met en scène une photo réelle (image-to-image), renvoie l'image PNG transformée. */
+    @PostMapping("/api/ai/enhance-image")
+    public ResponseEntity<byte[]> enhance(@RequestParam("file") MultipartFile file,
+                                          @RequestParam(value = "ambiance", required = false) String ambiance,
+                                          @RequestParam(value = "instruction", required = false) String instruction) {
+        if (!gemini.isConfigured()) {
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "IA non configurée sur ce serveur");
+        }
+        if (file == null || file.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Fichier vide");
+        }
+        try {
+            String mime = file.getContentType() != null ? file.getContentType() : "image/png";
+            byte[] out = gemini.editImage(buildPrompt(ambiance, instruction), file.getBytes(), mime);
+            return ResponseEntity.ok().contentType(MediaType.IMAGE_PNG).body(out);
+        } catch (IOException e) {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Lecture du fichier impossible", e);
+        }
+    }
+
+    public record GenerateImageRequest(String prompt) {
+    }
+
+    /** Génère un visuel à partir d'un brief libre (texte→image), pour la page Communication. */
+    @PostMapping("/api/ai/generate-image")
+    public ResponseEntity<byte[]> generateImage(@RequestBody GenerateImageRequest req) {
+        if (!gemini.isConfigured()) {
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "IA non configurée sur ce serveur");
+        }
+        if (req == null || req.prompt() == null || req.prompt().isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Brief vide");
+        }
+        String prompt = "Visuel publicitaire soigné et appétissant pour une boulangerie-pâtisserie française "
+                + "artisanale, style photo professionnelle, haute qualité, lumière naturelle douce, "
+                + "sans aucun texte ni logo ajouté. Sujet : " + req.prompt().trim() + ".";
+        byte[] out = gemini.generateImage(prompt);
+        return ResponseEntity.ok().contentType(MediaType.IMAGE_PNG).body(out);
+    }
+
+    private static String buildPrompt(String ambiance, String instruction) {
+        StringBuilder p = new StringBuilder();
+        p.append("Transforme cette photo en VISUEL PUBLICITAIRE soigné pour une boulangerie-pâtisserie française. ")
+                .append("GARDE EXACTEMENT le même produit (forme, couleur, garniture) — ne le modifie pas, ne le ")
+                .append("déstructure pas, ne change pas sa nature. Détoure proprement le produit de son fond ")
+                .append("d'origine. Tu PEUX le réorienter, l'incliner, le recadrer ou le repositionner pour la ")
+                .append("composition la plus flatteuse (par exemple le présenter couché ou en biais plutôt que ")
+                .append("droit et figé) tant que cela reste le même produit. METS-LE BIEN EN VALEUR : il doit être ")
+                .append("le héros de l'image, sublimé et mis en avant (textures appétissantes, fraîcheur, ")
+                .append("gourmandise, reflets et matières soignés), comme dans une vraie publicité. Améliore la ")
+                .append("lumière, la netteté et la mise en scène, façon photo studio appétissante. ");
+        if (ambiance != null && !ambiance.isBlank()) {
+            p.append("Ambiance / décor souhaités : ").append(ambiance.trim()).append(". ");
+        }
+        if (instruction != null && !instruction.isBlank()) {
+            p.append("CONSIGNE DU CLIENT (à respecter en priorité) : ").append(instruction.trim()).append(". ");
+        }
+        p.append("Cadrage net, haute qualité, sans aucun texte ni logo ajouté.");
+        return p.toString();
+    }
+}

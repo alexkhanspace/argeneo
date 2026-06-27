@@ -43,6 +43,14 @@ public class RawMaterial {
     @Column(name = "price_per_unit", nullable = false, precision = 12, scale = 4)
     private BigDecimal pricePerUnit = BigDecimal.ZERO;
 
+    /** Famille de classement (premier niveau), optionnelle. */
+    @Column(name = "famille_id")
+    private Long familleId;
+
+    /** Sous-famille de classement (rattachée à {@link #familleId}), optionnelle. */
+    @Column(name = "sous_famille_id")
+    private Long sousFamilleId;
+
     @Column(nullable = false)
     private boolean active = true;
 
