@@ -122,6 +122,31 @@ export function InvoicesPage() {
     listFamilles('RAW_MATERIAL').then(setFamilles).catch(() => undefined)
   }, [])
 
+  // Fichier reçu via le partage système (Android) : le service worker l'a déposé, on le scanne.
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get('shared') !== '1') return
+    void (async () => {
+      try {
+        const res = await fetch('/__shared-invoice')
+        if (res.ok) {
+          const blob = await res.blob()
+          const nameHeader = res.headers.get('X-Filename')
+          const name = nameHeader ? decodeURIComponent(nameHeader) : 'facture'
+          const file = new File([blob], name, { type: blob.type || 'application/pdf' })
+          setScanning(true)
+          const detail = await scanInvoice(file)
+          refresh()
+          setReview(detail)
+        }
+      } catch (err) {
+        setError(errorMessage(err))
+      } finally {
+        setScanning(false)
+        window.history.replaceState({}, '', '/factures')
+      }
+    })()
+  }, [])
+
   const onScan = async (file: File | undefined) => {
     if (!file) return
     setError(null)
