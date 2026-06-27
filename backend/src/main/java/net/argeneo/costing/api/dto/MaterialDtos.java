@@ -28,6 +28,8 @@ public final class MaterialDtos {
             @NotBlank String name,
             @NotNull @PositiveOrZero BigDecimal pricePerUnit,
             Boolean active,
+            /** Unité de référence modifiable (optionnel) : null = inchangée. */
+            Unit referenceUnit,
             /** Famille de classement (optionnelle). */
             Long familleId,
             /** Sous-famille de classement (optionnelle, rattachée à familleId). */

@@ -102,6 +102,7 @@ export function ArticlesPage() {
   // Édition
   const [editArticle, setEditArticle] = useState<Article | null>(null)
   const [editName, setEditName] = useState('')
+  const [editType, setEditType] = useState<ArticleType>('FABRIQUE')
   const [editUnit, setEditUnit] = useState<MeasureUnit>('PIECE')
   const [editSalePrice, setEditSalePrice] = useState('')
   const [editVatRate, setEditVatRate] = useState('0.055')
@@ -188,6 +189,7 @@ export function ArticlesPage() {
   const onEdit = (a: Article) => {
     setEditArticle(a)
     setEditName(a.name)
+    setEditType(a.type)
     setEditUnit(a.unit)
     setEditSalePrice(a.salePriceTtc != null ? String(a.salePriceTtc) : '')
     setEditVatRate(a.vatRate != null ? String(a.vatRate) : '0.055')
@@ -253,11 +255,12 @@ export function ArticlesPage() {
     try {
       await updateArticle(editArticle.id, {
         name: editName,
+        type: editType,
         unit: editUnit,
         salePriceTtc: editSalePrice ? Number(editSalePrice) : null,
         vatRate: editVatRate ? Number(editVatRate) : null,
         purchasePrice:
-          editArticle.type === 'ACHAT_REVENTE' && editPurchasePrice ? Number(editPurchasePrice) : null,
+          editType === 'ACHAT_REVENTE' && editPurchasePrice ? Number(editPurchasePrice) : null,
         gtin: editGtin.trim() || null,
         description: editDescription.trim() || null,
         familleId: editFamilleId,
@@ -618,10 +621,16 @@ export function ArticlesPage() {
             <Stack spacing={2} sx={{ mt: 1 }}>
               <TextField label="Code" value={editArticle.code} disabled />
               <TextField
+                select
                 label="Type"
-                value={editArticle.type === 'FABRIQUE' ? 'Fabriqué (recette)' : 'Acheté-revendu'}
-                disabled
-              />
+                value={editType}
+                onChange={(e) => setEditType(e.target.value as ArticleType)}
+                helperText="Le code reste inchangé même si tu changes le type."
+              >
+                <MenuItem value="FABRIQUE">Fabriqué (recette)</MenuItem>
+                <MenuItem value="ACHAT_REVENTE">Acheté-revendu</MenuItem>
+                <MenuItem value="MENU">Menu / formule</MenuItem>
+              </TextField>
               <TextField
                 label="Nom"
                 value={editName}
@@ -721,7 +730,7 @@ export function ArticlesPage() {
                   </MenuItem>
                 ))}
               </TextField>
-              {editArticle.type === 'ACHAT_REVENTE' && (
+              {editType === 'ACHAT_REVENTE' && (
                 <TextField
                   label="Prix d'achat HT (€ = PNET)"
                   type="number"

@@ -69,7 +69,10 @@ public class ArticleService {
         Article article = articleRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Article introuvable : " + id));
         familleService.validateAssignment(FamilleScope.ARTICLE, request.familleId(), request.sousFamilleId());
-        // Le code et le type restent figés depuis la création ; seuls les champs ci-dessous sont éditables.
+        // Le code reste figé (identifiant métier). Le type peut être changé si demandé.
+        if (request.type() != null) {
+            article.setType(request.type());
+        }
         article.setName(request.name());
         article.setUnit(request.unit());
         article.setSalePriceTtc(request.salePriceTtc());

@@ -69,6 +69,9 @@ public class MaterialService {
         familleService.validateAssignment(FamilleScope.RAW_MATERIAL, request.familleId(), request.sousFamilleId());
         material.setName(request.name());
         material.setPricePerUnit(request.pricePerUnit());
+        if (request.referenceUnit() != null) {
+            material.setReferenceUnit(request.referenceUnit());
+        }
         material.setFamilleId(request.familleId());
         material.setSousFamilleId(request.sousFamilleId());
         if (request.active() != null) {

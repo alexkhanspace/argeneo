@@ -75,7 +75,8 @@ public class CostEngine {
                             Map<Long, CostResult> memo) {
         if (component.type() == ComponentType.RAW) {
             RawMaterialSnapshot material = catalog.rawMaterial(component.refId());
-            BigDecimal qtyInRef = component.unit().convert(component.quantity(), material.referenceUnit(), MC);
+            BigDecimal qtyInRef = convertOrExplain(component.unit(), component.quantity(),
+                    material.referenceUnit(), material.name());
             BigDecimal cost = qtyInRef.multiply(material.pricePerReferenceUnit(), MC);
             return new CostLine(material.name(), ComponentType.RAW, material.id(),
                     component.quantity(), component.unit(), cost);
@@ -83,9 +84,22 @@ public class CostEngine {
 
         // Sous-recette : coût unitaire (par unité de rendement) calculé récursivement.
         CostResult sub = compute(component.refId(), catalog, path, memo);
-        BigDecimal qtyInYieldUnit = component.unit().convert(component.quantity(), sub.yieldUnit(), MC);
+        BigDecimal qtyInYieldUnit = convertOrExplain(component.unit(), component.quantity(),
+                sub.yieldUnit(), "sous-recette #" + component.refId());
         BigDecimal cost = qtyInYieldUnit.multiply(sub.unitCost(), MC);
         return new CostLine("Sous-recette #" + component.refId(), ComponentType.SUBRECIPE,
                 component.refId(), component.quantity(), component.unit(), cost);
+    }
+
+    /** Convertit, mais en cas d'unités incompatibles renvoie un message désignant le composant fautif. */
+    private static BigDecimal convertOrExplain(Unit from, BigDecimal quantity, Unit to, String componentName) {
+        try {
+            return from.convert(quantity, to, MC);
+        } catch (IncompatibleUnitsException e) {
+            throw new CostingException("Composant « " + componentName + " » : la recette le mesure en "
+                    + from + " mais l'élément est suivi en " + to
+                    + ". Choisissez des unités de même nature (poids, volume ou pièce), ou changez l'unité "
+                    + "de la matière / de la recette.");
+        }
     }
 }

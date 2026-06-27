@@ -39,6 +39,8 @@ public final class ArticleDtos {
      */
     public record UpdateArticleRequest(
             @NotBlank String name,
+            /** Type modifiable (optionnel) : null = inchangé. Le code reste celui d'origine. */
+            ArticleType type,
             @NotNull Unit unit,
             /** Prix de vente TTC (prix client). */
             @PositiveOrZero BigDecimal salePriceTtc,

@@ -7,6 +7,8 @@ import net.argeneo.costing.api.dto.RecipeDtos.ComponentResponse;
 import net.argeneo.costing.api.dto.RecipeDtos.RecipeResponse;
 import net.argeneo.costing.api.dto.RecipeDtos.UpsertRecipeRequest;
 import net.argeneo.costing.domain.CostingSnapshots.ComponentType;
+import net.argeneo.costing.domain.Unit;
+import net.argeneo.costing.entity.RawMaterial;
 import net.argeneo.costing.entity.Article;
 import net.argeneo.costing.entity.ArticleType;
 import net.argeneo.costing.entity.Recipe;
@@ -105,9 +107,10 @@ public class RecipeService {
             if (c.rawMaterialId() == null) {
                 throw new IllegalArgumentException("Composant matière : rawMaterialId requis");
             }
-            if (!rawMaterialRepository.existsById(c.rawMaterialId())) {
-                throw new ResourceNotFoundException("Matière première introuvable : " + c.rawMaterialId());
-            }
+            RawMaterial mat = rawMaterialRepository.findById(c.rawMaterialId())
+                    .orElseThrow(() -> new ResourceNotFoundException(
+                            "Matière première introuvable : " + c.rawMaterialId()));
+            requireSameDimension(c.unit(), mat.getReferenceUnit(), mat.getName());
         } else {
             if (c.subArticleId() == null) {
                 throw new IllegalArgumentException("Composant sous-recette : subArticleId requis");
@@ -122,6 +125,18 @@ public class RecipeService {
                 throw new IllegalArgumentException(
                         "Une sous-recette doit être un article fabriqué : " + c.subArticleId());
             }
+            requireSameDimension(c.unit(), sub.getUnit(), sub.getName());
+        }
+    }
+
+    /** L'unité d'un composant doit être de même nature (poids/volume/pièce) que l'élément utilisé. */
+    private static void requireSameDimension(Unit componentUnit, Unit targetUnit, String name) {
+        if (componentUnit != null && targetUnit != null
+                && componentUnit.dimension() != targetUnit.dimension()) {
+            throw new IllegalArgumentException("Composant « " + name + " » : quantité en " + componentUnit
+                    + " incompatible — cet élément est suivi en " + targetUnit
+                    + ". Utilisez une unité de même nature (poids, volume ou pièce), ou changez l'unité de "
+                    + "l'élément.");
         }
     }
 

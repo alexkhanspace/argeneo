@@ -68,6 +68,7 @@ export async function updateRawMaterial(
     name: string
     pricePerUnit: number
     active?: boolean
+    referenceUnit?: MeasureUnit
     familleId?: number | null
     sousFamilleId?: number | null
   },
@@ -110,6 +111,7 @@ export async function updateArticle(
   id: number,
   input: {
     name: string
+    type?: ArticleType
     unit: MeasureUnit
     salePriceTtc?: number | null
     vatRate?: number | null

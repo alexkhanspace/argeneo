@@ -145,9 +145,10 @@ export function MaterialsPage() {
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
-  // Édition (nom, prix, famille)
+  // Édition (nom, prix, unité, famille)
   const [editItem, setEditItem] = useState<RawMaterial | null>(null)
   const [eName, setEName] = useState('')
+  const [eRefUnit, setERefUnit] = useState<MeasureUnit>('KG')
   const [ePrice, setEPrice] = useState('')
   const [eFamilleId, setEFamilleId] = useState<number | null>(null)
   const [eSousFamilleId, setESousFamilleId] = useState<number | null>(null)
@@ -237,6 +238,7 @@ export function MaterialsPage() {
   const openEdit = (m: RawMaterial) => {
     setEditItem(m)
     setEName(m.name)
+    setERefUnit(m.referenceUnit)
     setEPrice(String(m.pricePerUnit))
     setEFamilleId(m.familleId)
     setESousFamilleId(m.sousFamilleId)
@@ -252,6 +254,7 @@ export function MaterialsPage() {
       await updateRawMaterial(editItem.id, {
         name: eName,
         pricePerUnit: Number(ePrice),
+        referenceUnit: eRefUnit,
         familleId: eFamilleId,
         sousFamilleId: eSousFamilleId,
       })
@@ -514,7 +517,22 @@ export function MaterialsPage() {
           <Stack component="form" spacing={2} onSubmit={onEditSubmit} sx={{ mt: 1 }}>
             <TextField label="Nom" value={eName} onChange={(e) => setEName(e.target.value)} required autoFocus />
             <TextField
-              label={`Prix net HT (€ / ${editItem.referenceUnit})`}
+              select
+              label="Unité de référence"
+              value={eRefUnit}
+              onChange={(e) => setERefUnit(e.target.value as MeasureUnit)}
+              helperText="Changer l'unité ne reconvertit pas le prix : vérifie-le ci-dessous."
+            >
+              {(units.length > 0 ? units.map((u) => u.code) : (['G', 'KG', 'ML', 'L', 'PIECE'] as MeasureUnit[])).map(
+                (code) => (
+                  <MenuItem key={code} value={code}>
+                    {code}
+                  </MenuItem>
+                ),
+              )}
+            </TextField>
+            <TextField
+              label={`Prix net HT (€ / ${eRefUnit})`}
               type="number"
               value={ePrice}
               onChange={(e) => setEPrice(e.target.value)}
