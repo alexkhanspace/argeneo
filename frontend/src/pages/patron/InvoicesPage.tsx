@@ -347,8 +347,11 @@ function InvoiceReview({
   const apply = async () => {
     setError(null)
     setDone(null)
-    // Validation côté client
+    // On applique les lignes valides ; celles sans prix (ou sans matière) sont ignorées et
+    // signalées — une seule ligne incomplète ne doit plus bloquer tout l'enregistrement.
     const payload: InvoiceApplyLine[] = []
+    const skipped: string[] = []
+    let applyCount = 0
     for (const line of detail.lines) {
       if (line.applied) continue
       const dec = decisions[line.id]
@@ -357,14 +360,12 @@ function InvoiceReview({
         continue
       }
       const price = Number(dec.pricePerUnit)
-      if (!dec.pricePerUnit || Number.isNaN(price) || price < 0) {
-        setError(`Ligne « ${line.designation} » : prix par unité invalide.`)
-        return
-      }
+      const priceOk = Boolean(dec.pricePerUnit) && !Number.isNaN(price) && price >= 0
       if (dec.action === 'UPDATE') {
-        if (dec.rawMaterialId === '') {
-          setError(`Ligne « ${line.designation} » : choisissez une matière première.`)
-          return
+        if (dec.rawMaterialId === '' || !priceOk) {
+          skipped.push(line.designation)
+          payload.push({ lineId: line.id, action: 'SKIP' })
+          continue
         }
         payload.push({
           lineId: line.id,
@@ -372,10 +373,12 @@ function InvoiceReview({
           rawMaterialId: Number(dec.rawMaterialId),
           pricePerUnit: price,
         })
+        applyCount++
       } else {
-        if (!dec.newName.trim()) {
-          setError(`Ligne « ${line.designation} » : nom de la matière requis.`)
-          return
+        if (!dec.newName.trim() || !priceOk) {
+          skipped.push(line.designation)
+          payload.push({ lineId: line.id, action: 'SKIP' })
+          continue
         }
         payload.push({
           lineId: line.id,
@@ -386,13 +389,27 @@ function InvoiceReview({
           familleId: dec.familleId,
           sousFamilleId: dec.sousFamilleId,
         })
+        applyCount++
       }
+    }
+    if (applyCount === 0) {
+      setError(
+        skipped.length
+          ? `Renseignez un prix (et une matière) pour : ${skipped.join(', ')}.`
+          : 'Aucune ligne à appliquer.',
+      )
+      return
     }
     setBusy(true)
     try {
       const updated = await applyInvoice(detail.id, payload)
-      setDone('Prix appliqués aux matières premières.')
       onApplied(updated)
+      setDone(
+        `${applyCount} matière(s) enregistrée(s).` +
+          (skipped.length
+            ? ` ${skipped.length} ligne(s) ignorée(s) faute de prix : ${skipped.join(', ')}.`
+            : ''),
+      )
     } catch (err) {
       setError(errorMessage(err))
     } finally {
