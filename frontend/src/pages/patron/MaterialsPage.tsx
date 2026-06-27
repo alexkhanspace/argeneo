@@ -15,7 +15,7 @@ import {
   useMediaQuery,
 } from '@mui/material'
 import { useTheme } from '@mui/material/styles'
-import { DataGrid, type GridColDef } from '@mui/x-data-grid'
+import { DataGrid, type GridColDef, type GridRowSelectionModel } from '@mui/x-data-grid'
 import AddIcon from '@mui/icons-material/Add'
 import DeleteIcon from '@mui/icons-material/Delete'
 import EditIcon from '@mui/icons-material/Edit'
@@ -132,6 +132,9 @@ export function MaterialsPage() {
   const [filterSousFamille, setFilterSousFamille] = useState<number | ''>('')
   const [managerOpen, setManagerOpen] = useState(false)
 
+  // Sélection multiple (tableau desktop) pour suppression groupée.
+  const [selection, setSelection] = useState<GridRowSelectionModel>({ type: 'include', ids: new Set() })
+
   // Création
   const [open, setOpen] = useState(false)
   const [name, setName] = useState('')
@@ -182,6 +185,27 @@ export function MaterialsPage() {
       refresh()
     } catch (err) {
       setListError(errorMessage(err))
+    }
+  }
+
+  // Ids réellement sélectionnés (gère le mode « tout sauf » du DataGrid).
+  const selectedIds = useMemo<number[]>(() => {
+    if (selection.type === 'exclude') {
+      return filtered.filter((m) => !selection.ids.has(m.id)).map((m) => m.id)
+    }
+    return Array.from(selection.ids) as number[]
+  }, [selection, filtered])
+
+  const onBulkDelete = async () => {
+    if (selectedIds.length === 0) return
+    if (!window.confirm(`Supprimer ${selectedIds.length} matière(s) ?`)) return
+    setListError(null)
+    const results = await Promise.allSettled(selectedIds.map((id) => deleteRawMaterial(id)))
+    const failed = results.filter((r) => r.status === 'rejected').length
+    setSelection({ type: 'include', ids: new Set() })
+    refresh()
+    if (failed > 0) {
+      setListError(`${failed} matière(s) non supprimée(s) : encore utilisée(s) dans une recette.`)
     }
   }
 
@@ -402,19 +426,37 @@ export function MaterialsPage() {
                 ))}
             </Stack>
           ) : (
-            <Box sx={{ height: 560, width: '100%' }}>
-              <DataGrid
-                rows={filtered}
-                columns={columns}
-                showToolbar
-                disableRowSelectionOnClick
-                sortingOrder={['asc', 'desc', null]}
-                processRowUpdate={processRowUpdate}
-                onProcessRowUpdateError={(e) => setListError(errorMessage(e))}
-                pageSizeOptions={[25, 50, 100]}
-                initialState={{ pagination: { paginationModel: { pageSize: 25 } } }}
-                sx={{ border: 0 }}
-              />
+            <Box>
+              {selectedIds.length > 0 && (
+                <Stack direction="row" sx={{ mb: 1, justifyContent: 'flex-end' }}>
+                  <Button
+                    size="small"
+                    color="error"
+                    variant="outlined"
+                    startIcon={<DeleteIcon />}
+                    onClick={() => void onBulkDelete()}
+                  >
+                    Supprimer la sélection ({selectedIds.length})
+                  </Button>
+                </Stack>
+              )}
+              <Box sx={{ height: 560, width: '100%' }}>
+                <DataGrid
+                  rows={filtered}
+                  columns={columns}
+                  showToolbar
+                  checkboxSelection
+                  disableRowSelectionOnClick
+                  rowSelectionModel={selection}
+                  onRowSelectionModelChange={(model) => setSelection(model)}
+                  sortingOrder={['asc', 'desc', null]}
+                  processRowUpdate={processRowUpdate}
+                  onProcessRowUpdateError={(e) => setListError(errorMessage(e))}
+                  pageSizeOptions={[25, 50, 100]}
+                  initialState={{ pagination: { paginationModel: { pageSize: 25 } } }}
+                  sx={{ border: 0 }}
+                />
+              </Box>
             </Box>
           )}
         </CardContent>
