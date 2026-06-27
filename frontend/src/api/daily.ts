@@ -13,6 +13,23 @@ export async function getDay(etablissementId: number, date: string): Promise<Dai
   return data
 }
 
+export interface ScanTicketResult {
+  date: string | null
+  revenue: number | null
+  clientCount: number | null
+}
+
+/** Scanne une photo de ticket Z de caisse : renvoie CA / nb clients / date (non persisté). */
+export async function scanTicket(etablissementId: number, file: File): Promise<ScanTicketResult> {
+  const form = new FormData()
+  form.append('file', file)
+  const { data } = await api.post<ScanTicketResult>(
+    `/etablissements/${etablissementId}/daily/scan-ticket`,
+    form,
+  )
+  return data
+}
+
 // Saisies sur une plage (seuls les jours renseignés sont renvoyés).
 export async function listMonth(
   etablissementId: number,

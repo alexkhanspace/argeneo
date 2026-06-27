@@ -41,7 +41,8 @@ import { getMuslimDays, getJewishDays } from '../api/religiousCalendar'
 import { getCuratedEvents } from '../api/observances'
 import { getTrend, type DayContextInput } from '../api/insights'
 import { useSettings } from '../settings/SettingsContext'
-import { getDay, listMonth, listMyEtablissements, saveDay } from '../api/daily'
+import { getDay, listMonth, listMyEtablissements, saveDay, scanTicket } from '../api/daily'
+import DocumentScannerIcon from '@mui/icons-material/DocumentScanner'
 import { listArticles } from '../api/costing'
 import type { Article, DailyEntry, MyEtablissement } from '../api/types'
 import { Modal } from '../components/Modal'
@@ -132,6 +133,29 @@ export function DailyPage() {
   const [editorError, setEditorError] = useState<string | null>(null)
   const [editorOk, setEditorOk] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const [ticketScanning, setTicketScanning] = useState(false)
+  const ticketFileRef = useRef<HTMLInputElement | null>(null)
+
+  const onScanTicket = async (file: File | undefined) => {
+    if (!file || etabId == null) return
+    setEditorError(null)
+    setEditorOk(null)
+    setTicketScanning(true)
+    try {
+      const r = await scanTicket(etabId, file)
+      if (r.revenue != null) setRevenueInput(String(r.revenue))
+      if (r.clientCount != null) setClientCountInput(String(r.clientCount))
+      if (r.revenue == null && r.clientCount == null) {
+        setEditorError('Ticket Z non reconnu — réessaie avec une photo plus nette, ou saisis à la main.')
+      } else {
+        setEditorOk('Ticket Z lu — CA et clients pré-remplis. Vérifie puis enregistre.')
+      }
+    } catch (e) {
+      setEditorError(errorMessage(e))
+    } finally {
+      setTicketScanning(false)
+    }
+  }
 
   const todayIso = toISODate(now)
   const selectedEtab = etabs.find((e) => e.id === etabId) ?? null
@@ -1232,6 +1256,33 @@ export function DailyPage() {
                   maximumFractionDigits: 2,
                 })}
               </Typography>
+            )}
+            {can('saisir_ca') && (
+              <>
+                <Button
+                  variant="outlined"
+                  size="small"
+                  startIcon={
+                    ticketScanning ? <CircularProgress size={14} /> : <DocumentScannerIcon />
+                  }
+                  onClick={() => ticketFileRef.current?.click()}
+                  disabled={ticketScanning}
+                  sx={{ mt: 1.5 }}
+                >
+                  {ticketScanning ? 'Lecture du ticket…' : 'Scanner le ticket Z'}
+                </Button>
+                <input
+                  ref={ticketFileRef}
+                  type="file"
+                  accept="image/*"
+                  hidden
+                  onChange={(e) => {
+                    const f = e.target.files?.[0]
+                    e.target.value = ''
+                    void onScanTicket(f)
+                  }}
+                />
+              </>
             )}
           </Box>
 

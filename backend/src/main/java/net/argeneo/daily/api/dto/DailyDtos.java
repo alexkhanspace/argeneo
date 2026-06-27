@@ -15,6 +15,10 @@ public final class DailyDtos {
     private DailyDtos() {
     }
 
+    /** Données extraites d'une photo de ticket Z (pré-remplissage, non persisté). */
+    public record ScanTicketResponse(String date, BigDecimal revenue, Integer clientCount) {
+    }
+
     /** Une ligne de casse en entrée : article + quantité perdue. */
     public record LossLineRequest(
             @NotNull Long articleId,

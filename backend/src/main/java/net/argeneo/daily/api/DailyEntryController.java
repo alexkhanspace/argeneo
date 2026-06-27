@@ -1,20 +1,25 @@
 package net.argeneo.daily.api;
 
 import jakarta.validation.Valid;
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.time.LocalDate;
 import java.util.List;
 import net.argeneo.daily.api.dto.DailyDtos.DailyEntryResponse;
+import net.argeneo.daily.api.dto.DailyDtos.ScanTicketResponse;
 import net.argeneo.daily.api.dto.DailyDtos.UpsertDailyRequest;
 import net.argeneo.daily.service.DailyEntryService;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
 /**
  * Saisie quotidienne d'une etablissement. Accès gouverné par les autorités
@@ -58,5 +63,18 @@ public class DailyEntryController {
             @PathVariable @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
             @Valid @RequestBody UpsertDailyRequest request) {
         return service.upsert(etablissementId, date, request);
+    }
+
+    /** Scanne une photo de ticket Z et renvoie CA / nb clients / date (pré-remplissage). */
+    @PostMapping("/scan-ticket")
+    @PreAuthorize("@etablissementAccess.canReadDaily(#etablissementId)")
+    public ScanTicketResponse scanTicket(@PathVariable Long etablissementId,
+                                         @RequestParam("file") MultipartFile file) {
+        try {
+            String mime = file.getContentType() != null ? file.getContentType() : "image/jpeg";
+            return service.scanTicket(etablissementId, file.getBytes(), mime);
+        } catch (IOException e) {
+            throw new UncheckedIOException("Lecture du fichier impossible", e);
+        }
     }
 }
