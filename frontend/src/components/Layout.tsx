@@ -70,7 +70,6 @@ function navGroupsFor(me: Me): NavGroup[] {
         label: 'Pilotage',
         items: [
           { to: '/dashboard', label: 'Tableau de bord' },
-          { to: '/mon-tableau', label: 'Mon tableau de bord' },
           { to: '/analytique', label: 'Analytique' },
           { to: '/saisie', label: 'Calendrier' },
           { to: '/saisie-rapide', label: 'Saisie longue période' },

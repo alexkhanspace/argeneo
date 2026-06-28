@@ -16,7 +16,6 @@ import { BillingSettingsPage } from './pages/billing/BillingSettingsPage'
 import { ClientsPage } from './pages/billing/ClientsPage'
 import { DocumentEditorPage } from './pages/billing/DocumentEditorPage'
 import { AnalyticsPage } from './pages/patron/AnalyticsPage'
-import { CustomDashboardPage } from './pages/CustomDashboardPage'
 import { ArticlesPage } from './pages/patron/ArticlesPage'
 import { CommunicationPage } from './pages/patron/CommunicationPage'
 import { InvoicesPage } from './pages/patron/InvoicesPage'
@@ -175,14 +174,8 @@ export default function App() {
             </ProtectedRoute>
           }
         />
-        <Route
-          path="/mon-tableau"
-          element={
-            <ProtectedRoute allow={isPatron}>
-              <CustomDashboardPage />
-            </ProtectedRoute>
-          }
-        />
+        {/* Ancienne page « Mon tableau de bord » fusionnée dans Analytique. */}
+        <Route path="/mon-tableau" element={<Navigate to="/analytique" replace />} />
         <Route
           path="/saisie-rapide"
           element={
