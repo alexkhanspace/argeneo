@@ -90,6 +90,14 @@ export const windowRange = (g: Gran, refKey: string, today: string) => {
   return { from, to }
 }
 
+/** Plage [from, to] de la SEULE période sélectionnée (le bucket courant), bornée à aujourd'hui. */
+export const bucketRange = (g: Gran, refKey: string, today: string) => {
+  const from = bucketStart(refKey, g)
+  let to = bucketEnd(refKey, g)
+  if (to > today) to = today
+  return { from, to }
+}
+
 /** Plus ancienne date à récupérer (inclut l'an N-1 du premier bucket). */
 export const fetchFrom = (g: Gran, refKey: string) =>
   bucketStart(prevYearKey(firstKey(g, refKey), g), g)
@@ -176,4 +184,92 @@ export function buildSeries(entries: DailyEntry[], g: Gran, refKey: string, toda
     yesterdayCA: dayMap.get(yest)?.ca ?? null,
     yesterdayClients: dayMap.get(yest)?.clients ?? null,
   }
+}
+
+/** Détail du CA À L'INTÉRIEUR de la période choisie, sous-unité par sous-unité, N vs N-1. */
+export interface BucketSeries {
+  /** Type de graphe conseillé selon la granularité. */
+  kind: 'line' | 'bar'
+  labels: string[]
+  /** CA de la période choisie (année N). */
+  caCur: number[]
+  /** CA de la même période l'an dernier (N-1). */
+  caPrev: number[]
+  curLabel: string
+  prevLabel: string
+  title: string
+  /** Vrai quand la granularité ne se prête pas à un détail interne (jour). */
+  empty: boolean
+}
+
+/**
+ * Décompose la période sélectionnée en ses sous-unités et compare à N-1 :
+ * mois → un point par jour (2026 vs 2025), année → un point par mois,
+ * semaine → un point par jour de la semaine. Le jour n'a pas de détail interne.
+ */
+export function buildBucketSeries(entries: DailyEntry[], g: Gran, refKey: string): BucketSeries {
+  const caByDate = new Map<string, number>()
+  for (const e of entries) caByDate.set(e.date, (caByDate.get(e.date) ?? 0) + (e.revenue ?? 0))
+  const ca = (iso: string) => Math.round(caByDate.get(iso) ?? 0)
+
+  if (g === 'mois') {
+    const [y, m] = refKey.split('-').map(Number)
+    const days = new Date(y, m, 0).getDate()
+    const labels: string[] = []
+    const caCur: number[] = []
+    const caPrev: number[] = []
+    for (let d = 1; d <= days; d++) {
+      const dd = pad(d)
+      labels.push(String(d))
+      caCur.push(ca(`${y}-${pad(m)}-${dd}`))
+      caPrev.push(ca(`${y - 1}-${pad(m)}-${dd}`))
+    }
+    return {
+      kind: 'line', labels, caCur, caPrev,
+      curLabel: String(y), prevLabel: String(y - 1),
+      title: `CA par jour — ${refLabel('mois', refKey)}`,
+      empty: false,
+    }
+  }
+
+  if (g === 'annee') {
+    const y = Number(refKey)
+    const cur = Array(12).fill(0)
+    const prev = Array(12).fill(0)
+    for (const e of entries) {
+      const yr = Number(e.date.slice(0, 4))
+      const mo = Number(e.date.slice(5, 7)) - 1
+      if (yr === y) cur[mo] += e.revenue ?? 0
+      else if (yr === y - 1) prev[mo] += e.revenue ?? 0
+    }
+    return {
+      kind: 'bar', labels: [...MONTHS_SHORT],
+      caCur: cur.map((v) => Math.round(v)), caPrev: prev.map((v) => Math.round(v)),
+      curLabel: String(y), prevLabel: String(y - 1),
+      title: `CA par mois — ${y}`,
+      empty: false,
+    }
+  }
+
+  if (g === 'semaine') {
+    const prevMon = prevYearKey(refKey, 'semaine')
+    const labels: string[] = []
+    const caCur: number[] = []
+    const caPrev: number[] = []
+    for (let i = 0; i < 7; i++) {
+      labels.push(WEEKDAYS[i])
+      caCur.push(ca(addDays(refKey, i)))
+      caPrev.push(ca(addDays(prevMon, i)))
+    }
+    return {
+      kind: 'bar', labels, caCur, caPrev,
+      curLabel: `Sem. du ${refKey.slice(8)}/${refKey.slice(5, 7)}`,
+      prevLabel: `Sem. du ${prevMon.slice(8)}/${prevMon.slice(5, 7)}`,
+      title: `CA par jour — ${refLabel('semaine', refKey)}`,
+      empty: false,
+    }
+  }
+
+  // Jour : pas de détail intra-période pertinent (le bloc « jour/veille » le couvre).
+  return { kind: 'bar', labels: [], caCur: [], caPrev: [], curLabel: '', prevLabel: '', title: '', empty: true }
 }

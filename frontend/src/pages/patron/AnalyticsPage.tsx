@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { Alert, Box, Card, CardContent, Chip, Stack, Typography } from '@mui/material'
+import { BarChart } from '@mui/x-charts/BarChart'
+import { LineChart } from '@mui/x-charts/LineChart'
 import TrendingUpIcon from '@mui/icons-material/TrendingUp'
 import TrendingDownIcon from '@mui/icons-material/TrendingDown'
 import TrendingFlatIcon from '@mui/icons-material/TrendingFlat'
@@ -7,13 +9,26 @@ import { errorMessage } from '../../api/client'
 import { listMonth, listMyEtablissements } from '../../api/daily'
 import { listArticles } from '../../api/costing'
 import type { Article, DailyEntry, MyEtablissement } from '../../api/types'
-import { aggregate, eur, eur2, intFr, priceMap, todayIso } from '../../dashboard/analytics'
-import { buildSeries, defaultRefKey, fetchFrom, windowRange, type Gran } from '../../dashboard/period'
+import { aggregate, eur, eur2, eurAxis, intFr, priceMap, todayIso } from '../../dashboard/analytics'
+import {
+  bucketRange,
+  buildBucketSeries,
+  buildSeries,
+  defaultRefKey,
+  fetchFrom,
+  type BucketSeries,
+  type Gran,
+} from '../../dashboard/period'
 import { widgetDef, type WidgetCtx } from '../../dashboard/widgets'
 import { PeriodNav } from '../../dashboard/PeriodNav'
 import { PageHeader } from '../../components/PageHeader'
 
 const TODAY = todayIso()
+
+// Mêmes teintes que les widgets : sable pour N-1, brun terre pour N.
+const COLOR_PREV = '#cdbba6'
+const COLOR_CUR = '#b5651d'
+const eurTip = (v: number | null): string => (v == null ? '' : eur(v))
 
 /** Badge d'évolution vs N-1 (vert si en hausse, rouge si en baisse). */
 function Delta({ pct }: { pct: number | null }) {
@@ -74,7 +89,7 @@ function StatCard({
   )
 }
 
-/** En-tête de section (synthèse / tendances / détails). */
+/** En-tête de section (synthèse / détail / vue d'ensemble). */
 function SectionTitle({ title, hint }: { title: string; hint?: string }) {
   return (
     <Box sx={{ mt: 4, mb: 2 }}>
@@ -88,21 +103,60 @@ function SectionTitle({ title, hint }: { title: string; hint?: string }) {
   )
 }
 
-/** Panneau titré réutilisant le rendu d'un widget du registre (graphe ou table). */
-function WidgetPanel({ type, ctx, full }: { type: string; ctx: WidgetCtx; full?: boolean }) {
-  const def = widgetDef(type)
-  if (!def) return null
+/** Carte titrée générique. */
+function Panel({ title, full, children }: { title: string; full?: boolean; children: ReactNode }) {
   return (
     <Box sx={{ gridColumn: full ? { xs: 'span 1', md: '1 / -1' } : 'span 1', minWidth: 0 }}>
       <Card sx={{ height: '100%', minWidth: 0 }}>
         <CardContent sx={{ overflowX: 'hidden' }}>
           <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1, fontWeight: 600 }}>
-            {def.label}
+            {title}
           </Typography>
-          {def.render(ctx)}
+          {children}
         </CardContent>
       </Card>
     </Box>
+  )
+}
+
+/** Panneau réutilisant le rendu d'un widget du registre (graphe ou table). */
+function WidgetPanel({ type, ctx, full }: { type: string; ctx: WidgetCtx; full?: boolean }) {
+  const def = widgetDef(type)
+  if (!def) return null
+  return (
+    <Panel title={def.label} full={full}>
+      {def.render(ctx)}
+    </Panel>
+  )
+}
+
+/** Détail de la période choisie, sous-unité par sous-unité (jours / mois), N vs N-1. */
+function PeriodChart({ sub }: { sub: BucketSeries }) {
+  if (sub.empty) return null
+  const series = [
+    { data: sub.caPrev, label: sub.prevLabel, color: COLOR_PREV, valueFormatter: eurTip },
+    { data: sub.caCur, label: sub.curLabel, color: COLOR_CUR, valueFormatter: eurTip },
+  ]
+  return (
+    <Panel title={sub.title} full>
+      {sub.kind === 'line' ? (
+        <LineChart
+          height={300}
+          xAxis={[{ scaleType: 'point', data: sub.labels }]}
+          yAxis={[{ valueFormatter: (v: number) => eurAxis(v) }]}
+          series={[{ ...series[0] }, { ...series[1], area: true }]}
+          margin={{ left: 70 }}
+        />
+      ) : (
+        <BarChart
+          height={300}
+          xAxis={[{ scaleType: 'band', data: sub.labels }]}
+          yAxis={[{ valueFormatter: (v: number) => eurAxis(v) }]}
+          series={series}
+          margin={{ left: 70 }}
+        />
+      )}
+    </Panel>
   )
 }
 
@@ -113,7 +167,7 @@ const grid2 = {
   alignItems: 'start',
 } as const
 
-/** Vue analytique unifiée : synthèse en tête, puis tendances et détails. */
+/** Vue analytique unifiée, centrée sur la période choisie et comparée à N-1. */
 export function AnalyticsPage() {
   const [etabs, setEtabs] = useState<MyEtablissement[]>([])
   const [etabId, setEtabId] = useState<number | null>(null)
@@ -137,13 +191,12 @@ export function AnalyticsPage() {
     listArticles().then(setArticles).catch(() => undefined)
   }, [])
 
-  const window = useMemo(() => windowRange(gran, refKey, TODAY), [gran, refKey])
   useEffect(() => {
     if (etabId == null) return
     let cancelled = false
     void (async () => {
       try {
-        // Jusqu'à aujourd'hui (le bloc « jour/veille » reste à jour quelle que soit la période).
+        // On récupère jusqu'à aujourd'hui ET l'an N-1 (fetchFrom) pour les comparaisons.
         const d = await listMonth(etabId, fetchFrom(gran, refKey), TODAY)
         if (!cancelled) {
           setEntries(d)
@@ -160,13 +213,22 @@ export function AnalyticsPage() {
     }
   }, [etabId, gran, refKey])
 
-  const ctx: WidgetCtx = useMemo(() => {
+  // Agrégat de LA période choisie (pas de la fenêtre glissante) → les KPI collent au sélecteur.
+  const bucketAgg = useMemo(() => {
     const price = priceMap(articles)
-    const inWindow = entries.filter((e) => e.date >= window.from && e.date <= window.to)
-    return { agg: aggregate(inWindow, price), comparison: buildSeries(entries, gran, refKey, TODAY) }
-  }, [entries, articles, gran, refKey, window.from, window.to])
+    const { from, to } = bucketRange(gran, refKey, TODAY)
+    return aggregate(
+      entries.filter((e) => e.date >= from && e.date <= to),
+      price,
+    )
+  }, [entries, articles, gran, refKey])
 
-  const { agg, comparison: cmp } = ctx
+  // Séries N vs N-1 : fenêtre glissante (vue d'ensemble) + détail interne de la période.
+  const cmp = useMemo(() => buildSeries(entries, gran, refKey, TODAY), [entries, gran, refKey])
+  const sub = useMemo(() => buildBucketSeries(entries, gran, refKey), [entries, gran, refKey])
+
+  // Les widgets « détail » lisent agg (= période choisie) ; les widgets « tendance » lisent comparison.
+  const ctx: WidgetCtx = useMemo(() => ({ agg: bucketAgg, comparison: cmp }), [bucketAgg, cmp])
 
   const onGran = (g: Gran) => {
     setLoading(true)
@@ -174,15 +236,22 @@ export function AnalyticsPage() {
     setRefKey(defaultRefKey(g, TODAY))
   }
 
-  const synthese: { label: string; value: string; sub?: string; accent?: boolean; delta?: number | null }[] = [
-    { label: 'CA total', value: eur(agg.totalCA), accent: true, delta: cmp.deltaPct, sub: 'évolution vs N-1' },
-    { label: 'CA moyen / jour', value: eur(agg.avgCA), sub: `${intFr(agg.nbDays)} jours saisis` },
-    { label: 'Clients', value: intFr(agg.totalClients) },
-    { label: 'Ticket moyen', value: eur2(agg.avgTicket) },
-    { label: 'Pertes (TTC)', value: eur(agg.lossValue), sub: `${intFr(agg.lossUnits)} unités` },
+  type Stat = { label: string; value: string; sub?: string; accent?: boolean; delta?: number | null }
+  const synthese: Stat[] = [
+    {
+      label: 'CA total',
+      value: eur(bucketAgg.totalCA),
+      accent: true,
+      delta: cmp.deltaPct,
+      sub: cmp.deltaPct != null ? 'vs même période N-1' : undefined,
+    },
+    { label: 'CA moyen / jour', value: eur(bucketAgg.avgCA), sub: `${intFr(bucketAgg.nbDays)} jours saisis` },
+    { label: 'Clients', value: intFr(bucketAgg.totalClients) },
+    { label: 'Ticket moyen', value: eur2(bucketAgg.avgTicket) },
+    { label: 'Pertes (TTC)', value: eur(bucketAgg.lossValue), sub: `${intFr(bucketAgg.lossUnits)} unités` },
   ]
 
-  const jourVeille: { label: string; value: string; sub?: string }[] = [
+  const jourVeille: Stat[] = [
     {
       label: "CA d'aujourd'hui",
       value: cmp.todayCA == null ? '— (non saisi)' : eur2(cmp.todayCA),
@@ -195,7 +264,7 @@ export function AnalyticsPage() {
     },
   ]
 
-  const card = (s: { label: string; value: string; sub?: string; accent?: boolean; delta?: number | null }): ReactNode => (
+  const card = (s: Stat): ReactNode => (
     <StatCard key={s.label} label={s.label} value={s.value} sub={s.sub} accent={s.accent} delta={s.delta} />
   )
 
@@ -203,7 +272,7 @@ export function AnalyticsPage() {
     <>
       <PageHeader
         title="Analytique"
-        subtitle="Synthèse, tendances et détails de l'activité — comparés à l'an dernier."
+        subtitle="Tout est calculé sur la période choisie ci-dessous et comparé à l'an dernier (N-1)."
       />
 
       {error && (
@@ -230,7 +299,7 @@ export function AnalyticsPage() {
         loading={loading}
       />
 
-      {/* — Synthèse — */}
+      {/* — Synthèse de la période choisie — */}
       <Box
         sx={{
           display: 'grid',
@@ -246,22 +315,21 @@ export function AnalyticsPage() {
         {jourVeille.map(card)}
       </Box>
 
-      {/* — Tendances — */}
-      <SectionTitle title="Tendances" hint="Évolution sur la période et comparaison à l'an dernier (N vs N-1)." />
+      {/* — Détail de la période choisie — */}
+      <SectionTitle title="Détail de la période" hint="Évolution interne et analyse des pertes sur la période choisie, vs N-1." />
       <Box sx={grid2}>
-        <WidgetPanel type="ca_line" ctx={ctx} full />
-        <WidgetPanel type="compare" ctx={ctx} full />
-        <WidgetPanel type="ca_weekday" ctx={ctx} />
-        <WidgetPanel type="ticket_month" ctx={ctx} />
-      </Box>
-
-      {/* — Détails — */}
-      <SectionTitle title="Détails" hint="Récapitulatifs, meilleures journées et analyse des pertes." />
-      <Box sx={grid2}>
-        <WidgetPanel type="table_month" ctx={ctx} />
-        <WidgetPanel type="table_best" ctx={ctx} />
+        <PeriodChart sub={sub} />
         <WidgetPanel type="loss_pie" ctx={ctx} />
         <WidgetPanel type="table_loss" ctx={ctx} />
+        <WidgetPanel type="table_best" ctx={ctx} full />
+      </Box>
+
+      {/* — Vue d'ensemble (fenêtre glissante) — */}
+      <SectionTitle title="Vue d'ensemble" hint="Tendances sur la fenêtre récente, comparées à l'an dernier." />
+      <Box sx={grid2}>
+        <WidgetPanel type="ca_line" ctx={ctx} full />
+        <WidgetPanel type="ca_weekday" ctx={ctx} />
+        <WidgetPanel type="ticket_month" ctx={ctx} />
       </Box>
     </>
   )
