@@ -9,6 +9,20 @@ export const eur2 = (v: number | null | undefined): string =>
   v == null ? '—' : v.toLocaleString('fr-FR', { style: 'currency', currency: 'EUR', maximumFractionDigits: 2 })
 export const intFr = (v: number): string => Math.round(v).toLocaleString('fr-FR')
 export const todayIso = (): string => new Date().toISOString().slice(0, 10)
+/** La veille (hier) au format ISO — la journée du jour étant souvent incomplète. */
+export const yesterdayIso = (): string => {
+  const d = new Date()
+  d.setDate(d.getDate() - 1)
+  return d.toISOString().slice(0, 10)
+}
+
+/** Format compact pour les axes : « 12,5 k€ » au-delà de 1000, sinon « 850 € ». */
+export const eurAxis = (v: number | null | undefined): string => {
+  if (v == null) return ''
+  return Math.abs(v) >= 1000
+    ? `${(v / 1000).toLocaleString('fr-FR', { maximumFractionDigits: 1 })} k€`
+    : `${Math.round(v)} €`
+}
 
 /** Jour de la semaine 0=Lun..6=Dim depuis une date ISO (sans décalage de fuseau). */
 const weekdayMon0 = (iso: string): number => {
@@ -116,22 +130,39 @@ export function aggregate(entries: DailyEntry[], price: Map<number, number>): Ag
   }
 }
 
-/** Comparaison CA mensuel année courante (N) vs précédente (N-1) à partir des 2 années. */
+/**
+ * Comparaison CA mensuel N vs N-1. L'écart % est calculé « à date » (year-to-date) :
+ * on compare l'année en cours (jusqu'à hier) à la MÊME période de l'an dernier — sinon
+ * une année en cours non terminée paraît toujours en forte baisse.
+ */
 export function compare(compEntries: DailyEntry[]): Comparison {
-  const y = new Date().getFullYear()
+  const now = new Date()
+  const y = now.getFullYear()
+  // Borne « même jour l'an dernier » (mois/jour d'hier), pour une comparaison à période égale.
+  const yest = new Date()
+  yest.setDate(yest.getDate() - 1)
+  const cutoffPrev = `${y - 1}-${String(yest.getMonth() + 1).padStart(2, '0')}-${String(yest.getDate()).padStart(2, '0')}`
+
   const cur = Array(12).fill(0)
   const prev = Array(12).fill(0)
+  let curYtd = 0
+  let prevYtd = 0
   for (const e of compEntries) {
     const yr = Number(e.date.slice(0, 4))
     const mo = Number(e.date.slice(5, 7)) - 1
-    if (yr === y) cur[mo] += e.revenue ?? 0
-    else if (yr === y - 1) prev[mo] += e.revenue ?? 0
+    const rev = e.revenue ?? 0
+    if (yr === y) {
+      cur[mo] += rev
+      curYtd += rev
+    } else if (yr === y - 1) {
+      prev[mo] += rev
+      if (e.date <= cutoffPrev) prevYtd += rev
+    }
   }
-  const sum = (a: number[]) => a.reduce((s, v) => s + v, 0)
   return {
     y,
     cur: cur.map((v) => Math.round(v)),
     prev: prev.map((v) => Math.round(v)),
-    deltaPct: sum(prev) > 0 ? ((sum(cur) - sum(prev)) / sum(prev)) * 100 : null,
+    deltaPct: prevYtd > 0 ? ((curYtd - prevYtd) / prevYtd) * 100 : null,
   }
 }

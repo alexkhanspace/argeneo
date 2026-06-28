@@ -5,7 +5,10 @@ import { BarChart } from '@mui/x-charts/BarChart'
 import { LineChart } from '@mui/x-charts/LineChart'
 import { PieChart } from '@mui/x-charts/PieChart'
 import { DataGrid, type GridColDef } from '@mui/x-data-grid'
-import { eur, eur2, intFr, MONTHS_SHORT, WEEKDAYS, type Agg, type Comparison } from './analytics'
+import { eur, eur2, eurAxis, intFr, MONTHS_SHORT, WEEKDAYS, type Agg, type Comparison } from './analytics'
+
+const eurTip = (v: number | null): string => (v == null ? '' : eur(v))
+const eur2Tip = (v: number | null): string => (v == null ? '' : eur2(v))
 
 export type WidgetSize = 'S' | 'M' | 'L'
 export interface WidgetCtx {
@@ -71,15 +74,16 @@ export const WIDGETS: WidgetDef[] = [
   },
   {
     type: 'compare',
-    label: 'Comparaison N vs N-1 (CA mensuel)',
+    label: 'Comparaison N vs N-1 (CA mensuel — écart à date)',
     defaultSize: 'L',
     render: ({ comparison: c }) => (
       <BarChart
         height={280}
         xAxis={[{ scaleType: 'band', data: MONTHS_SHORT }]}
+        yAxis={[{ valueFormatter: (v: number) => eurAxis(v) }]}
         series={[
-          { data: c.prev, label: String(c.y - 1), color: '#cdbba6' },
-          { data: c.cur, label: String(c.y), color: '#b5651d' },
+          { data: c.prev, label: String(c.y - 1), color: '#cdbba6', valueFormatter: eurTip },
+          { data: c.cur, label: String(c.y), color: '#b5651d', valueFormatter: eurTip },
         ]}
         margin={{ left: 70 }}
       />
@@ -94,7 +98,25 @@ export const WIDGETS: WidgetDef[] = [
         <BarChart
           height={260}
           xAxis={[{ scaleType: 'band', data: agg.monthLabels }]}
-          series={[{ data: agg.months.map(([, v]) => Math.round(v.ca)), label: 'CA (€)', color: '#b5651d' }]}
+          yAxis={[{ valueFormatter: (v: number) => eurAxis(v) }]}
+          series={[{ data: agg.months.map(([, v]) => Math.round(v.ca)), label: 'CA', color: '#b5651d', valueFormatter: eurTip }]}
+          margin={{ left: 70 }}
+        />
+      ) : (
+        <Typography color="text.secondary">Aucune donnée.</Typography>
+      ),
+  },
+  {
+    type: 'ca_line',
+    label: 'Évolution du CA (mensuel)',
+    defaultSize: 'M',
+    render: ({ agg }) =>
+      agg.months.length ? (
+        <LineChart
+          height={260}
+          xAxis={[{ scaleType: 'point', data: agg.monthLabels }]}
+          yAxis={[{ valueFormatter: (v: number) => eurAxis(v) }]}
+          series={[{ data: agg.months.map(([, v]) => Math.round(v.ca)), label: 'CA', color: '#b5651d', area: true, valueFormatter: eurTip }]}
           margin={{ left: 70 }}
         />
       ) : (
@@ -109,7 +131,8 @@ export const WIDGETS: WidgetDef[] = [
       <BarChart
         height={260}
         xAxis={[{ scaleType: 'band', data: WEEKDAYS }]}
-        series={[{ data: agg.weekdayAvg, label: 'CA moyen (€)', color: '#9a5417' }]}
+        yAxis={[{ valueFormatter: (v: number) => eurAxis(v) }]}
+        series={[{ data: agg.weekdayAvg, label: 'CA moyen', color: '#9a5417', valueFormatter: eurTip }]}
         margin={{ left: 70 }}
       />
     ),
@@ -123,12 +146,14 @@ export const WIDGETS: WidgetDef[] = [
         <LineChart
           height={260}
           xAxis={[{ scaleType: 'point', data: agg.monthLabels }]}
+          yAxis={[{ valueFormatter: (v: number) => `${v.toLocaleString('fr-FR', { maximumFractionDigits: 1 })} €` }]}
           series={[
             {
               data: agg.months.map(([, v]) => (v.clients ? Number((v.ca / v.clients).toFixed(2)) : 0)),
-              label: 'Ticket moyen (€)',
+              label: 'Ticket moyen',
               color: '#2e7d32',
               area: true,
+              valueFormatter: eur2Tip,
             },
           ]}
         />
@@ -147,6 +172,7 @@ export const WIDGETS: WidgetDef[] = [
           series={[
             {
               data: agg.lossByArticle.map((l, i) => ({ id: i, value: Number(l.value.toFixed(2)), label: l.name })),
+              valueFormatter: (item) => eur2(item.value),
               highlightScope: { fade: 'global', highlight: 'item' },
             },
           ]}

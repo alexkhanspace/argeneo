@@ -2,15 +2,11 @@ import { useEffect, useMemo, useState } from 'react'
 import {
   Alert,
   Box,
-  Button,
   Card,
   CardContent,
   Chip,
-  CircularProgress,
   IconButton,
-  MenuItem,
   Stack,
-  TextField,
   ToggleButton,
   ToggleButtonGroup,
   Tooltip,
@@ -34,8 +30,9 @@ import { listMonth, listMyEtablissements } from '../api/daily'
 import { listArticles } from '../api/costing'
 import { getDashboard, saveDashboard, type DashboardItem, type WidgetSize } from '../api/dashboard'
 import type { Article, DailyEntry, MyEtablissement } from '../api/types'
-import { aggregate, compare, priceMap, todayIso } from '../dashboard/analytics'
+import { aggregate, compare, priceMap, todayIso, yesterdayIso } from '../dashboard/analytics'
 import { WIDGETS, widgetDef, type WidgetCtx } from '../dashboard/widgets'
+import { PeriodBar, type PeriodMode } from '../dashboard/PeriodBar'
 import { PageHeader } from '../components/PageHeader'
 
 const DEFAULT_ITEMS: DashboardItem[] = [
@@ -113,8 +110,9 @@ function SortableWidget({
 export function CustomDashboardPage() {
   const [etabs, setEtabs] = useState<MyEtablissement[]>([])
   const [etabId, setEtabId] = useState<number | null>(null)
-  const [from, setFrom] = useState('2025-01-01')
-  const [to, setTo] = useState(todayIso())
+  const [mode, setMode] = useState<PeriodMode>('veille')
+  const [from, setFrom] = useState(yesterdayIso())
+  const [to, setTo] = useState(yesterdayIso())
   const [entries, setEntries] = useState<DailyEntry[]>([])
   const [compEntries, setCompEntries] = useState<DailyEntry[]>([])
   const [articles, setArticles] = useState<Article[]>([])
@@ -190,15 +188,24 @@ export function CustomDashboardPage() {
     if (loaded) saveDashboard({ items: next }).catch(() => undefined)
   }
 
-  const setPreset = (p: 'year' | '12m' | 'all') => {
+  // Période : la veille (hier) par défaut ; les raccourcis se terminent à hier (jour en cours incomplet).
+  const applyMode = (m: PeriodMode) => {
+    setMode(m)
+    if (m === 'custom') return
     setLoading(true)
-    if (p === 'year') setFrom(`${new Date().getFullYear()}-01-01`)
-    else if (p === '12m') {
+    const t = yesterdayIso()
+    if (m === 'veille') {
+      setFrom(t)
+      setTo(t)
+      return
+    }
+    setTo(t)
+    if (m === '12m') {
       const d = new Date()
       d.setFullYear(d.getFullYear() - 1)
       setFrom(d.toISOString().slice(0, 10))
-    } else setFrom('2025-01-01')
-    setTo(todayIso())
+    } else if (m === 'year') setFrom(`${new Date().getFullYear()}-01-01`)
+    else setFrom('2025-01-01')
   }
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }))
@@ -216,40 +223,33 @@ export function CustomDashboardPage() {
 
   return (
     <>
-      <PageHeader
-        title="Mon tableau de bord"
-        action={
-          <TextField
-            select
-            size="small"
-            label="Établissement"
-            value={etabId ?? ''}
-            onChange={(e) => {
-              setLoading(true)
-              setEtabId(Number(e.target.value))
-            }}
-            sx={{ minWidth: { xs: '100%', sm: 220 } }}
-          >
-            {etabs.length === 0 && <MenuItem value="">Aucun établissement</MenuItem>}
-            {etabs.map((e) => (
-              <MenuItem key={e.id} value={e.id}>
-                {e.name}
-              </MenuItem>
-            ))}
-          </TextField>
-        }
-      />
+      <PageHeader title="Mon tableau de bord" />
 
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
 
-      <Stack direction="row" sx={{ mb: 2, alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
-        <Button size="small" variant="outlined" onClick={() => setPreset('all')}>Depuis 2025</Button>
-        <Button size="small" variant="outlined" onClick={() => setPreset('12m')}>12 derniers mois</Button>
-        <Button size="small" variant="outlined" onClick={() => setPreset('year')}>Cette année</Button>
-        <TextField type="date" size="small" label="Du" value={from} onChange={(e) => { setLoading(true); setFrom(e.target.value) }} slotProps={{ inputLabel: { shrink: true } }} />
-        <TextField type="date" size="small" label="Au" value={to} onChange={(e) => { setLoading(true); setTo(e.target.value) }} slotProps={{ inputLabel: { shrink: true } }} />
-        {loading && <CircularProgress size={18} />}
-      </Stack>
+      <PeriodBar
+        etabs={etabs}
+        etabId={etabId}
+        onEtab={(id) => {
+          setLoading(true)
+          setEtabId(id)
+        }}
+        mode={mode}
+        onMode={applyMode}
+        from={from}
+        to={to}
+        onFrom={(v) => {
+          setMode('custom')
+          setLoading(true)
+          setFrom(v)
+        }}
+        onTo={(v) => {
+          setMode('custom')
+          setLoading(true)
+          setTo(v)
+        }}
+        loading={loading}
+      />
 
       {available.length > 0 && (
         <Stack direction="row" sx={{ mb: 2, gap: 1, flexWrap: 'wrap', alignItems: 'center' }}>
