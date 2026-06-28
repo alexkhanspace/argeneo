@@ -66,7 +66,7 @@ export const WIDGETS: WidgetDef[] = [
     label: 'CA du jour & de la veille',
     defaultSize: 'S',
     render: ({ comparison: c }) => (
-      <Stack sx={{ gap: 1.5 }}>
+      <Stack direction="row" sx={{ gap: 2, flexWrap: 'wrap' }}>
         <KpiBox
           label="CA du jour"
           value={c.todayCA == null ? '— (non saisi)' : eur2(c.todayCA)}
