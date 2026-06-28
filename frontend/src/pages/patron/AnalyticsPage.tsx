@@ -2,14 +2,14 @@ import { useEffect, useMemo, useState } from 'react'
 import {
   Alert,
   Box,
+  Button,
   Card,
   CardContent,
+  Chip,
   CircularProgress,
   MenuItem,
   Stack,
   TextField,
-  ToggleButton,
-  ToggleButtonGroup,
   Typography,
 } from '@mui/material'
 import { BarChart } from '@mui/x-charts/BarChart'
@@ -38,13 +38,13 @@ const weekdayMon0 = (iso: string): number => {
   return (new Date(y, m - 1, d).getDay() + 6) % 7
 }
 
-type Preset = 'year' | '12m' | 'all'
-
 export function AnalyticsPage() {
   const [etabs, setEtabs] = useState<MyEtablissement[]>([])
   const [etabId, setEtabId] = useState<number | null>(null)
-  const [preset, setPreset] = useState<Preset>('all')
+  const [from, setFrom] = useState('2025-01-01')
+  const [to, setTo] = useState(todayIso())
   const [entries, setEntries] = useState<DailyEntry[]>([])
+  const [compEntries, setCompEntries] = useState<DailyEntry[]>([])
   const [articles, setArticles] = useState<Article[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -62,23 +62,25 @@ export function AnalyticsPage() {
     listArticles().then(setArticles).catch(() => undefined)
   }, [])
 
-  const range = useMemo(() => {
-    const to = todayIso()
-    if (preset === 'year') return { from: `${new Date().getFullYear()}-01-01`, to }
-    if (preset === '12m') {
+  // Raccourcis de période (mettent à jour from/to ; les champs date permettent le sur-mesure).
+  const setPreset = (p: 'year' | '12m' | 'all') => {
+    setLoading(true)
+    const t = todayIso()
+    if (p === 'year') setFrom(`${new Date().getFullYear()}-01-01`)
+    else if (p === '12m') {
       const d = new Date()
       d.setFullYear(d.getFullYear() - 1)
-      return { from: d.toISOString().slice(0, 10), to }
-    }
-    return { from: '2025-01-01', to }
-  }, [preset])
+      setFrom(d.toISOString().slice(0, 10))
+    } else setFrom('2025-01-01')
+    setTo(t)
+  }
 
   useEffect(() => {
-    if (etabId == null) return
+    if (etabId == null || !from || !to) return
     let cancelled = false
     void (async () => {
       try {
-        const d = await listMonth(etabId, range.from, range.to)
+        const d = await listMonth(etabId, from, to)
         if (!cancelled) {
           setEntries(d)
           setError(null)
@@ -92,7 +94,25 @@ export function AnalyticsPage() {
     return () => {
       cancelled = true
     }
-  }, [etabId, range])
+  }, [etabId, from, to])
+
+  // Comparaison année courante vs précédente : on charge les 2 années pleines.
+  useEffect(() => {
+    if (etabId == null) return
+    const y = new Date().getFullYear()
+    let cancelled = false
+    void (async () => {
+      try {
+        const d = await listMonth(etabId, `${y - 1}-01-01`, todayIso())
+        if (!cancelled) setCompEntries(d)
+      } catch {
+        /* non bloquant */
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [etabId])
 
   const priceById = useMemo(() => {
     const m = new Map<number, number>()
@@ -166,6 +186,26 @@ export function AnalyticsPage() {
       best,
     }
   }, [entries, priceById])
+
+  // Comparaison CA mensuel : année courante (N) vs précédente (N-1).
+  const comparison = useMemo(() => {
+    const y = new Date().getFullYear()
+    const cur = Array(12).fill(0)
+    const prev = Array(12).fill(0)
+    for (const e of compEntries) {
+      const yr = Number(e.date.slice(0, 4))
+      const mo = Number(e.date.slice(5, 7)) - 1
+      if (yr === y) cur[mo] += e.revenue ?? 0
+      else if (yr === y - 1) prev[mo] += e.revenue ?? 0
+    }
+    const sum = (a: number[]) => a.reduce((s, v) => s + v, 0)
+    return {
+      y,
+      cur: cur.map((v) => Math.round(v)),
+      prev: prev.map((v) => Math.round(v)),
+      deltaPct: sum(prev) > 0 ? ((sum(cur) - sum(prev)) / sum(prev)) * 100 : null,
+    }
+  }, [compEntries])
 
   const kpi = (label: string, value: string, sub?: string) => (
     <Card sx={{ flex: 1, minWidth: 150 }}>
@@ -250,25 +290,41 @@ export function AnalyticsPage() {
 
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
 
-      <Stack direction="row" sx={{ mb: 2, alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
-        <ToggleButtonGroup
+      <Stack direction="row" sx={{ mb: 2, alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+        <Button size="small" variant="outlined" onClick={() => setPreset('all')}>
+          Depuis 2025
+        </Button>
+        <Button size="small" variant="outlined" onClick={() => setPreset('12m')}>
+          12 derniers mois
+        </Button>
+        <Button size="small" variant="outlined" onClick={() => setPreset('year')}>
+          Cette année
+        </Button>
+        <TextField
+          type="date"
           size="small"
-          exclusive
-          value={preset}
-          onChange={(_, v) => {
-            if (v) {
-              setLoading(true)
-              setPreset(v)
-            }
+          label="Du"
+          value={from}
+          onChange={(e) => {
+            setLoading(true)
+            setFrom(e.target.value)
           }}
-        >
-          <ToggleButton value="all">Depuis 2025</ToggleButton>
-          <ToggleButton value="12m">12 derniers mois</ToggleButton>
-          <ToggleButton value="year">Cette année</ToggleButton>
-        </ToggleButtonGroup>
+          slotProps={{ inputLabel: { shrink: true } }}
+        />
+        <TextField
+          type="date"
+          size="small"
+          label="Au"
+          value={to}
+          onChange={(e) => {
+            setLoading(true)
+            setTo(e.target.value)
+          }}
+          slotProps={{ inputLabel: { shrink: true } }}
+        />
         {loading && <CircularProgress size={18} />}
         <Typography variant="caption" color="text.secondary">
-          {data.nbDays} jours saisis
+          {data.nbDays} jours
         </Typography>
       </Stack>
 
@@ -283,6 +339,32 @@ export function AnalyticsPage() {
 
       {/* Graphiques */}
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 2, mb: 2 }}>
+        <Card sx={{ gridColumn: { md: '1 / -1' } }}>
+          <CardContent>
+            <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'center', mb: 0.5 }}>
+              <Typography variant="subtitle2" color="text.secondary">
+                Comparaison {comparison.y - 1} vs {comparison.y} — CA mensuel
+              </Typography>
+              {comparison.deltaPct != null && (
+                <Chip
+                  size="small"
+                  color={comparison.deltaPct >= 0 ? 'success' : 'error'}
+                  label={`${comparison.deltaPct >= 0 ? '+' : ''}${comparison.deltaPct.toFixed(1)} % vs ${comparison.y - 1}`}
+                />
+              )}
+            </Stack>
+            <BarChart
+              height={280}
+              xAxis={[{ scaleType: 'band', data: MONTHS_SHORT }]}
+              series={[
+                { data: comparison.prev, label: String(comparison.y - 1), color: '#cdbba6' },
+                { data: comparison.cur, label: String(comparison.y), color: '#b5651d' },
+              ]}
+              margin={{ left: 70 }}
+            />
+          </CardContent>
+        </Card>
+
         <Card>
           <CardContent>
             <Typography variant="subtitle2" color="text.secondary" gutterBottom>
