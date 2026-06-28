@@ -47,7 +47,8 @@ jobs:
       - name: Configure SSH access to the VPS
         run: |
           mkdir -p ~/.ssh
-          printf '%s\n' "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/id_deploy
+          # Clé stockée en base64 (1 ligne) pour éviter tout mangling des retours à la ligne.
+          echo "${{ secrets.VPS_SSH_KEY_B64 }}" | base64 -d > ~/.ssh/id_deploy
           chmod 600 ~/.ssh/id_deploy
           cat >> ~/.ssh/config <<'EOF'
           Host argeneo.fr
