@@ -4,10 +4,13 @@ import { errorMessage } from '../../api/client'
 import { listMonth, listMyEtablissements } from '../../api/daily'
 import { listArticles } from '../../api/costing'
 import type { Article, DailyEntry, MyEtablissement } from '../../api/types'
-import { aggregate, compare, priceMap, todayIso, yesterdayIso } from '../../dashboard/analytics'
+import { aggregate, priceMap, todayIso } from '../../dashboard/analytics'
+import { buildSeries, defaultRefKey, fetchFrom, windowRange, type Gran } from '../../dashboard/period'
 import { WIDGETS, type WidgetCtx, type WidgetSize } from '../../dashboard/widgets'
-import { PeriodBar, type PeriodMode } from '../../dashboard/PeriodBar'
+import { PeriodNav } from '../../dashboard/PeriodNav'
 import { PageHeader } from '../../components/PageHeader'
+
+const TODAY = todayIso()
 
 const SPAN: Record<WidgetSize, { md: string; lg: string }> = {
   S: { md: 'span 1', lg: 'span 1' },
@@ -19,11 +22,9 @@ const SPAN: Record<WidgetSize, { md: string; lg: string }> = {
 export function AnalyticsPage() {
   const [etabs, setEtabs] = useState<MyEtablissement[]>([])
   const [etabId, setEtabId] = useState<number | null>(null)
-  const [mode, setMode] = useState<PeriodMode>('all')
-  const [from, setFrom] = useState('2025-01-01')
-  const [to, setTo] = useState(yesterdayIso())
+  const [gran, setGran] = useState<Gran>('mois')
+  const [refKey, setRefKey] = useState(() => defaultRefKey('mois', TODAY))
   const [entries, setEntries] = useState<DailyEntry[]>([])
-  const [compEntries, setCompEntries] = useState<DailyEntry[]>([])
   const [articles, setArticles] = useState<Article[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -41,12 +42,13 @@ export function AnalyticsPage() {
     listArticles().then(setArticles).catch(() => undefined)
   }, [])
 
+  const window = useMemo(() => windowRange(gran, refKey, TODAY), [gran, refKey])
   useEffect(() => {
-    if (etabId == null || !from || !to) return
+    if (etabId == null) return
     let cancelled = false
     void (async () => {
       try {
-        const d = await listMonth(etabId, from, to)
+        const d = await listMonth(etabId, fetchFrom(gran, refKey), window.to)
         if (!cancelled) {
           setEntries(d)
           setError(null)
@@ -60,47 +62,18 @@ export function AnalyticsPage() {
     return () => {
       cancelled = true
     }
-  }, [etabId, from, to])
+  }, [etabId, gran, refKey, window.to])
 
-  useEffect(() => {
-    if (etabId == null) return
-    const y = new Date().getFullYear()
-    let cancelled = false
-    void (async () => {
-      try {
-        const d = await listMonth(etabId, `${y - 1}-01-01`, todayIso())
-        if (!cancelled) setCompEntries(d)
-      } catch {
-        /* non bloquant */
-      }
-    })()
-    return () => {
-      cancelled = true
-    }
-  }, [etabId])
+  const ctx: WidgetCtx = useMemo(() => {
+    const price = priceMap(articles)
+    const inWindow = entries.filter((e) => e.date >= window.from && e.date <= window.to)
+    return { agg: aggregate(inWindow, price), comparison: buildSeries(entries, gran, refKey, TODAY) }
+  }, [entries, articles, gran, refKey, window.from, window.to])
 
-  const ctx: WidgetCtx = useMemo(
-    () => ({ agg: aggregate(entries, priceMap(articles)), comparison: compare(compEntries) }),
-    [entries, compEntries, articles],
-  )
-
-  const applyMode = (m: PeriodMode) => {
-    setMode(m)
-    if (m === 'custom') return
+  const onGran = (g: Gran) => {
     setLoading(true)
-    const t = yesterdayIso()
-    if (m === 'veille') {
-      setFrom(t)
-      setTo(t)
-      return
-    }
-    setTo(t)
-    if (m === '12m') {
-      const d = new Date()
-      d.setFullYear(d.getFullYear() - 1)
-      setFrom(d.toISOString().slice(0, 10))
-    } else if (m === 'year') setFrom(`${new Date().getFullYear()}-01-01`)
-    else setFrom('2025-01-01')
+    setGran(g)
+    setRefKey(defaultRefKey(g, TODAY))
   }
 
   return (
@@ -109,27 +82,21 @@ export function AnalyticsPage() {
 
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
 
-      <PeriodBar
+      <PeriodNav
         etabs={etabs}
         etabId={etabId}
         onEtab={(id) => {
           setLoading(true)
           setEtabId(id)
         }}
-        mode={mode}
-        onMode={applyMode}
-        from={from}
-        to={to}
-        onFrom={(v) => {
-          setMode('custom')
+        gran={gran}
+        onGran={onGran}
+        refKey={refKey}
+        onRef={(k) => {
           setLoading(true)
-          setFrom(v)
+          setRefKey(k)
         }}
-        onTo={(v) => {
-          setMode('custom')
-          setLoading(true)
-          setTo(v)
-        }}
+        today={TODAY}
         loading={loading}
       />
 

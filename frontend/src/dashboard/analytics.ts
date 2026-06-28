@@ -8,12 +8,15 @@ export const eur = (v: number | null | undefined): string =>
 export const eur2 = (v: number | null | undefined): string =>
   v == null ? '—' : v.toLocaleString('fr-FR', { style: 'currency', currency: 'EUR', maximumFractionDigits: 2 })
 export const intFr = (v: number): string => Math.round(v).toLocaleString('fr-FR')
-export const todayIso = (): string => new Date().toISOString().slice(0, 10)
+// Date locale au format ISO (PAS toISOString, qui convertit en UTC → décalage en fuseau France).
+const localIso = (d: Date): string =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+export const todayIso = (): string => localIso(new Date())
 /** La veille (hier) au format ISO — la journée du jour étant souvent incomplète. */
 export const yesterdayIso = (): string => {
   const d = new Date()
   d.setDate(d.getDate() - 1)
-  return d.toISOString().slice(0, 10)
+  return localIso(d)
 }
 
 /** Format compact pour les axes : « 12,5 k€ » au-delà de 1000, sinon « 850 € ». */

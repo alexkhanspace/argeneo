@@ -82,7 +82,7 @@ export const WIDGETS: WidgetDef[] = [
   },
   {
     type: 'compare',
-    label: 'Comparaison N vs N-1 (CA mensuel — écart à date)',
+    label: 'Comparaison N vs N-1 (CA)',
     defaultSize: 'L',
     render: ({ comparison: c }) => (
       <BarChart
@@ -90,8 +90,8 @@ export const WIDGETS: WidgetDef[] = [
         xAxis={[{ scaleType: 'band', data: c.labels }]}
         yAxis={[{ valueFormatter: (v: number) => eurAxis(v) }]}
         series={[
-          { data: c.caPrev, label: String(c.y - 1), color: '#cdbba6', valueFormatter: eurTip },
-          { data: c.caCur, label: String(c.y), color: '#b5651d', valueFormatter: eurTip },
+          { data: c.caPrev, label: 'N-1', color: '#cdbba6', valueFormatter: eurTip },
+          { data: c.caCur, label: 'N', color: '#b5651d', valueFormatter: eurTip },
         ]}
         margin={{ left: 70 }}
       />
@@ -107,8 +107,8 @@ export const WIDGETS: WidgetDef[] = [
         xAxis={[{ scaleType: 'point', data: c.labels }]}
         yAxis={[{ valueFormatter: (v: number) => eurAxis(v) }]}
         series={[
-          { data: c.caPrev, label: String(c.y - 1), color: '#cdbba6', valueFormatter: eurTip },
-          { data: c.caCur, label: String(c.y), color: '#b5651d', area: true, valueFormatter: eurTip },
+          { data: c.caPrev, label: 'N-1', color: '#cdbba6', valueFormatter: eurTip },
+          { data: c.caCur, label: 'N', color: '#b5651d', area: true, valueFormatter: eurTip },
         ]}
         margin={{ left: 70 }}
       />
@@ -124,8 +124,8 @@ export const WIDGETS: WidgetDef[] = [
         xAxis={[{ scaleType: 'band', data: WEEKDAYS }]}
         yAxis={[{ valueFormatter: (v: number) => eurAxis(v) }]}
         series={[
-          { data: c.weekdayPrev, label: String(c.y - 1), color: '#cdbba6', valueFormatter: eurTip },
-          { data: c.weekdayCur, label: String(c.y), color: '#9a5417', valueFormatter: eurTip },
+          { data: c.weekdayPrev, label: 'N-1', color: '#cdbba6', valueFormatter: eurTip },
+          { data: c.weekdayCur, label: 'N', color: '#9a5417', valueFormatter: eurTip },
         ]}
         margin={{ left: 70 }}
       />
@@ -133,7 +133,7 @@ export const WIDGETS: WidgetDef[] = [
   },
   {
     type: 'ticket_month',
-    label: 'Ticket moyen par mois — N vs N-1',
+    label: 'Ticket moyen — N vs N-1',
     defaultSize: 'M',
     render: ({ comparison: c }) => (
       <LineChart
@@ -141,8 +141,8 @@ export const WIDGETS: WidgetDef[] = [
         xAxis={[{ scaleType: 'point', data: c.labels }]}
         yAxis={[{ valueFormatter: (v: number) => `${v.toLocaleString('fr-FR', { maximumFractionDigits: 1 })} €` }]}
         series={[
-          { data: c.ticketPrev, label: String(c.y - 1), color: '#a5c7a6', valueFormatter: eur2Tip },
-          { data: c.ticketCur, label: String(c.y), color: '#2e7d32', area: true, valueFormatter: eur2Tip },
+          { data: c.ticketPrev, label: 'N-1', color: '#a5c7a6', valueFormatter: eur2Tip },
+          { data: c.ticketCur, label: 'N', color: '#2e7d32', area: true, valueFormatter: eur2Tip },
         ]}
       />
     ),

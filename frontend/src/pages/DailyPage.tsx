@@ -128,6 +128,7 @@ export function DailyPage() {
   const [revenueInput, setRevenueInput] = useState('')
   const [clientCountInput, setClientCountInput] = useState('')
   const [lossRows, setLossRows] = useState<LossRow[]>([])
+  const [lossAmountInput, setLossAmountInput] = useState('')
   const [noteProdInput, setNoteProdInput] = useState('')
   const [noteSaleInput, setNoteSaleInput] = useState('')
   const [editorError, setEditorError] = useState<string | null>(null)
@@ -156,6 +157,7 @@ export function DailyPage() {
       setSelected(date)
       setDay(d)
       setLossRows((d.losses ?? []).map((l) => ({ articleId: l.articleId, quantity: String(l.quantity) })))
+      setLossAmountInput(d.lossAmount == null ? '' : String(d.lossAmount))
       setNoteProdInput(d.noteProd ?? '')
       setNoteSaleInput(d.noteSale ?? '')
       setRevenueInput(r.revenue != null ? String(r.revenue) : d.revenue == null ? '' : String(d.revenue))
@@ -399,6 +401,7 @@ export function DailyPage() {
             quantity: String(l.quantity),
           })),
         )
+        setLossAmountInput(d.lossAmount == null ? '' : String(d.lossAmount))
         setNoteProdInput(d.noteProd ?? '')
         setNoteSaleInput(d.noteSale ?? '')
       })
@@ -465,6 +468,7 @@ export function DailyPage() {
         revenue: Number(revenueInput) || 0,
         clientCount: Number(clientCountInput) || null,
         losses,
+        lossAmount: lossAmountInput ? Number(lossAmountInput) : null,
         noteProd: noteProdInput,
         noteSale: noteSaleInput,
       })
@@ -1351,6 +1355,22 @@ export function DailyPage() {
                 />
               </>
             )}
+          </Box>
+
+          {/* Perte (en valeur) */}
+          <Box>
+            <Typography variant="body2" sx={{ fontWeight: 'bold', mb: 1 }}>
+              Perte (€)
+            </Typography>
+            <TextField
+              label="Montant de perte (TTC)"
+              type="number"
+              value={lossAmountInput}
+              disabled={!can('saisir_perte')}
+              onChange={(e) => setLossAmountInput(e.target.value)}
+              slotProps={{ htmlInput: { step: '0.01', min: '0' } }}
+              fullWidth
+            />
           </Box>
 
           {/* Perte (par article) */}

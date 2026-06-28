@@ -26,7 +26,9 @@ const addDays = (iso: string, n: number): string => {
   const [y, m, d] = iso.split('-').map(Number)
   const dt = new Date(y, m - 1, d)
   dt.setDate(dt.getDate() + n)
-  return dt.toISOString().slice(0, 10)
+  // Date locale (toISOString décale d'un jour en fuseau France).
+  const p = (x: number) => String(x).padStart(2, '0')
+  return `${dt.getFullYear()}-${p(dt.getMonth() + 1)}-${p(dt.getDate())}`
 }
 const longDate = (iso: string): string => {
   const [y, m, d] = iso.split('-').map(Number)
