@@ -1,5 +1,5 @@
 // Service worker Argéneo — coquille hors-ligne + passthrough API + cible de partage.
-const CACHE = 'argeneo-v3'
+const CACHE = 'argeneo-v4'
 const SHELL = ['/', '/index.html', '/argeneo-logo.png', '/manifest.webmanifest']
 // Clé temporaire où l'on dépose le fichier reçu via le partage système (Android).
 const SHARED_FILE_URL = '/__shared-invoice'

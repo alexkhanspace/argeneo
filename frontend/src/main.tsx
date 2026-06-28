@@ -24,9 +24,26 @@ createRoot(document.getElementById('root')!).render(
 )
 
 // PWA : enregistrer le service worker (en production uniquement, pour ne pas
-// interférer avec le HMR de Vite en dev).
+// interférer avec le HMR de Vite en dev). Auto-update : dès qu'une nouvelle version
+// prend la main, on recharge une fois pour servir le dernier bundle (fini le cache figé).
 if (import.meta.env.PROD && 'serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').catch(() => undefined)
+    const hadController = !!navigator.serviceWorker.controller
+    let refreshing = false
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (refreshing || !hadController) return
+      refreshing = true
+      window.location.reload()
+    })
+    navigator.serviceWorker
+      .register('/sw.js')
+      .then((reg) => {
+        reg.update().catch(() => undefined)
+        // Vérifie les mises à jour à chaque retour sur l'onglet.
+        document.addEventListener('visibilitychange', () => {
+          if (document.visibilityState === 'visible') reg.update().catch(() => undefined)
+        })
+      })
+      .catch(() => undefined)
   })
 }
