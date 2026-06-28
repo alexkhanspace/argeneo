@@ -58,6 +58,10 @@ public class DailyEntry {
     @JoinColumn(name = "daily_entry_id", nullable = false)
     private List<DailyEntryLoss> losses = new ArrayList<>();
 
+    /** Perte du jour en valeur (€), saisie globale simple (sans détail article). */
+    @Column(name = "loss_amount", precision = 12, scale = 2)
+    private BigDecimal lossAmount;
+
     @Column(name = "note_prod", columnDefinition = "text")
     private String noteProd;
 

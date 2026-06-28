@@ -30,6 +30,8 @@ public final class DailyDtos {
             @PositiveOrZero BigDecimal revenue,
             @PositiveOrZero Integer clientCount,
             @Valid List<LossLineRequest> losses,
+            /** Perte du jour en valeur (€), saisie globale optionnelle. */
+            @PositiveOrZero BigDecimal lossAmount,
             String noteProd,
             String noteSale) {
     }
@@ -48,13 +50,14 @@ public final class DailyDtos {
             BigDecimal revenue,
             Integer clientCount,
             List<LossLineResponse> losses,
+            BigDecimal lossAmount,
             String noteProd,
             String noteSale,
             Instant updatedAt) {
 
         /** Réponse "vide" pour un jour sans saisie. */
         public static DailyEntryResponse empty(Long etablissementId, LocalDate date) {
-            return new DailyEntryResponse(etablissementId, date, null, null, List.of(), null, null, null);
+            return new DailyEntryResponse(etablissementId, date, null, null, List.of(), null, null, null, null);
         }
     }
 }

@@ -292,6 +292,7 @@ export interface DailyEntry {
   revenue: number | null
   clientCount: number | null
   losses: DailyLossLine[]
+  lossAmount: number | null
   noteProd: string | null
   noteSale: string | null
   updatedAt: string | null

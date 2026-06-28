@@ -9,13 +9,15 @@ import {
   MenuItem,
   Stack,
   TextField,
+  ToggleButton,
+  ToggleButtonGroup,
   Typography,
 } from '@mui/material'
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft'
 import ChevronRightIcon from '@mui/icons-material/ChevronRight'
 import SaveIcon from '@mui/icons-material/Save'
 import { errorMessage } from '../../api/client'
-import { getDay, listMyEtablissements, saveDay } from '../../api/daily'
+import { listMyEtablissements, saveDay } from '../../api/daily'
 import { todayIso } from '../../dashboard/analytics'
 import type { MyEtablissement } from '../../api/types'
 import { PageHeader } from '../../components/PageHeader'
@@ -39,8 +41,8 @@ const eur = (v: number): string =>
   v.toLocaleString('fr-FR', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 })
 
 /**
- * Saisie « longue période » : on entre le CA puis les clients d'un jour, Entrée → enregistre et
- * passe au jour suivant. Idéal pour rattraper l'historique d'un nouveau client rapidement.
+ * Saisie « longue période » : CA → clients → perte (€), Entrée enchaîne les champs puis enregistre
+ * et passe au jour suivant. Idéal pour rattraper l'historique d'un nouveau client rapidement.
  */
 export function SaisieRapidePage() {
   const [etabs, setEtabs] = useState<MyEtablissement[]>([])
@@ -48,12 +50,14 @@ export function SaisieRapidePage() {
   const [date, setDate] = useState(todayIso())
   const [ca, setCa] = useState('')
   const [clients, setClients] = useState('')
-  const [losses, setLosses] = useState<{ articleId: number; quantity: number }[]>([])
-  const [log, setLog] = useState<{ date: string; revenue: number; clients: number | null }[]>([])
+  const [loss, setLoss] = useState('')
+  const [log, setLog] = useState<{ date: string; revenue: number; clients: number | null; loss: number | null }[]>([])
   const [busy, setBusy] = useState(false)
+  const [dir, setDir] = useState(1)
   const [error, setError] = useState<string | null>(null)
   const caRef = useRef<HTMLInputElement>(null)
   const clientsRef = useRef<HTMLInputElement>(null)
+  const lossRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     listMyEtablissements()
@@ -64,40 +68,44 @@ export function SaisieRapidePage() {
       .catch((e) => setError(errorMessage(e)))
   }, [])
 
-  // Charge le jour courant (pré-remplit s'il existe déjà) et place le focus sur le CA.
-  useEffect(() => {
-    if (etabId == null) return
-    let cancelled = false
-    getDay(etabId, date)
-      .then((d) => {
-        if (cancelled) return
-        setCa(d.revenue == null ? '' : String(d.revenue))
-        setClients(d.clientCount == null ? '' : String(d.clientCount))
-        setLosses((d.losses ?? []).map((l) => ({ articleId: l.articleId, quantity: l.quantity })))
-        caRef.current?.focus()
-        caRef.current?.select()
-      })
-      .catch((e) => setError(errorMessage(e)))
-    return () => {
-      cancelled = true
-    }
-  }, [etabId, date])
+  // Change de jour en vidant les champs et en redonnant le focus au CA (saisie en rafale).
+  const goToDate = (d: string) => {
+    setCa('')
+    setClients('')
+    setLoss('')
+    setDate(d)
+    requestAnimationFrame(() => {
+      caRef.current?.focus()
+      caRef.current?.select()
+    })
+  }
 
-  const save = async (advance: number) => {
+  const save = async () => {
     if (etabId == null) return
+    // Jour laissé entièrement vide : on avance sans rien écraser.
+    if (!ca && !clients && !loss) {
+      goToDate(addDays(date, dir))
+      return
+    }
     setBusy(true)
     setError(null)
     try {
       const revenue = ca ? Number(ca) : 0
       const clientCount = clients ? Number(clients) : null
-      await saveDay(etabId, date, { revenue, clientCount, losses })
-      setLog((prev) => [{ date, revenue, clients: clientCount }, ...prev].slice(0, 100))
-      if (advance !== 0) setDate(addDays(date, advance))
+      const lossAmount = loss ? Number(loss) : null
+      await saveDay(etabId, date, { revenue, clientCount, losses: [], lossAmount })
+      setLog((prev) => [{ date, revenue, clients: clientCount, loss: lossAmount }, ...prev].slice(0, 100))
+      goToDate(addDays(date, dir))
     } catch (e) {
       setError(errorMessage(e))
     } finally {
       setBusy(false)
     }
+  }
+
+  const focusNext = (el: HTMLInputElement | null) => {
+    el?.focus()
+    el?.select()
   }
 
   return (
@@ -127,21 +135,25 @@ export function SaisieRapidePage() {
           size="small"
           label="Aller au jour"
           value={date}
-          onChange={(e) => setDate(e.target.value)}
+          onChange={(e) => goToDate(e.target.value)}
           slotProps={{ inputLabel: { shrink: true } }}
         />
+        <ToggleButtonGroup size="small" exclusive value={dir} onChange={(_, v) => v != null && setDir(v)}>
+          <ToggleButton value={1}>Avancer ▶</ToggleButton>
+          <ToggleButton value={-1}>◀ Reculer</ToggleButton>
+        </ToggleButtonGroup>
       </Stack>
 
       <Card sx={{ mb: 2 }}>
         <CardContent>
           <Stack direction="row" sx={{ alignItems: 'center', justifyContent: 'center', gap: 1, mb: 2 }}>
-            <IconButton onClick={() => setDate(addDays(date, -1))} aria-label="Jour précédent">
+            <IconButton onClick={() => goToDate(addDays(date, -1))} aria-label="Jour précédent">
               <ChevronLeftIcon />
             </IconButton>
             <Typography variant="h6" sx={{ textTransform: 'capitalize', minWidth: 240, textAlign: 'center' }}>
               {longDate(date)}
             </Typography>
-            <IconButton onClick={() => setDate(addDays(date, 1))} aria-label="Jour suivant">
+            <IconButton onClick={() => goToDate(addDays(date, 1))} aria-label="Jour suivant">
               <ChevronRightIcon />
             </IconButton>
           </Stack>
@@ -156,8 +168,7 @@ export function SaisieRapidePage() {
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {
                   e.preventDefault()
-                  clientsRef.current?.focus()
-                  clientsRef.current?.select()
+                  focusNext(clientsRef.current)
                 }
               }}
               slotProps={{ htmlInput: { step: '0.01', min: '0' } }}
@@ -173,25 +184,40 @@ export function SaisieRapidePage() {
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {
                   e.preventDefault()
-                  void save(1)
+                  focusNext(lossRef.current)
                 }
               }}
               slotProps={{ htmlInput: { step: '1', min: '0' } }}
               fullWidth
             />
+            <TextField
+              inputRef={lossRef}
+              label="Perte (€)"
+              type="number"
+              value={loss}
+              onChange={(e) => setLoss(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault()
+                  void save()
+                }
+              }}
+              slotProps={{ htmlInput: { step: '0.01', min: '0' } }}
+              fullWidth
+            />
             <Button
               variant="contained"
               startIcon={<SaveIcon />}
-              onClick={() => void save(1)}
+              onClick={() => void save()}
               disabled={busy}
               sx={{ whiteSpace: 'nowrap' }}
             >
-              Jour suivant
+              {dir > 0 ? 'Jour suivant' : 'Jour précédent'}
             </Button>
           </Stack>
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
-            Astuce : tape le CA → <b>Entrée</b> → tape les clients → <b>Entrée</b> ⇒ enregistré, on passe
-            au lendemain. Les flèches changent de jour sans enregistrer.
+            Astuce : CA → <b>Entrée</b> → Clients → <b>Entrée</b> → Perte → <b>Entrée</b> ⇒ enregistré, on
+            passe au jour suivant. Les flèches changent de jour sans enregistrer.
           </Typography>
         </CardContent>
       </Card>
@@ -210,6 +236,7 @@ export function SaisieRapidePage() {
                   </Typography>
                   <Typography sx={{ fontWeight: 600 }}>{eur(l.revenue)}</Typography>
                   <Typography color="text.secondary">{l.clients ?? '—'} cl.</Typography>
+                  <Typography color="error.main">{l.loss ? `-${eur(l.loss)}` : '—'}</Typography>
                 </Stack>
               ))}
             </Stack>

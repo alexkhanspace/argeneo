@@ -120,6 +120,7 @@ public class DailyEntryService {
         }
         if (access.canLoss(etablissementId)) {
             entry.replaceLosses(toLossEntities(request.losses()));
+            entry.setLossAmount(request.lossAmount());
         }
 
         DailyEntry saved = repository.save(entry);
@@ -147,7 +148,8 @@ public class DailyEntryService {
                 })
                 .toList();
         return new DailyEntryResponse(e.getEtablissementId(), e.getEntryDate(), e.getRevenue(),
-                e.getClientCount(), losses, e.getNoteProd(), e.getNoteSale(), e.getUpdatedAt());
+                e.getClientCount(), losses, e.getLossAmount(), e.getNoteProd(), e.getNoteSale(),
+                e.getUpdatedAt());
     }
 
     private Map<Long, Article> articlesById() {

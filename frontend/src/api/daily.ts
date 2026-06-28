@@ -47,6 +47,7 @@ export interface UpsertDailyInput {
   revenue?: number | null
   clientCount?: number | null
   losses: Array<{ articleId: number; quantity: number }>
+  lossAmount?: number | null
   noteProd?: string | null
   noteSale?: string | null
 }
