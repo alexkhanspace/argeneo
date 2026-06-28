@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { NavLink, Outlet, useNavigate } from 'react-router-dom'
+import { useState, type MouseEvent } from 'react'
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import {
   AppBar,
   Box,
@@ -11,6 +11,9 @@ import {
   IconButton,
   List,
   ListItemButton,
+  ListSubheader,
+  Menu,
+  MenuItem,
   Popover,
   Stack,
   ToggleButton,
@@ -22,6 +25,7 @@ import {
 } from '@mui/material'
 import { useTheme } from '@mui/material/styles'
 import MenuIcon from '@mui/icons-material/Menu'
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
 import LogoutIcon from '@mui/icons-material/Logout'
 import RefreshIcon from '@mui/icons-material/Refresh'
 import SettingsIcon from '@mui/icons-material/Settings'
@@ -41,32 +45,95 @@ interface NavItem {
   to: string
   label: string
 }
+interface NavGroup {
+  /** Vide = items rendus en onglets directs (admin/employé) ; sinon = menu déroulant. */
+  label: string
+  items: NavItem[]
+}
 
-function navItemsFor(me: Me): NavItem[] {
+function navGroupsFor(me: Me): NavGroup[] {
   if (isAdmin(me)) {
     return [
-      { to: '/admin/tenants', label: 'Tenants' },
-      { to: '/admin/users', label: 'Utilisateurs' },
-      { to: '/admin/audit', label: 'Historique' },
+      {
+        label: '',
+        items: [
+          { to: '/admin/tenants', label: 'Tenants' },
+          { to: '/admin/users', label: 'Utilisateurs' },
+          { to: '/admin/audit', label: 'Historique' },
+        ],
+      },
     ]
   }
   if (isPatron(me)) {
     return [
-      { to: '/dashboard', label: 'Tableau de bord' },
-      { to: '/analytique', label: 'Analytique' },
-      { to: '/etablissements', label: 'Établissements' },
-      { to: '/employees', label: 'Équipe' },
-      { to: '/articles', label: 'Articles' },
-      { to: '/materials', label: 'Matières' },
-      { to: '/factures', label: 'Factures' },
-      { to: '/clients', label: 'Clients' },
-      { to: '/billing', label: 'Facturation' },
-      { to: '/communication', label: 'Communication' },
-      { to: '/saisie', label: 'Calendrier' },
+      {
+        label: 'Pilotage',
+        items: [
+          { to: '/dashboard', label: 'Tableau de bord' },
+          { to: '/mon-tableau', label: 'Mon tableau de bord' },
+          { to: '/analytique', label: 'Analytique' },
+          { to: '/saisie', label: 'Calendrier' },
+        ],
+      },
+      {
+        label: 'Catalogue',
+        items: [
+          { to: '/articles', label: 'Articles' },
+          { to: '/materials', label: 'Matières' },
+          { to: '/factures', label: 'Factures' },
+        ],
+      },
+      {
+        label: 'Commercial',
+        items: [
+          { to: '/clients', label: 'Clients' },
+          { to: '/billing', label: 'Facturation' },
+          { to: '/communication', label: 'Communication' },
+        ],
+      },
+      {
+        label: 'Organisation',
+        items: [
+          { to: '/etablissements', label: 'Établissements' },
+          { to: '/employees', label: 'Équipe' },
+        ],
+      },
     ]
   }
-  if (isEmploye(me)) return [{ to: '/saisie', label: 'Calendrier' }]
+  if (isEmploye(me)) return [{ label: '', items: [{ to: '/saisie', label: 'Calendrier' }] }]
   return []
+}
+
+/** Onglet déroulant (desktop) regroupant plusieurs liens. */
+function NavMenu({ group }: { group: NavGroup }) {
+  const [anchor, setAnchor] = useState<HTMLElement | null>(null)
+  const loc = useLocation()
+  const active = group.items.some((it) => loc.pathname === it.to || loc.pathname.startsWith(it.to + '/'))
+  return (
+    <>
+      <Button
+        color="inherit"
+        endIcon={<ExpandMoreIcon />}
+        onClick={(e: MouseEvent<HTMLElement>) => setAnchor(e.currentTarget)}
+        sx={{ px: 1.5, fontWeight: active ? 600 : 500, color: active ? 'primary.main' : 'text.primary' }}
+      >
+        {group.label}
+      </Button>
+      <Menu anchorEl={anchor} open={Boolean(anchor)} onClose={() => setAnchor(null)}>
+        {group.items.map((it) => (
+          <MenuItem
+            key={it.to}
+            component={NavLink}
+            to={it.to}
+            onClick={() => setAnchor(null)}
+            sx={{ '&.active': { color: 'primary.main', fontWeight: 600 } }}
+          >
+            {it.label}
+          </MenuItem>
+        ))}
+      </Menu>
+    </>
+  )
 }
 
 /** Lien de nav stylé pour la barre horizontale (desktop). */
@@ -103,9 +170,9 @@ export function Layout() {
 
   if (!me) return null
 
-  const items = navItemsFor(me)
+  const groups = navGroupsFor(me)
   // Accueil = 1re entrée de nav du rôle (Tableau de bord pour un patron, Tenants pour l'admin…).
-  const homePath = items[0]?.to ?? '/'
+  const homePath = groups[0]?.items[0]?.to ?? '/'
 
   const onLogout = () => {
     logout()
@@ -143,9 +210,13 @@ export function Layout() {
 
           {!isMobile && (
             <Stack direction="row" spacing={0.5} sx={{ flex: 1 }}>
-              {items.map((it) => (
-                <NavTab key={it.to} {...it} />
-              ))}
+              {groups.map((g) =>
+                g.label ? (
+                  <NavMenu key={g.label} group={g} />
+                ) : (
+                  g.items.map((it) => <NavTab key={it.to} {...it} />)
+                ),
+              )}
             </Stack>
           )}
 
@@ -252,15 +323,22 @@ export function Layout() {
             </>
           )}
           <List>
-            {items.map((it) => (
-              <ListItemButton
-                key={it.to}
-                component={NavLink}
-                to={it.to}
-                sx={{ '&.active': { color: 'primary.main', fontWeight: 600 } }}
-              >
-                {it.label}
-              </ListItemButton>
+            {groups.map((g) => (
+              <Box key={g.label || 'main'}>
+                {g.label && (
+                  <ListSubheader sx={{ bgcolor: 'transparent', lineHeight: '32px' }}>{g.label}</ListSubheader>
+                )}
+                {g.items.map((it) => (
+                  <ListItemButton
+                    key={it.to}
+                    component={NavLink}
+                    to={it.to}
+                    sx={{ pl: g.label ? 3 : 2, '&.active': { color: 'primary.main', fontWeight: 600 } }}
+                  >
+                    {it.label}
+                  </ListItemButton>
+                ))}
+              </Box>
             ))}
           </List>
         </Box>
