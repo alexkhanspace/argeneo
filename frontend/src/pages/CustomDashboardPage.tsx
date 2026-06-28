@@ -39,7 +39,7 @@ const DEFAULT_ITEMS: DashboardItem[] = [
   { type: 'kpis', size: 'L' },
   { type: 'ca_today', size: 'S' },
   { type: 'compare', size: 'L' },
-  { type: 'ca_line', size: 'M' },
+  { type: 'ca_line', size: 'L' },
   { type: 'ca_weekday', size: 'M' },
   { type: 'ticket_month', size: 'M' },
   { type: 'loss_pie', size: 'M' },

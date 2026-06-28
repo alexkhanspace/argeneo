@@ -24,6 +24,7 @@ import { EtablissementsPage } from './pages/patron/EtablissementsPage'
 import { EmployeePermissionsPage } from './pages/patron/EmployeePermissionsPage'
 import { EmployeesPage } from './pages/patron/EmployeesPage'
 import { MaterialsPage } from './pages/patron/MaterialsPage'
+import { SaisieRapidePage } from './pages/patron/SaisieRapidePage'
 import { RecipeEditorPage } from './pages/patron/RecipeEditorPage'
 import { MenuEditorPage } from './pages/patron/MenuEditorPage'
 
@@ -179,6 +180,14 @@ export default function App() {
           element={
             <ProtectedRoute allow={isPatron}>
               <CustomDashboardPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/saisie-rapide"
+          element={
+            <ProtectedRoute allow={isPatron}>
+              <SaisieRapidePage />
             </ProtectedRoute>
           }
         />

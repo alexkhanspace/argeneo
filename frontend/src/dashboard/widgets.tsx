@@ -100,7 +100,7 @@ export const WIDGETS: WidgetDef[] = [
   {
     type: 'ca_line',
     label: 'Évolution du CA — N vs N-1',
-    defaultSize: 'M',
+    defaultSize: 'L',
     render: ({ comparison: c }) => (
       <LineChart
         height={260}
