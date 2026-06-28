@@ -142,9 +142,12 @@ export function AnalyticsPage() {
         }}
       >
         {WIDGETS.map((w) => (
-          <Box key={w.type} sx={{ gridColumn: { xs: 'span 1', md: SPAN[w.defaultSize].md, lg: SPAN[w.defaultSize].lg } }}>
-            <Card sx={{ height: '100%' }}>
-              <CardContent>
+          <Box
+            key={w.type}
+            sx={{ gridColumn: { xs: 'span 1', md: SPAN[w.defaultSize].md, lg: SPAN[w.defaultSize].lg }, minWidth: 0 }}
+          >
+            <Card sx={{ height: '100%', minWidth: 0 }}>
+              <CardContent sx={{ overflowX: 'hidden' }}>
                 <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1 }}>
                   {w.label}
                 </Typography>

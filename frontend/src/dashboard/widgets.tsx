@@ -5,7 +5,7 @@ import { BarChart } from '@mui/x-charts/BarChart'
 import { LineChart } from '@mui/x-charts/LineChart'
 import { PieChart } from '@mui/x-charts/PieChart'
 import { DataGrid, type GridColDef } from '@mui/x-data-grid'
-import { eur, eur2, eurAxis, intFr, MONTHS_SHORT, WEEKDAYS, type Agg, type Comparison } from './analytics'
+import { eur, eur2, eurAxis, intFr, WEEKDAYS, type Agg, type Comparison } from './analytics'
 
 const eurTip = (v: number | null): string => (v == null ? '' : eur(v))
 const eur2Tip = (v: number | null): string => (v == null ? '' : eur2(v))
@@ -63,12 +63,20 @@ export const WIDGETS: WidgetDef[] = [
   },
   {
     type: 'ca_today',
-    label: "CA du jour",
+    label: 'CA du jour & de la veille',
     defaultSize: 'S',
-    render: ({ agg }) => (
-      <Stack sx={{ gap: 1 }}>
-        <KpiBox label="CA aujourd'hui" value={agg.todayCA == null ? '— (non saisi)' : eur2(agg.todayCA)} />
-        <KpiBox label="Clients aujourd'hui" value={agg.todayClients == null ? '—' : intFr(agg.todayClients)} />
+    render: ({ comparison: c }) => (
+      <Stack sx={{ gap: 1.5 }}>
+        <KpiBox
+          label="CA du jour"
+          value={c.todayCA == null ? '— (non saisi)' : eur2(c.todayCA)}
+          sub={c.todayClients != null ? `${intFr(c.todayClients)} clients` : undefined}
+        />
+        <KpiBox
+          label="CA de la veille"
+          value={c.yesterdayCA == null ? '—' : eur2(c.yesterdayCA)}
+          sub={c.yesterdayClients != null ? `${intFr(c.yesterdayClients)} clients` : undefined}
+        />
       </Stack>
     ),
   },
@@ -79,87 +87,65 @@ export const WIDGETS: WidgetDef[] = [
     render: ({ comparison: c }) => (
       <BarChart
         height={280}
-        xAxis={[{ scaleType: 'band', data: MONTHS_SHORT }]}
+        xAxis={[{ scaleType: 'band', data: c.labels }]}
         yAxis={[{ valueFormatter: (v: number) => eurAxis(v) }]}
         series={[
-          { data: c.prev, label: String(c.y - 1), color: '#cdbba6', valueFormatter: eurTip },
-          { data: c.cur, label: String(c.y), color: '#b5651d', valueFormatter: eurTip },
+          { data: c.caPrev, label: String(c.y - 1), color: '#cdbba6', valueFormatter: eurTip },
+          { data: c.caCur, label: String(c.y), color: '#b5651d', valueFormatter: eurTip },
         ]}
         margin={{ left: 70 }}
       />
     ),
   },
   {
-    type: 'ca_month',
-    label: "Chiffre d'affaires par mois",
-    defaultSize: 'M',
-    render: ({ agg }) =>
-      agg.months.length ? (
-        <BarChart
-          height={260}
-          xAxis={[{ scaleType: 'band', data: agg.monthLabels }]}
-          yAxis={[{ valueFormatter: (v: number) => eurAxis(v) }]}
-          series={[{ data: agg.months.map(([, v]) => Math.round(v.ca)), label: 'CA', color: '#b5651d', valueFormatter: eurTip }]}
-          margin={{ left: 70 }}
-        />
-      ) : (
-        <Typography color="text.secondary">Aucune donnée.</Typography>
-      ),
-  },
-  {
     type: 'ca_line',
-    label: 'Évolution du CA (mensuel)',
+    label: 'Évolution du CA — N vs N-1',
     defaultSize: 'M',
-    render: ({ agg }) =>
-      agg.months.length ? (
-        <LineChart
-          height={260}
-          xAxis={[{ scaleType: 'point', data: agg.monthLabels }]}
-          yAxis={[{ valueFormatter: (v: number) => eurAxis(v) }]}
-          series={[{ data: agg.months.map(([, v]) => Math.round(v.ca)), label: 'CA', color: '#b5651d', area: true, valueFormatter: eurTip }]}
-          margin={{ left: 70 }}
-        />
-      ) : (
-        <Typography color="text.secondary">Aucune donnée.</Typography>
-      ),
+    render: ({ comparison: c }) => (
+      <LineChart
+        height={260}
+        xAxis={[{ scaleType: 'point', data: c.labels }]}
+        yAxis={[{ valueFormatter: (v: number) => eurAxis(v) }]}
+        series={[
+          { data: c.caPrev, label: String(c.y - 1), color: '#cdbba6', valueFormatter: eurTip },
+          { data: c.caCur, label: String(c.y), color: '#b5651d', area: true, valueFormatter: eurTip },
+        ]}
+        margin={{ left: 70 }}
+      />
+    ),
   },
   {
     type: 'ca_weekday',
-    label: 'CA moyen par jour de semaine',
+    label: 'CA moyen par jour de semaine — N vs N-1',
     defaultSize: 'M',
-    render: ({ agg }) => (
+    render: ({ comparison: c }) => (
       <BarChart
         height={260}
         xAxis={[{ scaleType: 'band', data: WEEKDAYS }]}
         yAxis={[{ valueFormatter: (v: number) => eurAxis(v) }]}
-        series={[{ data: agg.weekdayAvg, label: 'CA moyen', color: '#9a5417', valueFormatter: eurTip }]}
+        series={[
+          { data: c.weekdayPrev, label: String(c.y - 1), color: '#cdbba6', valueFormatter: eurTip },
+          { data: c.weekdayCur, label: String(c.y), color: '#9a5417', valueFormatter: eurTip },
+        ]}
         margin={{ left: 70 }}
       />
     ),
   },
   {
     type: 'ticket_month',
-    label: 'Ticket moyen par mois',
+    label: 'Ticket moyen par mois — N vs N-1',
     defaultSize: 'M',
-    render: ({ agg }) =>
-      agg.months.length ? (
-        <LineChart
-          height={260}
-          xAxis={[{ scaleType: 'point', data: agg.monthLabels }]}
-          yAxis={[{ valueFormatter: (v: number) => `${v.toLocaleString('fr-FR', { maximumFractionDigits: 1 })} €` }]}
-          series={[
-            {
-              data: agg.months.map(([, v]) => (v.clients ? Number((v.ca / v.clients).toFixed(2)) : 0)),
-              label: 'Ticket moyen',
-              color: '#2e7d32',
-              area: true,
-              valueFormatter: eur2Tip,
-            },
-          ]}
-        />
-      ) : (
-        <Typography color="text.secondary">Aucune donnée.</Typography>
-      ),
+    render: ({ comparison: c }) => (
+      <LineChart
+        height={260}
+        xAxis={[{ scaleType: 'point', data: c.labels }]}
+        yAxis={[{ valueFormatter: (v: number) => `${v.toLocaleString('fr-FR', { maximumFractionDigits: 1 })} €` }]}
+        series={[
+          { data: c.ticketPrev, label: String(c.y - 1), color: '#a5c7a6', valueFormatter: eur2Tip },
+          { data: c.ticketCur, label: String(c.y), color: '#2e7d32', area: true, valueFormatter: eur2Tip },
+        ]}
+      />
+    ),
   },
   {
     type: 'loss_pie',

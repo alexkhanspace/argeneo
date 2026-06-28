@@ -56,9 +56,18 @@ export interface Agg {
 
 export interface Comparison {
   y: number
-  cur: number[]
-  prev: number[]
+  labels: string[]
+  caCur: number[]
+  caPrev: number[]
+  ticketCur: number[]
+  ticketPrev: number[]
+  weekdayCur: number[]
+  weekdayPrev: number[]
   deltaPct: number | null
+  todayCA: number | null
+  todayClients: number | null
+  yesterdayCA: number | null
+  yesterdayClients: number | null
 }
 
 export function priceMap(articles: Article[]): Map<number, number> {
@@ -143,26 +152,70 @@ export function compare(compEntries: DailyEntry[]): Comparison {
   yest.setDate(yest.getDate() - 1)
   const cutoffPrev = `${y - 1}-${String(yest.getMonth() + 1).padStart(2, '0')}-${String(yest.getDate()).padStart(2, '0')}`
 
-  const cur = Array(12).fill(0)
-  const prev = Array(12).fill(0)
+  const caCur = Array(12).fill(0)
+  const caPrev = Array(12).fill(0)
+  const clCur = Array(12).fill(0)
+  const clPrev = Array(12).fill(0)
+  const wdCur = WEEKDAYS.map(() => ({ ca: 0, n: 0 }))
+  const wdPrev = WEEKDAYS.map(() => ({ ca: 0, n: 0 }))
   let curYtd = 0
   let prevYtd = 0
+  const today = todayIso()
+  const yestIso = yesterdayIso()
+  let todayCA: number | null = null
+  let todayClients: number | null = null
+  let yesterdayCA: number | null = null
+  let yesterdayClients: number | null = null
+
   for (const e of compEntries) {
     const yr = Number(e.date.slice(0, 4))
     const mo = Number(e.date.slice(5, 7)) - 1
+    const wi = (() => {
+      const [yy, mm, dd] = e.date.split('-').map(Number)
+      return (new Date(yy, mm - 1, dd).getDay() + 6) % 7
+    })()
     const rev = e.revenue ?? 0
+    const cl = e.clientCount ?? 0
+    if (e.date === today) {
+      todayCA = e.revenue ?? null
+      todayClients = e.clientCount ?? null
+    }
+    if (e.date === yestIso) {
+      yesterdayCA = e.revenue ?? null
+      yesterdayClients = e.clientCount ?? null
+    }
     if (yr === y) {
-      cur[mo] += rev
+      caCur[mo] += rev
+      clCur[mo] += cl
       curYtd += rev
+      if (e.revenue != null) {
+        wdCur[wi].ca += rev
+        wdCur[wi].n += 1
+      }
     } else if (yr === y - 1) {
-      prev[mo] += rev
+      caPrev[mo] += rev
+      clPrev[mo] += cl
       if (e.date <= cutoffPrev) prevYtd += rev
+      if (e.revenue != null) {
+        wdPrev[wi].ca += rev
+        wdPrev[wi].n += 1
+      }
     }
   }
+  const ticket = (ca: number, cl: number) => (cl ? Number((ca / cl).toFixed(2)) : 0)
   return {
     y,
-    cur: cur.map((v) => Math.round(v)),
-    prev: prev.map((v) => Math.round(v)),
+    labels: MONTHS_SHORT,
+    caCur: caCur.map((v) => Math.round(v)),
+    caPrev: caPrev.map((v) => Math.round(v)),
+    ticketCur: caCur.map((c, i) => ticket(c, clCur[i])),
+    ticketPrev: caPrev.map((c, i) => ticket(c, clPrev[i])),
+    weekdayCur: wdCur.map((w) => (w.n ? Math.round(w.ca / w.n) : 0)),
+    weekdayPrev: wdPrev.map((w) => (w.n ? Math.round(w.ca / w.n) : 0)),
     deltaPct: prevYtd > 0 ? ((curYtd - prevYtd) / prevYtd) * 100 : null,
+    todayCA,
+    todayClients,
+    yesterdayCA,
+    yesterdayClients,
   }
 }

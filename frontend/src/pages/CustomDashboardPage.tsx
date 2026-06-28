@@ -37,9 +37,11 @@ import { PageHeader } from '../components/PageHeader'
 
 const DEFAULT_ITEMS: DashboardItem[] = [
   { type: 'kpis', size: 'L' },
+  { type: 'ca_today', size: 'S' },
   { type: 'compare', size: 'L' },
-  { type: 'ca_month', size: 'M' },
+  { type: 'ca_line', size: 'M' },
   { type: 'ca_weekday', size: 'M' },
+  { type: 'ticket_month', size: 'M' },
   { type: 'loss_pie', size: 'M' },
   { type: 'table_best', size: 'M' },
 ]
@@ -70,12 +72,13 @@ function SortableWidget({
       style={{ transform: CSS.Transform.toString(transform), transition }}
       sx={{
         gridColumn: { xs: 'span 1', md: SPAN[item.size].md, lg: SPAN[item.size].lg },
+        minWidth: 0,
         opacity: isDragging ? 0.6 : 1,
         zIndex: isDragging ? 1 : 'auto',
       }}
     >
-      <Card sx={{ height: '100%' }}>
-        <CardContent sx={{ py: 1.5 }}>
+      <Card sx={{ height: '100%', minWidth: 0 }}>
+        <CardContent sx={{ py: 1.5, overflowX: 'hidden' }}>
           <Stack direction="row" sx={{ alignItems: 'center', gap: 0.5, mb: 1 }}>
             <IconButton
               size="small"
