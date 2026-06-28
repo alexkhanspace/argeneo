@@ -1,0 +1,61 @@
+name: Build & Deploy
+
+# Déploiement automatique vers le VPS à chaque push sur main.
+# Réutilise deploy/deploy.sh (SKIP_BUILD=1) : on build ici, le script expédie + active.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+# Un seul déploiement à la fois (pas de course entre deux pushes).
+concurrency:
+  group: deploy-prod
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Build backend (bootJar)
+        working-directory: backend
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon clean bootJar
+
+      - name: Set up Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Build frontend
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+
+      - name: Configure SSH access to the VPS
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          cat >> ~/.ssh/config <<'EOF'
+          Host argeneo.fr
+            User rocky
+            IdentityFile ~/.ssh/id_deploy
+            IdentitiesOnly yes
+            StrictHostKeyChecking accept-new
+          EOF
+
+      - name: Ship + activate (reuse deploy.sh)
+        run: SKIP_BUILD=1 ARGENEO_HOST=rocky@argeneo.fr ./deploy/deploy.sh
