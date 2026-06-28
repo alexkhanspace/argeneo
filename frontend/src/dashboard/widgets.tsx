@@ -64,7 +64,7 @@ export const WIDGETS: WidgetDef[] = [
   {
     type: 'ca_today',
     label: 'CA du jour & de la veille',
-    defaultSize: 'S',
+    defaultSize: 'L',
     render: ({ comparison: c }) => (
       <Stack direction="row" sx={{ gap: 2, flexWrap: 'wrap' }}>
         <KpiBox

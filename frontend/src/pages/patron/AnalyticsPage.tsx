@@ -22,8 +22,8 @@ const SPAN: Record<WidgetSize, { md: string; lg: string }> = {
 export function AnalyticsPage() {
   const [etabs, setEtabs] = useState<MyEtablissement[]>([])
   const [etabId, setEtabId] = useState<number | null>(null)
-  const [gran, setGran] = useState<Gran>('mois')
-  const [refKey, setRefKey] = useState(() => defaultRefKey('mois', TODAY))
+  const [gran, setGran] = useState<Gran>('jour')
+  const [refKey, setRefKey] = useState(() => defaultRefKey('jour', TODAY))
   const [entries, setEntries] = useState<DailyEntry[]>([])
   const [articles, setArticles] = useState<Article[]>([])
   const [loading, setLoading] = useState(false)
@@ -48,7 +48,8 @@ export function AnalyticsPage() {
     let cancelled = false
     void (async () => {
       try {
-        const d = await listMonth(etabId, fetchFrom(gran, refKey), window.to)
+        // Jusqu'à aujourd'hui (le widget « jour/veille » reste à jour quelle que soit la période).
+        const d = await listMonth(etabId, fetchFrom(gran, refKey), TODAY)
         if (!cancelled) {
           setEntries(d)
           setError(null)
@@ -62,7 +63,7 @@ export function AnalyticsPage() {
     return () => {
       cancelled = true
     }
-  }, [etabId, gran, refKey, window.to])
+  }, [etabId, gran, refKey])
 
   const ctx: WidgetCtx = useMemo(() => {
     const price = priceMap(articles)

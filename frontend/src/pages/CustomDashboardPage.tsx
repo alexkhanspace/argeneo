@@ -40,7 +40,7 @@ const TODAY = todayIso()
 
 const DEFAULT_ITEMS: DashboardItem[] = [
   { type: 'kpis', size: 'L' },
-  { type: 'ca_today', size: 'S' },
+  { type: 'ca_today', size: 'L' },
   { type: 'compare', size: 'L' },
   { type: 'ca_line', size: 'L' },
   { type: 'ca_weekday', size: 'M' },
@@ -151,7 +151,8 @@ export function CustomDashboardPage() {
     let cancelled = false
     void (async () => {
       try {
-        const d = await listMonth(etabId, fetchFrom(gran, refKey), window.to)
+        // Jusqu'à aujourd'hui (le widget « jour/veille » reste à jour quelle que soit la période).
+        const d = await listMonth(etabId, fetchFrom(gran, refKey), TODAY)
         if (!cancelled) {
           setEntries(d)
           setError(null)
@@ -165,7 +166,7 @@ export function CustomDashboardPage() {
     return () => {
       cancelled = true
     }
-  }, [etabId, gran, refKey, window.to])
+  }, [etabId, gran, refKey])
 
   const ctx: WidgetCtx = useMemo(() => {
     const price = priceMap(articles)

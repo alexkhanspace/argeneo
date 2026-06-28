@@ -137,6 +137,7 @@ export function DailyPage() {
   const [ticketScanning, setTicketScanning] = useState(false)
   const [scanMsg, setScanMsg] = useState<string | null>(null)
   const ticketFileRef = useRef<HTMLInputElement | null>(null)
+  const monthPickerRef = useRef<HTMLInputElement | null>(null)
   const ticketGlobalRef = useRef<HTMLInputElement | null>(null)
 
   // Scan « global » : l'IA lit la date du ticket et ouvre le bon jour, sans sélection préalable.
@@ -411,6 +412,15 @@ export function DailyPage() {
   const onSelectDay = (iso: string) => {
     setSelected(iso)
     loadDay(iso)
+  }
+
+  // Saut rapide vers une date (date picker au clic sur le mois).
+  const jumpToDate = (iso: string) => {
+    if (!iso) return
+    const [y, m] = iso.split('-').map(Number)
+    setYear(y)
+    setMonth(m - 1)
+    onSelectDay(iso)
   }
 
   const closeEditor = () => {
@@ -701,9 +711,32 @@ export function DailyPage() {
               <ChevronLeftIcon />
             </IconButton>
             <Stack direction="row" sx={{ alignItems: 'center', gap: 0.5 }}>
-              <Typography variant="h2" sx={{ m: 0 }}>
-                {MONTHS[month]} {year}
-              </Typography>
+              <Tooltip title="Choisir une date">
+                <Typography
+                  variant="h2"
+                  sx={{ m: 0, cursor: 'pointer', '&:hover': { textDecoration: 'underline' } }}
+                  onClick={() => {
+                    const el = monthPickerRef.current
+                    if (!el) return
+                    try {
+                      el.showPicker()
+                    } catch {
+                      el.click()
+                    }
+                  }}
+                >
+                  {MONTHS[month]} {year}
+                </Typography>
+              </Tooltip>
+              <input
+                ref={monthPickerRef}
+                type="date"
+                style={{ position: 'absolute', width: 1, height: 1, opacity: 0, pointerEvents: 'none' }}
+                value={selected ?? `${year}-${String(month + 1).padStart(2, '0')}-01`}
+                onChange={(e) => jumpToDate(e.target.value)}
+                tabIndex={-1}
+                aria-hidden
+              />
               <Tooltip title="Analyser le mois avec l'IA">
                 <span>
                   <IconButton
