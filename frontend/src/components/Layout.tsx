@@ -53,6 +53,7 @@ function navItemsFor(me: Me): NavItem[] {
   if (isPatron(me)) {
     return [
       { to: '/dashboard', label: 'Tableau de bord' },
+      { to: '/analytique', label: 'Analytique' },
       { to: '/etablissements', label: 'Établissements' },
       { to: '/employees', label: 'Équipe' },
       { to: '/articles', label: 'Articles' },

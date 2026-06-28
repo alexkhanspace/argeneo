@@ -15,6 +15,7 @@ import { BillingPage } from './pages/billing/BillingPage'
 import { BillingSettingsPage } from './pages/billing/BillingSettingsPage'
 import { ClientsPage } from './pages/billing/ClientsPage'
 import { DocumentEditorPage } from './pages/billing/DocumentEditorPage'
+import { AnalyticsPage } from './pages/patron/AnalyticsPage'
 import { ArticlesPage } from './pages/patron/ArticlesPage'
 import { CommunicationPage } from './pages/patron/CommunicationPage'
 import { InvoicesPage } from './pages/patron/InvoicesPage'
@@ -161,6 +162,14 @@ export default function App() {
           element={
             <ProtectedRoute allow={isPatron}>
               <CommunicationPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/analytique"
+          element={
+            <ProtectedRoute allow={isPatron}>
+              <AnalyticsPage />
             </ProtectedRoute>
           }
         />
