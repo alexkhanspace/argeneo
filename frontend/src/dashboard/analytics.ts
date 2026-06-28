@@ -88,6 +88,7 @@ export function aggregate(entries: DailyEntry[], price: Map<number, number>): Ag
 
   let lossValue = 0
   let lossUnits = 0
+  let lossAmountTotal = 0
   const lossByArticle = new Map<string, { qty: number; value: number }>()
   const byMonth = new Map<string, MonthAgg>()
   const wd = WEEKDAYS.map(() => ({ ca: 0, n: 0 }))
@@ -98,6 +99,11 @@ export function aggregate(entries: DailyEntry[], price: Map<number, number>): Ag
     cur.ca += e.revenue ?? 0
     cur.clients += e.clientCount ?? 0
     cur.days += e.revenue != null ? 1 : 0
+    // Perte saisie en valeur (€), indépendante du détail par article.
+    const la = e.lossAmount ?? 0
+    lossValue += la
+    lossAmountTotal += la
+    cur.loss += la
     for (const l of e.losses ?? []) {
       const val = l.quantity * (price.get(l.articleId) ?? 0)
       lossValue += val
@@ -133,9 +139,11 @@ export function aggregate(entries: DailyEntry[], price: Map<number, number>): Ag
       return `${MONTHS_SHORT[Number(m) - 1]} ${y.slice(2)}`
     }),
     weekdayAvg: wd.map((w) => (w.n ? Math.round(w.ca / w.n) : 0)),
-    lossByArticle: [...lossByArticle.entries()]
-      .map(([name, v]) => ({ name, ...v }))
-      .sort((a, b) => b.value - a.value),
+    lossByArticle: (() => {
+      const arr = [...lossByArticle.entries()].map(([name, v]) => ({ name, ...v }))
+      if (lossAmountTotal > 0) arr.push({ name: 'Saisie directe (€)', qty: 0, value: lossAmountTotal })
+      return arr.sort((a, b) => b.value - a.value)
+    })(),
     best: [...days].sort((a, b) => (b.revenue ?? 0) - (a.revenue ?? 0)).slice(0, 10),
     todayCA: today?.revenue ?? null,
     todayClients: today?.clientCount ?? null,
