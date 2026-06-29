@@ -117,17 +117,26 @@ export const bucketRange = (g: Gran, refKey: string, today: string) => {
 export const fetchFrom = (g: Gran, refKey: string) =>
   bucketStart(prevYearKey(firstKey(g, refKey), g), g)
 
+/** Majuscule sur la 1re lettre seulement (les mois/jours fr restent en minuscules ensuite). */
+const cap = (s: string): string => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s)
+
+/** Numéro de semaine ISO 8601 à partir du lundi de la semaine. */
+const isoWeek = (mondayIso: string): number => {
+  const [y, m, d] = mondayIso.split('-').map(Number)
+  const thu = new Date(Date.UTC(y, m - 1, d + 3)) // jeudi de la semaine → détermine l'année ISO
+  const jan1 = new Date(Date.UTC(thu.getUTCFullYear(), 0, 1))
+  return Math.ceil(((thu.getTime() - jan1.getTime()) / 86400000 + 1) / 7)
+}
+
 /** Libellé lisible de la période sélectionnée (en-tête du navigateur). */
 export const refLabel = (g: Gran, refKey: string): string => {
   if (g === 'annee') return `Année ${refKey}`
-  if (g === 'mois') {
-    const dt = parse(`${refKey}-01`)
-    return dt.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })
-  }
-  if (g === 'jour') {
-    return parse(refKey).toLocaleDateString('fr-FR', { weekday: 'long', day: '2-digit', month: 'long' })
-  }
-  return `Semaine du ${refKey.slice(8)}/${refKey.slice(5, 7)}`
+  if (g === 'mois') return cap(parse(`${refKey}-01`).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' }))
+  if (g === 'jour')
+    return cap(parse(refKey).toLocaleDateString('fr-FR', { weekday: 'long', day: '2-digit', month: 'long' }))
+  // Semaine : numéro ISO + plage lundi → dimanche.
+  const end = addDays(refKey, 6)
+  return `Semaine S${isoWeek(refKey)} du ${refKey.slice(8)}/${refKey.slice(5, 7)} au ${end.slice(8)}/${end.slice(5, 7)}`
 }
 
 /** Série N vs N-1 à la granularité choisie (structure Comparison réutilisée par les widgets). */

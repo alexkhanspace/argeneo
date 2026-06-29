@@ -89,11 +89,7 @@ export function PeriodNav({
             <ChevronLeftIcon />
           </IconButton>
           <Stack direction="row" sx={{ alignItems: 'center', gap: 1, minWidth: 0 }}>
-            <Typography
-              variant="body2"
-              sx={{ textAlign: 'center', textTransform: 'capitalize', fontWeight: 600 }}
-              noWrap
-            >
+            <Typography variant="body2" sx={{ textAlign: 'center', fontWeight: 600 }} noWrap>
               {refLabel(gran, refKey)}
             </Typography>
             {loading && <CircularProgress size={16} />}
