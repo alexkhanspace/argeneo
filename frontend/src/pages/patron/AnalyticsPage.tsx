@@ -76,6 +76,7 @@ function StatCard({
   accent,
   delta,
   onDeltaClick,
+  placeholder,
 }: {
   label: string
   value: string
