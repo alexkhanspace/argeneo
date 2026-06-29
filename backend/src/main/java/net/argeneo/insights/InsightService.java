@@ -22,16 +22,16 @@ import org.springframework.stereotype.Service;
 @Service
 public class InsightService {
 
-    /** Repères métier boulangerie, injectés dans les prompts pour des conseils pertinents. */
+    /** Repères météo/événements génériques, à ADAPTER au type d'établissement (pas spécifiques boulangerie). */
     private static final String METIER =
-            "Repères métier boulangerie (utilise-les quand c'est pertinent, et SEULEMENT si le contexte du "
-            + "jour s'y prête) : l'effet « barbecue / pique-nique → PLUS DE PAIN et baguettes » ne vaut "
-            + "QUE par beau temps (ciel dégagé ou peu nuageux) ET un WEEK-END, jour férié ou pont — "
-            + "PAS un jour de semaine ordinaire, et PAS s'il pleut (averses, bruine, orage) ; "
-            + "forte chaleur/canicule → boissons fraîches en hausse, pâtisseries fragiles "
-            + "(crème, chocolat, glaçage) en baisse, le pain restant demandé si beau week-end ; "
-            + "PLUIE, averses ou froid → viennoiseries et produits réconfortants, pas de barbecue ; "
-            + "fêtes et jours fériés → forte affluence et produits de tradition.\n";
+            "Repères généraux (à ADAPTER au TYPE D'ÉTABLISSEMENT indiqué ci-dessus, et à n'utiliser que si le "
+            + "contexte du jour s'y prête) : beau temps + WEEK-END, jour férié ou pont → barbecues, pique-niques "
+            + "et sorties → hausse des produits associés SELON LE COMMERCE (viandes et grillades pour une boucherie, "
+            + "pain et sandwichs pour une boulangerie, boissons et glaces, traiteur…) — PAS un jour de semaine "
+            + "ordinaire, et PAS s'il pleut (averses, bruine, orage) ; forte chaleur/canicule → boissons fraîches "
+            + "en hausse, produits fragiles (crème, chocolat, glaçage) en baisse ; PLUIE, averses ou froid → "
+            + "produits réconfortants et plats chauds, pas de barbecue ; fêtes et jours fériés → forte affluence "
+            + "et produits de tradition.\n";
 
     /** Garde-fou anti-hallucination : interdit d'inventer des montants absents des données. */
     private static final String NO_INVENT =
@@ -49,9 +49,9 @@ public class InsightService {
             + "date l'an dernier n'avait peut-être PAS la même fête. Compare en tenant compte des événements "
             + "fournis pour CHAQUE jour, et ne suppose pas qu'une fête de cette année existait à la référence.\n";
 
-    /** Style : court et simple, comme on parle à un boulanger pressé (pas de blabla). */
+    /** Style : court et simple, comme on parle à un commerçant pressé (pas de blabla). */
     private static final String STYLE =
-            "STYLE — Parle SIMPLEMENT et BRIÈVEMENT, comme à un boulanger pressé : phrases courtes, "
+            "STYLE — Parle SIMPLEMENT et BRIÈVEMENT, comme à un commerçant pressé : phrases courtes, "
             + "mots courants, AUCUN jargon, pas d'introduction ni de conclusion, droit au but.\n";
 
     private final GeminiClient gemini;
@@ -70,12 +70,18 @@ public class InsightService {
         return new TrendResponse(true, props.gemini().model(), parse(raw));
     }
 
-    /** En-tête commun : rôle + localisation réelle de l'établissement (plus de ville codée en dur). */
-    private String header(String etablissement, String location) {
+    /** Métier / gamme de l'établissement pour les prompts (défaut historique : boulangerie). */
+    private String metier(String description) {
+        return notBlank(description) ? description : "boulangerie-pâtisserie artisanale française";
+    }
+
+    /** En-tête commun : rôle + métier réel + localisation de l'établissement (rien de codé en dur). */
+    private String header(String etablissement, String location, String description) {
         StringBuilder h = new StringBuilder();
-        h.append("Tu es un conseiller pour la boulangerie « ").append(etablissement).append(" »");
+        h.append("Tu es un conseiller pour l'établissement « ").append(etablissement).append(" » (")
+                .append(metier(description)).append(")");
         if (notBlank(location)) {
-            h.append(" située à ").append(location)
+            h.append(", situé à ").append(location)
                     .append(" (tiens compte du climat, des habitudes et des événements locaux de ce secteur)");
         }
         h.append(".\n");
@@ -84,12 +90,11 @@ public class InsightService {
 
     private String buildPrompt(TrendRequest req) {
         StringBuilder p = new StringBuilder();
-        p.append(header(req.etablissement(), req.location()));
+        p.append(header(req.etablissement(), req.location(), req.description()));
         if (notBlank(req.description())) {
             p.append("TYPE D'ÉTABLISSEMENT (à respecter STRICTEMENT) : ").append(req.description()).append(".\n")
                     .append("Ne propose QUE des produits cohérents avec ce type d'établissement et sa gamme. ")
-                    .append("N'invente pas de produits hors gamme (ex. ne propose pas de pâtisseries orientales ")
-                    .append("pour une boulangerie traditionnelle française).\n");
+                    .append("Reste STRICTEMENT dans sa gamme : n'invente aucun produit qu'il ne vend pas.\n");
         }
         p.append(METIER);
         p.append(NO_INVENT);
@@ -100,7 +105,7 @@ public class InsightService {
                 .append("UNIQUEMENT pour les jours à enjeu (fête, météo marquante, écart de CA vs an dernier).\n\n")
                 .append("FORMAT DE RÉPONSE STRICT : une ligne par jour notable, exactement\n")
                 .append("AAAA-MM-JJ | conseil court et actionnable\n")
-                .append("(ex. « 2026-06-21 | Fête de la Musique + chaleur : +20 % viennoiseries et boissons fraîches »).\n")
+                .append("(ex. « 2026-06-21 | Fête de la Musique + chaleur : forte affluence, +20 % sur les produits phares et boissons fraîches »).\n")
                 .append("Un conseil de 120 caractères max, concret et chiffré si possible. ")
                 .append("N'inclus PAS les jours sans enjeu. Aucune autre ligne, pas d'introduction ni de puces.\n\n")
                 .append("Données :\n");
@@ -123,7 +128,7 @@ public class InsightService {
         boolean bilan = "bilan".equalsIgnoreCase(mode);
         boolean prep = "prep".equalsIgnoreCase(mode);
         StringBuilder p = new StringBuilder();
-        p.append(header(req.etablissement(), req.location()));
+        p.append(header(req.etablissement(), req.location(), req.description()));
         if (notBlank(req.description())) {
             p.append("Type d'établissement (à respecter STRICTEMENT, aucun produit hors gamme) : ")
                     .append(req.description()).append(".\n");
@@ -196,7 +201,7 @@ public class InsightService {
             return new PricingResponse(false, null, "Analyse IA non configurée sur ce serveur.");
         }
         StringBuilder p = new StringBuilder();
-        p.append(header(req.etablissement(), req.location()));
+        p.append(header(req.etablissement(), req.location(), req.description()));
         if (notBlank(req.description())) {
             p.append("Type d'établissement (gamme à respecter) : ").append(req.description()).append(".\n");
         }
@@ -221,9 +226,10 @@ public class InsightService {
                     .append(" € TTC, mais NE reprends PAS ce prix : donne TA recommandation indépendante.)\n");
         }
         p.append("Propose le PRIX DE VENTE TTC que TOI tu recommandes pour CE produit précis — selon sa nature, ")
-                .append("sa description, son coût de revient et le marché d'une boulangerie-pâtisserie de ce ")
-                .append("secteur — INDÉPENDAMMENT de tout prix déjà saisi. Vise une marge boulangerie correcte ")
-                .append("(coefficient ~2,5 à 3,5 sur le coût HT) et un prix PSYCHOLOGIQUE arrondi (ex. 2,50 / ")
+                .append("sa description, son coût de revient et le marché LOCAL pour CE TYPE D'ÉTABLISSEMENT ")
+                .append("— INDÉPENDAMMENT de tout prix déjà saisi. Vise une marge correcte et cohérente avec ce ")
+                .append("type de commerce et la nature du produit, ")
+                .append("et un prix PSYCHOLOGIQUE arrondi (ex. 2,50 / ")
                 .append("3,90 / 6,90 €). COMMENCE impérativement par « Prix conseillé : X,XX € », puis 1 phrase ")
                 .append("de justification simple (positionnement, marge). N'invente pas de chiffres de marché précis.\n");
         return new PricingResponse(true, props.gemini().model(), gemini.generate(p.toString()));
@@ -235,7 +241,7 @@ public class InsightService {
             return new AdCopyResponse(false, null, List.of());
         }
         StringBuilder p = new StringBuilder();
-        p.append(header(req.etablissement(), req.location()));
+        p.append(header(req.etablissement(), req.location(), req.description()));
         if (notBlank(req.description())) {
             p.append("Type d'établissement : ").append(req.description()).append(".\n");
         }
@@ -248,7 +254,7 @@ public class InsightService {
             p.append(", au prix de ").append(String.format(java.util.Locale.FRANCE, "%.2f", req.priceTtc())).append(" €");
         }
         p.append(".\nDonne 3 accroches COURTES (60 caractères max chacune), gourmandes et percutantes, en ")
-                .append("français, adaptées à une boulangerie-pâtisserie. Une accroche par ligne, sans numéro, ")
+                .append("français, adaptées à ce type d'établissement. Une accroche par ligne, sans numéro, ")
                 .append("sans guillemets, 1 emoji maximum par ligne. Rien d'autre que les 3 lignes.\n");
         String raw = gemini.generate(p.toString());
         List<String> slogans = new ArrayList<>();
@@ -278,7 +284,7 @@ public class InsightService {
         }
         String platform = notBlank(req.platform()) ? req.platform() : "Instagram";
         StringBuilder p = new StringBuilder();
-        p.append(header(req.etablissement(), req.location()));
+        p.append(header(req.etablissement(), req.location(), req.description()));
         if (notBlank(req.description())) {
             p.append("Type d'établissement : ").append(req.description()).append(".\n");
         }

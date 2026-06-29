@@ -67,7 +67,7 @@ public class DailyEntryService {
             throw new ConflictException("Image vide.");
         }
         String prompt = """
-                Tu lis un TICKET Z (clôture de journée) d'une caisse enregistreuse de boulangerie.
+                Tu lis un TICKET Z (clôture de journée) d'une caisse enregistreuse d'un commerce.
                 Renvoie UNIQUEMENT un JSON : {"date":"AAAA-MM-JJ"|null,"revenue":number|null,"clientCount":number|null}.
                 - "revenue" = chiffre d'affaires TOTAL de la journée en euros (TTC, le « Total CA » / « Total TTC »),
                   point décimal, sans symbole.

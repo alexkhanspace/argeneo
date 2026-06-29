@@ -55,7 +55,7 @@ public class SupplierInvoiceService {
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     private static final String PROMPT = """
-            Tu es un assistant comptable. Analyse cette FACTURE FOURNISSEUR (boulangerie-pâtisserie / restauration)
+            Tu es un assistant comptable. Analyse cette FACTURE FOURNISSEUR (commerce de bouche / restauration)
             et renvoie UNIQUEMENT un objet JSON valide, sans texte autour, avec exactement cette forme :
             {
               "supplierName": string|null,
@@ -78,7 +78,7 @@ public class SupplierInvoiceService {
               ]
             }
             Règles :
-            - "famille" et "sousFamille" : classe chaque produit pour une boulangerie-pâtisserie, avec des
+            - "famille" et "sousFamille" : classe chaque produit selon le type de commerce, avec des
               catégories COURTES et RÉUTILISABLES (réutilise les mêmes libellés d'une ligne à l'autre).
               Exemples : « Farine de blé T65 » -> famille "Farines", sousFamille "Farines de blé" ;
               « Beurre doux plaquette » -> famille "Produits laitiers", sousFamille "Beurres" ;

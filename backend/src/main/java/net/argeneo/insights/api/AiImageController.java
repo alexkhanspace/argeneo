@@ -57,7 +57,7 @@ public class AiImageController {
         if (req == null || req.prompt() == null || req.prompt().isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Brief vide");
         }
-        String prompt = "Crée un visuel publicitaire soigné et appétissant pour une boulangerie-pâtisserie "
+        String prompt = "Crée un visuel publicitaire soigné et appétissant pour un commerce de bouche artisanal "
                 + "française artisanale : style photo professionnelle, haute qualité, lumière naturelle douce, "
                 + "fond épuré. Ne fais apparaître AUCUN texte ni logo sur l'image (aucune lettre, aucun mot, "
                 + "aucune pancarte, aucune étiquette, aucun emballage imprimé). Sujet : " + req.prompt().trim() + ".";
@@ -69,7 +69,7 @@ public class AiImageController {
         StringBuilder p = new StringBuilder();
         if ("scene".equalsIgnoreCase(mode)) {
             // Mode Communication : photo d'événement/scène (personnes, objets) à préserver fidèlement.
-            p.append("Transforme cette photo en VISUEL DE COMMUNICATION soigné pour une boulangerie-pâtisserie ")
+            p.append("Transforme cette photo en VISUEL DE COMMUNICATION soigné pour un commerce de bouche artisanal ")
                     .append("française. GARDE FIDÈLEMENT la scène : les personnes, les objets et l'action présents ")
                     .append("restent identiques (ne supprime personne, ne change pas leur nature ni leur nombre). ")
                     .append("Tu peux détourer/nettoyer le fond, ou le REMPLACER si une ambiance est demandée. ")
@@ -77,7 +77,7 @@ public class AiImageController {
                     .append("et chaleureux. ");
         } else {
             // Mode produit (pub d'un article).
-            p.append("Transforme cette photo en VISUEL PUBLICITAIRE soigné pour une boulangerie-pâtisserie française. ")
+            p.append("Transforme cette photo en VISUEL PUBLICITAIRE soigné pour un commerce de bouche artisanal. ")
                     .append("GARDE EXACTEMENT le même produit (forme, couleur, garniture) — ne le modifie pas, ne le ")
                     .append("déstructure pas, ne change pas sa nature. Détoure proprement le produit de son fond ")
                     .append("d'origine. Tu PEUX le réorienter, l'incliner, le recadrer ou le repositionner pour la ")

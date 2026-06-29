@@ -128,7 +128,7 @@ public class ArticlePhotoController {
     private static String buildPrompt(Article article, String hint) {
         StringBuilder p = new StringBuilder();
         p.append("Photographie professionnelle et appétissante du PRODUIT FINI « ").append(article.getName())
-                .append(" », tel qu'il est présenté et vendu en boulangerie-pâtisserie française artisanale : ")
+                .append(" », tel qu'il est présenté et vendu en commerce de bouche artisanal français : ")
                 .append("UN SEUL produit entier, assemblé, dressé et prêt à consommer, posé sur une assiette ")
                 .append("ou un plan de travail");
         if (article.getDescription() != null && !article.getDescription().isBlank()) {
