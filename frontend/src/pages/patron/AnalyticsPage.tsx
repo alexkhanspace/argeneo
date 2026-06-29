@@ -50,6 +50,8 @@ const weekdayMon0 = (iso: string): number => {
   const [y, m, d] = iso.split('-').map(Number)
   return (new Date(y, m - 1, d).getDay() + 6) % 7
 }
+/** Comparaison par défaut selon la granularité : mois/année → date à date, jour/semaine → jour équivalent. */
+const defaultCompareMode = (g: Gran): CompareMode => (g === 'mois' || g === 'annee' ? 'date' : 'equiv')
 const eurTip = (v: number | null): string => (v == null ? '' : eur(v))
 
 /** Badge d'évolution vs N-1 (vert si en hausse, rouge si en baisse). Cliquable pour révéler les € sous-jacents. */
@@ -216,9 +218,9 @@ export function AnalyticsPage() {
   // Jours de semaine inclus dans l'analyse (0=Lun..6=Dim). Permet d'exclure p. ex. le
   // dimanche pour comparer N/N-1 à périmètre égal quand l'ouverture a changé d'une année sur l'autre.
   const [includedDays, setIncludedDays] = useState<number[]>(ALL_DAYS)
-  // Comparaison N-1 : jour équivalent (même jour de semaine) par défaut — plus pertinent
-  // pour un commerce où l'activité dépend du jour de la semaine — ou date à date.
-  const [compareMode, setCompareMode] = useState<CompareMode>('equiv')
+  // Comparaison N-1 : défaut selon la granularité (jour/semaine → jour équivalent,
+  // mois/année → date à date). Modifiable manuellement via la roue crantée.
+  const [compareMode, setCompareMode] = useState<CompareMode>(() => defaultCompareMode('jour'))
   // Sélection de période : navigation par granularité OU plage de dates libre.
   const [periodMode, setPeriodMode] = useState<'nav' | 'libre'>('nav')
   const [freeFrom, setFreeFrom] = useState(`${TODAY.slice(0, 7)}-01`)
@@ -307,10 +309,13 @@ export function AnalyticsPage() {
     setPeriodMode('nav')
     setGran(g)
     setRefKey(defaultRefKey(g, TODAY))
+    setCompareMode(defaultCompareMode(g))
   }
 
   // Réglages contextuels de la page, injectés dans la roue crantée du header (gain de place).
   const setHeaderSettings = useHeaderSettingsSetter()
+  // Nettoyage au démontage uniquement (évite un null/remontage à chaque changement de réglage).
+  useEffect(() => () => setHeaderSettings(null), [setHeaderSettings])
   useEffect(() => {
     setHeaderSettings({
       hideGlobal: true,
@@ -352,7 +357,6 @@ export function AnalyticsPage() {
       </Stack>
       ),
     })
-    return () => setHeaderSettings(null)
   }, [compareMode, includedDays, setHeaderSettings])
 
   type Stat = {
