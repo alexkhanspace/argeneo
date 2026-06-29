@@ -206,6 +206,8 @@ export function buildSeries(
     weekdayPrev: included.map((i) => (wdPrev[i].n ? Math.round(wdPrev[i].ca / wdPrev[i].n) : 0)),
     weekdayLabels: included.map((i) => WEEKDAYS[i]),
     deltaPct: prevRef > 0 ? ((curRef - prevRef) / prevRef) * 100 : null,
+    curRef: Math.round(curRef),
+    prevRef: Math.round(prevRef),
     todayCA: dayMap.get(today)?.ca ?? null,
     todayClients: dayMap.get(today)?.clients ?? null,
     yesterdayCA: dayMap.get(yest)?.ca ?? null,
@@ -313,4 +315,62 @@ export function buildBucketSeries(
 
   // Jour : pas de détail intra-période pertinent (le bloc « jour/veille » le couvre).
   return { kind: 'bar', labels: [], caCur: [], caPrev: [], curLabel: '', prevLabel: '', title: '', empty: true }
+}
+
+/** Résultat d'analyse sur une plage de dates libre. */
+export interface FreeResult {
+  /** Détail jour par jour de la plage, N vs N-1. */
+  sub: BucketSeries
+  /** CA total de la plage et de la même plage N-1 (à durée et jours égaux). */
+  curRef: number
+  prevRef: number
+  deltaPct: number | null
+}
+
+/** Analyse sur une plage de dates libre [from, to], comparée à N-1 (jour équivalent ou date à date). */
+export function buildFreeSeries(
+  entries: DailyEntry[],
+  from: string,
+  to: string,
+  mode: CompareMode = 'date',
+  included: number[] = [0, 1, 2, 3, 4, 5, 6],
+): FreeResult {
+  const caByDate = new Map<string, number>()
+  for (const e of entries) caByDate.set(e.date, (caByDate.get(e.date) ?? 0) + (e.revenue ?? 0))
+  const ca = (iso: string) => Math.round(caByDate.get(iso) ?? 0)
+  const includedSet = new Set(included)
+  const labels: string[] = []
+  const caCur: number[] = []
+  const caPrev: number[] = []
+  let curRef = 0
+  let prevRef = 0
+  if (from && to && from <= to) {
+    for (let d = from; d <= to; d = addDays(d, 1)) {
+      if (!includedSet.has(weekdayMon0(d))) continue
+      const prev = mode === 'equiv' ? addDays(d, -364) : `${Number(d.slice(0, 4)) - 1}${d.slice(4)}`
+      const cur = ca(d)
+      const pv = ca(prev)
+      labels.push(`${d.slice(8)}/${d.slice(5, 7)}`)
+      caCur.push(cur)
+      caPrev.push(pv)
+      curRef += cur
+      prevRef += pv
+    }
+  }
+  const fr = (iso: string) => (iso ? iso.split('-').reverse().join('/') : '')
+  return {
+    sub: {
+      kind: 'line',
+      labels,
+      caCur,
+      caPrev,
+      curLabel: 'Période',
+      prevLabel: 'N-1',
+      title: `CA par jour — du ${fr(from)} au ${fr(to)}`,
+      empty: labels.length === 0,
+    },
+    curRef,
+    prevRef,
+    deltaPct: prevRef > 0 ? ((curRef - prevRef) / prevRef) * 100 : null,
+  }
 }

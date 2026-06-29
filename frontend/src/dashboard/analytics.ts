@@ -69,6 +69,9 @@ export interface Comparison {
   /** Libellés des jours de semaine effectivement représentés (jours exclus retirés). */
   weekdayLabels: string[]
   deltaPct: number | null
+  /** CA comparables derrière l'écart % : période courante et N-1 (à durée égale). */
+  curRef: number
+  prevRef: number
   todayCA: number | null
   todayClients: number | null
   yesterdayCA: number | null
@@ -227,6 +230,8 @@ export function compare(compEntries: DailyEntry[]): Comparison {
     weekdayPrev: wdPrev.map((w) => (w.n ? Math.round(w.ca / w.n) : 0)),
     weekdayLabels: [...WEEKDAYS],
     deltaPct: prevYtd > 0 ? ((curYtd - prevYtd) / prevYtd) * 100 : null,
+    curRef: Math.round(curYtd),
+    prevRef: Math.round(prevYtd),
     todayCA,
     todayClients,
     yesterdayCA,

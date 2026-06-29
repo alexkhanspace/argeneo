@@ -1,5 +1,18 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
-import { Alert, Box, Card, CardContent, Chip, Stack, ToggleButton, ToggleButtonGroup, Typography } from '@mui/material'
+import {
+  Alert,
+  Box,
+  Card,
+  CardContent,
+  Chip,
+  CircularProgress,
+  MenuItem,
+  Stack,
+  TextField,
+  ToggleButton,
+  ToggleButtonGroup,
+  Typography,
+} from '@mui/material'
 import { BarChart } from '@mui/x-charts/BarChart'
 import { LineChart } from '@mui/x-charts/LineChart'
 import TrendingUpIcon from '@mui/icons-material/TrendingUp'
@@ -13,6 +26,7 @@ import { aggregate, eur, eur2, eurAxis, intFr, priceMap, todayIso, WEEKDAYS } fr
 import {
   bucketRange,
   buildBucketSeries,
+  buildFreeSeries,
   buildSeries,
   defaultRefKey,
   fetchFrom,
@@ -39,8 +53,8 @@ const weekdayMon0 = (iso: string): number => {
 }
 const eurTip = (v: number | null): string => (v == null ? '' : eur(v))
 
-/** Badge d'évolution vs N-1 (vert si en hausse, rouge si en baisse). */
-function Delta({ pct }: { pct: number | null }) {
+/** Badge d'évolution vs N-1 (vert si en hausse, rouge si en baisse). Cliquable pour révéler les € sous-jacents. */
+function Delta({ pct, onClick }: { pct: number | null; onClick?: () => void }) {
   if (pct == null) return null
   const flat = Math.abs(pct) < 0.05
   const up = pct >= 0
@@ -53,7 +67,8 @@ function Delta({ pct }: { pct: number | null }) {
       variant="outlined"
       icon={<Icon fontSize="small" />}
       label={`${up && !flat ? '+' : ''}${pct.toFixed(1)} %`}
-      sx={{ fontWeight: 600 }}
+      onClick={onClick}
+      sx={{ fontWeight: 600, cursor: onClick ? 'pointer' : undefined }}
     />
   )
 }
@@ -65,12 +80,14 @@ function StatCard({
   sub,
   accent,
   delta,
+  onDeltaClick,
 }: {
   label: string
   value: string
   sub?: string
   accent?: boolean
   delta?: number | null
+  onDeltaClick?: () => void
 }) {
   return (
     <Card sx={{ height: '100%' }}>
@@ -91,7 +108,7 @@ function StatCard({
               {sub}
             </Typography>
           )}
-          {delta !== undefined && <Delta pct={delta} />}
+          {delta !== undefined && <Delta pct={delta} onClick={onDeltaClick} />}
         </Stack>
       </CardContent>
     </Card>
@@ -192,6 +209,12 @@ export function AnalyticsPage() {
   // Comparaison N-1 : jour équivalent (même jour de semaine) par défaut — plus pertinent
   // pour un commerce où l'activité dépend du jour de la semaine — ou date à date.
   const [compareMode, setCompareMode] = useState<CompareMode>('equiv')
+  // Sélection de période : navigation par granularité OU plage de dates libre.
+  const [periodMode, setPeriodMode] = useState<'nav' | 'libre'>('nav')
+  const [freeFrom, setFreeFrom] = useState(`${TODAY.slice(0, 7)}-01`)
+  const [freeTo, setFreeTo] = useState(TODAY)
+  // Affiche les € derrière l'écart % (clic sur le badge de progression).
+  const [deltaOpen, setDeltaOpen] = useState(false)
 
   useEffect(() => {
     listMyEtablissements()
@@ -209,10 +232,12 @@ export function AnalyticsPage() {
   useEffect(() => {
     if (etabId == null) return
     let cancelled = false
+    // On récupère jusqu'à aujourd'hui ET l'an N-1 (pour les comparaisons).
+    const start =
+      periodMode === 'libre' ? `${Number(freeFrom.slice(0, 4)) - 1}-01-01` : fetchFrom(gran, refKey)
     void (async () => {
       try {
-        // On récupère jusqu'à aujourd'hui ET l'an N-1 (fetchFrom) pour les comparaisons.
-        const d = await listMonth(etabId, fetchFrom(gran, refKey), TODAY)
+        const d = await listMonth(etabId, start, TODAY)
         if (!cancelled) {
           setEntries(d)
           setError(null)
@@ -226,7 +251,7 @@ export function AnalyticsPage() {
     return () => {
       cancelled = true
     }
-  }, [etabId, gran, refKey])
+  }, [etabId, gran, refKey, periodMode, freeFrom])
 
   // Saisie filtrée des jours de semaine exclus (mêmes jours retirés des deux années
   // → comparaison N/N-1 honnête). Tous les calculs en aval partent de cette base.
@@ -236,25 +261,33 @@ export function AnalyticsPage() {
     return entries.filter((e) => keep.has(weekdayMon0(e.date)))
   }, [entries, includedDays])
 
-  // Agrégat de LA période choisie (pas de la fenêtre glissante) → les KPI collent au sélecteur.
+  // Agrégat de la période active (bucket choisi OU plage libre) → les KPI collent au sélecteur.
   const bucketAgg = useMemo(() => {
     const price = priceMap(articles)
-    const { from, to } = bucketRange(gran, refKey, TODAY)
+    const { from, to } =
+      periodMode === 'libre' ? { from: freeFrom, to: freeTo } : bucketRange(gran, refKey, TODAY)
     return aggregate(
       fEntries.filter((e) => e.date >= from && e.date <= to),
       price,
     )
-  }, [fEntries, articles, gran, refKey])
+  }, [fEntries, articles, gran, refKey, periodMode, freeFrom, freeTo])
 
   // Séries N vs N-1 : fenêtre glissante (vue d'ensemble) + détail interne de la période.
   const cmp = useMemo(
     () => buildSeries(fEntries, gran, refKey, TODAY, compareMode, includedDays),
     [fEntries, gran, refKey, compareMode, includedDays],
   )
-  const sub = useMemo(
+  const navSub = useMemo(
     () => buildBucketSeries(fEntries, gran, refKey, compareMode, includedDays),
     [fEntries, gran, refKey, compareMode, includedDays],
   )
+  const free = useMemo(
+    () => buildFreeSeries(fEntries, freeFrom, freeTo, compareMode, includedDays),
+    [fEntries, freeFrom, freeTo, compareMode, includedDays],
+  )
+  // Détail jour par jour + base de l'écart % : selon le mode de période.
+  const sub = periodMode === 'libre' ? free.sub : navSub
+  const ref = periodMode === 'libre' ? free : cmp
 
   // Les widgets « détail » lisent agg (= période choisie) ; les widgets « tendance » lisent comparison.
   const ctx: WidgetCtx = useMemo(() => ({ agg: bucketAgg, comparison: cmp }), [bucketAgg, cmp])
@@ -308,14 +341,28 @@ export function AnalyticsPage() {
     return () => setHeaderSettings(null)
   }, [compareMode, includedDays, setHeaderSettings])
 
-  type Stat = { label: string; value: string; sub?: string; accent?: boolean; delta?: number | null }
+  type Stat = {
+    label: string
+    value: string
+    sub?: string
+    accent?: boolean
+    delta?: number | null
+    onDeltaClick?: () => void
+  }
+  const caDiff = ref.curRef - ref.prevRef
   const synthese: Stat[] = [
     {
       label: 'CA total',
       value: eur(bucketAgg.totalCA),
       accent: true,
-      delta: cmp.deltaPct,
-      sub: cmp.deltaPct != null ? 'vs même période N-1' : undefined,
+      delta: ref.deltaPct,
+      onDeltaClick: ref.deltaPct != null ? () => setDeltaOpen((o) => !o) : undefined,
+      sub:
+        ref.deltaPct == null
+          ? undefined
+          : deltaOpen
+            ? `N-1 ${eur(ref.prevRef)} · ${caDiff >= 0 ? '+' : ''}${eur(caDiff)}`
+            : 'vs même période N-1',
     },
     { label: 'CA moyen / jour', value: eur(bucketAgg.avgCA), sub: `${intFr(bucketAgg.nbDays)} jours saisis` },
     { label: 'Clients', value: intFr(bucketAgg.totalClients) },
@@ -337,7 +384,15 @@ export function AnalyticsPage() {
   ]
 
   const card = (s: Stat): ReactNode => (
-    <StatCard key={s.label} label={s.label} value={s.value} sub={s.sub} accent={s.accent} delta={s.delta} />
+    <StatCard
+      key={s.label}
+      label={s.label}
+      value={s.value}
+      sub={s.sub}
+      accent={s.accent}
+      delta={s.delta}
+      onDeltaClick={s.onDeltaClick}
+    />
   )
 
   return (
@@ -353,23 +408,79 @@ export function AnalyticsPage() {
         </Alert>
       )}
 
-      <PeriodNav
-        etabs={etabs}
-        etabId={etabId}
-        onEtab={(id) => {
-          setLoading(true)
-          setEtabId(id)
-        }}
-        gran={gran}
-        onGran={onGran}
-        refKey={refKey}
-        onRef={(k) => {
-          setLoading(true)
-          setRefKey(k)
-        }}
-        today={TODAY}
-        loading={loading}
-      />
+      {/* Choix du mode de période : navigation par granularité ou plage de dates libre. */}
+      <Stack direction="row" sx={{ justifyContent: 'flex-end', mb: 1 }}>
+        <ToggleButtonGroup
+          size="small"
+          exclusive
+          value={periodMode}
+          onChange={(_, v: 'nav' | 'libre' | null) => v && setPeriodMode(v)}
+          aria-label="Mode de période"
+        >
+          <ToggleButton value="nav">Navigation</ToggleButton>
+          <ToggleButton value="libre">Période libre</ToggleButton>
+        </ToggleButtonGroup>
+      </Stack>
+
+      {periodMode === 'nav' ? (
+        <PeriodNav
+          etabs={etabs}
+          etabId={etabId}
+          onEtab={(id) => {
+            setLoading(true)
+            setEtabId(id)
+          }}
+          gran={gran}
+          onGran={onGran}
+          refKey={refKey}
+          onRef={(k) => {
+            setLoading(true)
+            setRefKey(k)
+          }}
+          today={TODAY}
+          loading={loading}
+        />
+      ) : (
+        <Stack direction={{ xs: 'column', sm: 'row' }} sx={{ gap: 1.5, alignItems: 'center', mb: 2 }}>
+          <TextField
+            select
+            size="small"
+            label="Établissement"
+            value={etabId ?? ''}
+            onChange={(e) => {
+              setLoading(true)
+              setEtabId(Number(e.target.value))
+            }}
+            sx={{ flex: 1, width: { xs: '100%', sm: 'auto' } }}
+          >
+            {etabs.length === 0 && <MenuItem value="">Aucun</MenuItem>}
+            {etabs.map((e) => (
+              <MenuItem key={e.id} value={e.id}>
+                {e.name}
+              </MenuItem>
+            ))}
+          </TextField>
+          <TextField
+            type="date"
+            size="small"
+            label="Du"
+            value={freeFrom}
+            onChange={(e) => setFreeFrom(e.target.value)}
+            slotProps={{ inputLabel: { shrink: true }, htmlInput: { max: freeTo || TODAY } }}
+            sx={{ flex: 1, width: { xs: '100%', sm: 'auto' } }}
+          />
+          <TextField
+            type="date"
+            size="small"
+            label="Au"
+            value={freeTo}
+            onChange={(e) => setFreeTo(e.target.value)}
+            slotProps={{ inputLabel: { shrink: true }, htmlInput: { min: freeFrom, max: TODAY } }}
+            sx={{ flex: 1, width: { xs: '100%', sm: 'auto' } }}
+          />
+          {loading && <CircularProgress size={18} />}
+        </Stack>
+      )}
 
       {/* Rappel compact des réglages d'analyse (configurables via la roue crantée du header). */}
       {(compareMode === 'date' || includedDays.length < ALL_DAYS.length) && (
@@ -413,13 +524,17 @@ export function AnalyticsPage() {
         <WidgetPanel type="table_best" ctx={ctx} full />
       </Box>
 
-      {/* — Vue d'ensemble (fenêtre glissante) — */}
-      <SectionTitle title="Vue d'ensemble" hint="Tendances sur la fenêtre récente, comparées à l'an dernier." />
-      <Box sx={grid2}>
-        <WidgetPanel type="ca_line" ctx={ctx} full />
-        <WidgetPanel type="ca_weekday" ctx={ctx} />
-        <WidgetPanel type="ticket_month" ctx={ctx} />
-      </Box>
+      {/* — Vue d'ensemble (fenêtre glissante) — uniquement en mode navigation — */}
+      {periodMode === 'nav' && (
+        <>
+          <SectionTitle title="Vue d'ensemble" hint="Tendances sur la fenêtre récente, comparées à l'an dernier." />
+          <Box sx={grid2}>
+            <WidgetPanel type="ca_line" ctx={ctx} full />
+            <WidgetPanel type="ca_weekday" ctx={ctx} />
+            <WidgetPanel type="ticket_month" ctx={ctx} />
+          </Box>
+        </>
+      )}
     </>
   )
 }
