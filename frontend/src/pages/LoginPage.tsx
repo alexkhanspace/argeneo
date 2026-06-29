@@ -11,6 +11,7 @@ import {
   Typography,
 } from '@mui/material'
 import LoginIcon from '@mui/icons-material/Login'
+import { BrandLogo } from '../components/BrandLogo'
 import { errorMessage } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
 import { homePathFor } from '../auth/roles'
@@ -50,12 +51,7 @@ export function LoginPage() {
       <Card sx={{ width: '100%', maxWidth: 380 }}>
         <CardContent sx={{ p: { xs: 3, sm: 4 } }}>
           <Stack component="form" spacing={2.5} onSubmit={onSubmit}>
-            <Box
-              component="img"
-              src="/argeneo-logo.png"
-              alt="Argéneo"
-              sx={{ height: 110, width: 'auto', alignSelf: 'center', display: 'block' }}
-            />
+            <BrandLogo height={56} sx={{ alignSelf: 'center' }} />
             <Typography color="text.secondary" align="center">
               Connectez-vous à votre back-office.
             </Typography>

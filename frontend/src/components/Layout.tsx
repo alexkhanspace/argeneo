@@ -34,6 +34,7 @@ import type { Me } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
 import { isAdmin, isEmploye, isPatron } from '../auth/roles'
 import { useSettings } from '../settings/SettingsContext'
+import { BrandLogo } from './BrandLogo'
 
 function roleLabel(me: Me): string {
   if (isAdmin(me)) return 'Super-Admin'
@@ -238,17 +239,17 @@ export function Layout() {
             </IconButton>
           )}
           <Box
-            component="img"
-            src="/argeneo-logo.png"
-            alt="Argéneo — accueil"
             role="button"
             tabIndex={0}
+            aria-label="Argéneo — accueil"
             onClick={() => navigate(homePath)}
             onKeyDown={(e) => {
               if (e.key === 'Enter' || e.key === ' ') navigate(homePath)
             }}
-            sx={{ height: { xs: 48, md: 72 }, width: 'auto', display: 'block', cursor: 'pointer' }}
-          />
+            sx={{ display: 'inline-flex', cursor: 'pointer' }}
+          >
+            <BrandLogo height={isMobile ? 34 : 44} />
+          </Box>
 
           {!isMobile && (
             <Stack direction="row" spacing={0.5} sx={{ flex: 1 }}>
