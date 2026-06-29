@@ -500,15 +500,6 @@ export function AnalyticsPage() {
         {jourVeille.map(card)}
       </Box>
 
-      {/* — Détail de la période choisie — */}
-      <SectionTitle title="Détail de la période" hint="Évolution interne et analyse des pertes sur la période choisie, vs N-1." />
-      <Box sx={grid2}>
-        <PeriodChart sub={sub} />
-        <WidgetPanel type="loss_pie" ctx={ctx} />
-        <WidgetPanel type="table_loss" ctx={ctx} />
-        <WidgetPanel type="table_best" ctx={ctx} full />
-      </Box>
-
       {/* — Vue d'ensemble (fenêtre glissante) — uniquement en mode navigation — */}
       {periodMode === 'nav' && (
         <>
@@ -520,6 +511,15 @@ export function AnalyticsPage() {
           </Box>
         </>
       )}
+
+      {/* — Détail de la période choisie — */}
+      <SectionTitle title="Détail de la période" hint="Évolution interne et analyse des pertes sur la période choisie, vs N-1." />
+      <Box sx={grid2}>
+        <PeriodChart sub={sub} />
+        <WidgetPanel type="loss_pie" ctx={ctx} />
+        <WidgetPanel type="table_loss" ctx={ctx} />
+        <WidgetPanel type="table_best" ctx={ctx} full />
+      </Box>
     </>
   )
 }
