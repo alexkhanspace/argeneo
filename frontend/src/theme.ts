@@ -12,10 +12,13 @@ const ink = '#18181b' // quasi-noir (zinc 900)
 const muted = '#6b7280' // gris 500
 const line = '#ece9e4' // hairline légèrement chaude (s'accorde à la terracotta)
 const lineStrong = '#ddd8d0' // bordure un cran plus marquée (champs, états hover)
-const bg = '#f7f6f4' // blanc cassé très léger (fini le crème)
+const bg = '#faf8f4' // blanc cassé chaud (vivant sans être « crème vieillot »)
 const surface = '#ffffff'
-const accent = '#c2410c' // terracotta modernisée (plus franche)
-const accentDark = '#9a3412'
+const accent = '#ea580c' // orange vif assumé (audacieux & coloré)
+const accentDark = '#c2410c' // terracotta profonde (hover / dégradés)
+
+// Police de titres à caractère (anti-« template ») ; Inter reste pour le texte courant.
+const display = "'Bricolage Grotesque', 'Inter', system-ui, -apple-system, sans-serif"
 
 // Thème de base : palette + points de rupture, réutilisés ensuite pour la
 // typographie responsive (on a besoin de `base.breakpoints`).
@@ -44,16 +47,19 @@ export const theme = createTheme(
       fontFamily: "'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif",
       // Mobile-first : tailles compactes sur xs, agrandies à partir de sm.
       h1: {
-        fontSize: '1.45rem',
+        fontFamily: display,
+        fontSize: '1.6rem',
         fontWeight: 800,
-        letterSpacing: '-0.025em',
-        [breakpoints.up('sm')]: { fontSize: '1.9rem' },
+        letterSpacing: '-0.03em',
+        lineHeight: 1.1,
+        [breakpoints.up('sm')]: { fontSize: '2.15rem' },
       },
       h2: {
-        fontSize: '1.1rem',
+        fontFamily: display,
+        fontSize: '1.15rem',
         fontWeight: 700,
-        letterSpacing: '-0.015em',
-        [breakpoints.up('sm')]: { fontSize: '1.25rem' },
+        letterSpacing: '-0.02em',
+        [breakpoints.up('sm')]: { fontSize: '1.4rem' },
       },
       h3: {
         fontSize: '0.72rem',
@@ -63,12 +69,13 @@ export const theme = createTheme(
         color: muted,
         [breakpoints.up('sm')]: { fontSize: '0.76rem' },
       },
-      h4: { fontWeight: 800, letterSpacing: '-0.02em' },
-      h5: { fontWeight: 700, letterSpacing: '-0.015em' },
+      h4: { fontFamily: display, fontWeight: 800, letterSpacing: '-0.025em' },
+      h5: { fontFamily: display, fontWeight: 700, letterSpacing: '-0.02em' },
       h6: {
+        fontFamily: display,
         fontSize: '1.05rem',
         fontWeight: 700,
-        letterSpacing: '-0.01em',
+        letterSpacing: '-0.015em',
         [breakpoints.up('sm')]: { fontSize: '1.25rem' },
       },
       subtitle2: { fontWeight: 600, letterSpacing: '0.01em' },
@@ -128,9 +135,12 @@ export const theme = createTheme(
         defaultProps: { disableElevation: true, disableRipple: true },
         styleOverrides: {
           root: { borderRadius: 6, paddingInline: 14 },
-          contained: {
-            boxShadow: 'none',
-            '&:hover': { boxShadow: 'none', backgroundColor: accentDark },
+          contained: { boxShadow: 'none', '&:hover': { boxShadow: 'none' } },
+          // Bouton principal en dégradé (signature « audacieuse »), scopé au primary
+          // pour ne pas teinter les boutons success/error.
+          containedPrimary: {
+            backgroundImage: `linear-gradient(135deg, ${accent} 0%, ${accentDark} 100%)`,
+            '&:hover': { backgroundImage: `linear-gradient(135deg, ${accentDark} 0%, #7c2d12 100%)` },
           },
           outlined: { borderColor: lineStrong, '&:hover': { borderColor: muted, backgroundColor: 'rgba(0,0,0,0.02)' } },
         },

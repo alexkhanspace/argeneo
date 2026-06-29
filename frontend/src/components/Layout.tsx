@@ -23,7 +23,7 @@ import {
   Typography,
   useMediaQuery,
 } from '@mui/material'
-import { useTheme } from '@mui/material/styles'
+import { alpha, useTheme } from '@mui/material/styles'
 import MenuIcon from '@mui/icons-material/Menu'
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
 import LogoutIcon from '@mui/icons-material/Logout'
@@ -52,6 +52,8 @@ interface NavGroup {
   label: string
   /** Icône Font Awesome du groupe (bouton déroulant). */
   icon?: string
+  /** Couleur signature de l'univers (navigation color-codée). */
+  color?: string
   items: NavItem[]
 }
 
@@ -85,6 +87,7 @@ function navGroupsFor(me: Me): NavGroup[] {
       {
         label: 'Pilotage',
         icon: 'fa-solid fa-compass',
+        color: '#ea580c',
         items: [
           { to: '/dashboard', label: 'Tableau de bord', icon: 'fa-solid fa-gauge-high' },
           { to: '/analytique', label: 'Analytique', icon: 'fa-solid fa-chart-line' },
@@ -95,6 +98,7 @@ function navGroupsFor(me: Me): NavGroup[] {
       {
         label: 'Catalogue',
         icon: 'fa-solid fa-box-open',
+        color: '#7c3aed',
         items: [
           { to: '/articles', label: 'Articles', icon: 'fa-solid fa-box' },
           { to: '/materials', label: 'Matières', icon: 'fa-solid fa-wheat-awn' },
@@ -104,6 +108,7 @@ function navGroupsFor(me: Me): NavGroup[] {
       {
         label: 'Commercial',
         icon: 'fa-solid fa-handshake',
+        color: '#0d9488',
         items: [
           { to: '/clients', label: 'Clients', icon: 'fa-solid fa-users' },
           { to: '/billing', label: 'Facturation', icon: 'fa-solid fa-file-invoice-dollar' },
@@ -113,6 +118,7 @@ function navGroupsFor(me: Me): NavGroup[] {
       {
         label: 'Organisation',
         icon: 'fa-solid fa-sitemap',
+        color: '#e11d48',
         items: [
           { to: '/etablissements', label: 'Établissements', icon: 'fa-solid fa-store' },
           { to: '/employees', label: 'Équipe', icon: 'fa-solid fa-user-group' },
@@ -130,14 +136,21 @@ function NavMenu({ group }: { group: NavGroup }) {
   const [anchor, setAnchor] = useState<HTMLElement | null>(null)
   const loc = useLocation()
   const active = group.items.some((it) => loc.pathname === it.to || loc.pathname.startsWith(it.to + '/'))
+  const color = group.color ?? 'primary.main'
   return (
     <>
       <Button
         color="inherit"
-        startIcon={group.icon ? <FaIcon icon={group.icon} /> : undefined}
+        startIcon={group.icon ? <FaIcon icon={group.icon} sx={{ color }} /> : undefined}
         endIcon={<ExpandMoreIcon />}
         onClick={(e: MouseEvent<HTMLElement>) => setAnchor(e.currentTarget)}
-        sx={{ px: 1.5, fontWeight: active ? 600 : 500, color: active ? 'primary.main' : 'text.primary' }}
+        sx={{
+          px: 1.5,
+          fontWeight: active ? 700 : 500,
+          color: active ? color : 'text.primary',
+          bgcolor: active ? alpha(group.color ?? '#ea580c', 0.1) : 'transparent',
+          '&:hover': { bgcolor: alpha(group.color ?? '#ea580c', 0.08) },
+        }}
       >
         {group.label}
       </Button>
@@ -153,9 +166,9 @@ function NavMenu({ group }: { group: NavGroup }) {
             component={NavLink}
             to={it.to}
             onClick={() => setAnchor(null)}
-            sx={{ gap: 1.25, '&.active': { color: 'primary.main', fontWeight: 600 } }}
+            sx={{ gap: 1.25, '&.active': { color, fontWeight: 600 }, '&.active i': { color } }}
           >
-            {it.icon && <FaIcon icon={it.icon} />}
+            {it.icon && <FaIcon icon={it.icon} sx={{ color }} />}
             {it.label}
           </MenuItem>
         ))}
@@ -352,10 +365,24 @@ export function Layout() {
             </>
           )}
           <List>
-            {groups.map((g) => (
+            {groups.map((g) => {
+              const gc = g.color ?? '#ea580c'
+              return (
               <Box key={g.label || 'main'}>
                 {g.label && (
-                  <ListSubheader sx={{ bgcolor: 'transparent', lineHeight: '32px' }}>{g.label}</ListSubheader>
+                  <ListSubheader
+                    sx={{
+                      bgcolor: 'transparent',
+                      lineHeight: '34px',
+                      color: gc,
+                      fontWeight: 700,
+                      textTransform: 'uppercase',
+                      fontSize: '0.7rem',
+                      letterSpacing: '0.08em',
+                    }}
+                  >
+                    {g.label}
+                  </ListSubheader>
                 )}
                 {g.items.map((it) => (
                   <ListItemButton
@@ -365,16 +392,17 @@ export function Layout() {
                     sx={{
                       pl: g.label ? 3 : 2,
                       gap: 1.5,
-                      '&.active': { color: 'primary.main', fontWeight: 600 },
-                      '&.active i': { color: 'primary.main' },
+                      '&.active': { color: gc, fontWeight: 600, bgcolor: alpha(gc, 0.1) },
+                      '&.active i': { color: gc },
                     }}
                   >
-                    {it.icon && <FaIcon icon={it.icon} sx={{ fontSize: 16 }} />}
+                    {it.icon && <FaIcon icon={it.icon} sx={{ fontSize: 16, color: g.label ? gc : undefined }} />}
                     {it.label}
                   </ListItemButton>
                 ))}
               </Box>
-            ))}
+              )
+            })}
           </List>
         </Box>
       </Drawer>
