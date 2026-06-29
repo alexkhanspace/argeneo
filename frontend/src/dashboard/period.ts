@@ -214,7 +214,8 @@ export function buildSeries(
     weekdayCur: included.map((i) => (wdCur[i].n ? Math.round(wdCur[i].ca / wdCur[i].n) : 0)),
     weekdayPrev: included.map((i) => (wdPrev[i].n ? Math.round(wdPrev[i].ca / wdPrev[i].n) : 0)),
     weekdayLabels: included.map((i) => WEEKDAYS[i]),
-    deltaPct: prevRef > 0 ? ((curRef - prevRef) / prevRef) * 100 : null,
+    // Pas de CA N-1 mais du CA cette année → +100 % (du nouveau) ; rien des deux côtés → pas de badge.
+    deltaPct: prevRef > 0 ? ((curRef - prevRef) / prevRef) * 100 : curRef > 0 ? 100 : null,
     curRef: Math.round(curRef),
     prevRef: Math.round(prevRef),
     todayCA: dayMap.get(today)?.ca ?? null,
@@ -380,6 +381,7 @@ export function buildFreeSeries(
     },
     curRef,
     prevRef,
-    deltaPct: prevRef > 0 ? ((curRef - prevRef) / prevRef) * 100 : null,
+    // Pas de CA N-1 mais du CA cette année → +100 % (du nouveau) ; rien des deux côtés → pas de badge.
+    deltaPct: prevRef > 0 ? ((curRef - prevRef) / prevRef) * 100 : curRef > 0 ? 100 : null,
   }
 }

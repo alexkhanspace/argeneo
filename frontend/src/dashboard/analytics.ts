@@ -229,7 +229,7 @@ export function compare(compEntries: DailyEntry[]): Comparison {
     weekdayCur: wdCur.map((w) => (w.n ? Math.round(w.ca / w.n) : 0)),
     weekdayPrev: wdPrev.map((w) => (w.n ? Math.round(w.ca / w.n) : 0)),
     weekdayLabels: [...WEEKDAYS],
-    deltaPct: prevYtd > 0 ? ((curYtd - prevYtd) / prevYtd) * 100 : null,
+    deltaPct: prevYtd > 0 ? ((curYtd - prevYtd) / prevYtd) * 100 : curYtd > 0 ? 100 : null,
     curRef: Math.round(curYtd),
     prevRef: Math.round(prevYtd),
     todayCA,
