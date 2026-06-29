@@ -25,7 +25,7 @@ export function BrandLogo({
       <Box
         component="svg"
         viewBox="0 0 256 256"
-        aria-label="Argéneo"
+        aria-label="ArGéNeo"
         sx={{ height, width: height, display: 'block', flexShrink: 0 }}
       >
         <defs>
@@ -58,7 +58,7 @@ export function BrandLogo({
             userSelect: 'none',
           }}
         >
-          Ar<Box component="span" sx={{ color: 'primary.main' }}>gé</Box>neo
+          Ar<Box component="span" sx={{ color: 'primary.main' }}>Gé</Box>Neo
         </Box>
       )}
     </Box>
