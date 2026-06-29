@@ -1,4 +1,4 @@
-import { useState, type MouseEvent, type ReactNode } from 'react'
+import { useState, type MouseEvent } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import {
   AppBar,
@@ -35,7 +35,7 @@ import { useAuth } from '../auth/AuthContext'
 import { isAdmin, isEmploye, isPatron } from '../auth/roles'
 import { useSettings } from '../settings/SettingsContext'
 import { BrandLogo } from './BrandLogo'
-import { HeaderSettingsContext } from './HeaderSettings'
+import { HeaderSettingsContext, type HeaderSettings } from './HeaderSettings'
 
 function roleLabel(me: Me): string {
   if (isAdmin(me)) return 'Super-Admin'
@@ -209,7 +209,7 @@ export function Layout() {
   const [menuOpen, setMenuOpen] = useState(false)
   const [settingsAnchor, setSettingsAnchor] = useState<HTMLElement | null>(null)
   // Réglages contextuels injectés par la page courante (affichés dans la roue crantée).
-  const [pageSettings, setPageSettings] = useState<ReactNode>(null)
+  const [pageSettings, setPageSettings] = useState<HeaderSettings | null>(null)
   const { baseline, setBaseline } = useSettings()
 
   if (!me) return null
@@ -321,27 +321,32 @@ export function Layout() {
             Réglages
           </Typography>
           {/* Réglages spécifiques à la page courante (injectés via le contexte). */}
-          {pageSettings && (
+          {pageSettings?.content && (
             <Box sx={{ mb: 1.5 }}>
-              {pageSettings}
-              <Divider sx={{ mt: 1.5 }} />
+              {pageSettings.content}
+              {!pageSettings.hideGlobal && <Divider sx={{ mt: 1.5 }} />}
             </Box>
           )}
-          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
-            Base des pourcentages des conseils IA
-          </Typography>
-          <ToggleButtonGroup
-            size="small"
-            exclusive
-            value={baseline}
-            onChange={(_, v) => {
-              if (v) setBaseline(v)
-            }}
-            aria-label="Base de calcul de l'IA"
-          >
-            <ToggleButton value="habituel">vs jour normal</ToggleButton>
-            <ToggleButton value="n1">vs N-1</ToggleButton>
-          </ToggleButtonGroup>
+          {/* Réglages globaux (base IA) — masqués si la page le demande. */}
+          {!pageSettings?.hideGlobal && (
+            <>
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                Base des pourcentages des conseils IA
+              </Typography>
+              <ToggleButtonGroup
+                size="small"
+                exclusive
+                value={baseline}
+                onChange={(_, v) => {
+                  if (v) setBaseline(v)
+                }}
+                aria-label="Base de calcul de l'IA"
+              >
+                <ToggleButton value="habituel">vs jour normal</ToggleButton>
+                <ToggleButton value="n1">vs N-1</ToggleButton>
+              </ToggleButtonGroup>
+            </>
+          )}
         </Box>
       </Popover>
 

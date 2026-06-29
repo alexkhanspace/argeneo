@@ -1,18 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
-import {
-  Alert,
-  Box,
-  Card,
-  CardContent,
-  Chip,
-  CircularProgress,
-  MenuItem,
-  Stack,
-  TextField,
-  ToggleButton,
-  ToggleButtonGroup,
-  Typography,
-} from '@mui/material'
+import { Alert, Box, Card, CardContent, Chip, Stack, ToggleButton, ToggleButtonGroup, Typography } from '@mui/material'
 import { BarChart } from '@mui/x-charts/BarChart'
 import { LineChart } from '@mui/x-charts/LineChart'
 import TrendingUpIcon from '@mui/icons-material/TrendingUp'
@@ -197,8 +184,8 @@ const grid2 = {
 export function AnalyticsPage() {
   const [etabs, setEtabs] = useState<MyEtablissement[]>([])
   const [etabId, setEtabId] = useState<number | null>(null)
-  const [gran, setGran] = useState<Gran>('mois')
-  const [refKey, setRefKey] = useState(() => defaultRefKey('mois', TODAY))
+  const [gran, setGran] = useState<Gran>('jour')
+  const [refKey, setRefKey] = useState(() => defaultRefKey('jour', TODAY))
   const [entries, setEntries] = useState<DailyEntry[]>([])
   const [articles, setArticles] = useState<Article[]>([])
   const [loading, setLoading] = useState(false)
@@ -294,6 +281,7 @@ export function AnalyticsPage() {
 
   const onGran = (g: Gran) => {
     setLoading(true)
+    setPeriodMode('nav')
     setGran(g)
     setRefKey(defaultRefKey(g, TODAY))
   }
@@ -301,7 +289,9 @@ export function AnalyticsPage() {
   // Réglages contextuels de la page, injectés dans la roue crantée du header (gain de place).
   const setHeaderSettings = useHeaderSettingsSetter()
   useEffect(() => {
-    setHeaderSettings(
+    setHeaderSettings({
+      hideGlobal: true,
+      content: (
       <Stack spacing={1.5}>
         <Box>
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
@@ -336,8 +326,9 @@ export function AnalyticsPage() {
             ))}
           </ToggleButtonGroup>
         </Box>
-      </Stack>,
-    )
+      </Stack>
+      ),
+    })
     return () => setHeaderSettings(null)
   }, [compareMode, includedDays, setHeaderSettings])
 
@@ -397,10 +388,7 @@ export function AnalyticsPage() {
 
   return (
     <>
-      <PageHeader
-        title="Analytique"
-        subtitle="Tout est calculé sur la période choisie ci-dessous et comparé à l'an dernier (N-1)."
-      />
+      <PageHeader title="Analytique" />
 
       {error && (
         <Alert severity="error" sx={{ mb: 2 }}>
@@ -408,79 +396,35 @@ export function AnalyticsPage() {
         </Alert>
       )}
 
-      {/* Choix du mode de période : navigation par granularité ou plage de dates libre. */}
-      <Stack direction="row" sx={{ justifyContent: 'flex-end', mb: 1 }}>
-        <ToggleButtonGroup
-          size="small"
-          exclusive
-          value={periodMode}
-          onChange={(_, v: 'nav' | 'libre' | null) => v && setPeriodMode(v)}
-          aria-label="Mode de période"
-        >
-          <ToggleButton value="nav">Navigation</ToggleButton>
-          <ToggleButton value="libre">Période libre</ToggleButton>
-        </ToggleButtonGroup>
-      </Stack>
-
-      {periodMode === 'nav' ? (
-        <PeriodNav
-          etabs={etabs}
-          etabId={etabId}
-          onEtab={(id) => {
-            setLoading(true)
-            setEtabId(id)
-          }}
-          gran={gran}
-          onGran={onGran}
-          refKey={refKey}
-          onRef={(k) => {
-            setLoading(true)
-            setRefKey(k)
-          }}
-          today={TODAY}
-          loading={loading}
-        />
-      ) : (
-        <Stack direction={{ xs: 'column', sm: 'row' }} sx={{ gap: 1.5, alignItems: 'center', mb: 2 }}>
-          <TextField
-            select
-            size="small"
-            label="Établissement"
-            value={etabId ?? ''}
-            onChange={(e) => {
-              setLoading(true)
-              setEtabId(Number(e.target.value))
-            }}
-            sx={{ flex: 1, width: { xs: '100%', sm: 'auto' } }}
-          >
-            {etabs.length === 0 && <MenuItem value="">Aucun</MenuItem>}
-            {etabs.map((e) => (
-              <MenuItem key={e.id} value={e.id}>
-                {e.name}
-              </MenuItem>
-            ))}
-          </TextField>
-          <TextField
-            type="date"
-            size="small"
-            label="Du"
-            value={freeFrom}
-            onChange={(e) => setFreeFrom(e.target.value)}
-            slotProps={{ inputLabel: { shrink: true }, htmlInput: { max: freeTo || TODAY } }}
-            sx={{ flex: 1, width: { xs: '100%', sm: 'auto' } }}
-          />
-          <TextField
-            type="date"
-            size="small"
-            label="Au"
-            value={freeTo}
-            onChange={(e) => setFreeTo(e.target.value)}
-            slotProps={{ inputLabel: { shrink: true }, htmlInput: { min: freeFrom, max: TODAY } }}
-            sx={{ flex: 1, width: { xs: '100%', sm: 'auto' } }}
-          />
-          {loading && <CircularProgress size={18} />}
-        </Stack>
-      )}
+      <PeriodNav
+        etabs={etabs}
+        etabId={etabId}
+        onEtab={(id) => {
+          setLoading(true)
+          setEtabId(id)
+        }}
+        gran={gran}
+        onGran={onGran}
+        refKey={refKey}
+        onRef={(k) => {
+          setLoading(true)
+          setRefKey(k)
+        }}
+        today={TODAY}
+        loading={loading}
+        libre={periodMode === 'libre'}
+        onSelectLibre={() => {
+          setLoading(true)
+          setPeriodMode('libre')
+        }}
+        from={freeFrom}
+        to={freeTo}
+        onFrom={(v) => {
+          setLoading(true)
+          setFreeFrom(v)
+        }}
+        onTo={(v) => setFreeTo(v)}
+      />
 
       {/* Rappel compact des réglages d'analyse (configurables via la roue crantée du header). */}
       {(compareMode === 'date' || includedDays.length < ALL_DAYS.length) && (
