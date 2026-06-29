@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
-import { Alert, Box, Card, CardContent, Chip, Stack, Typography } from '@mui/material'
+import { Alert, Box, Card, CardContent, Chip, Stack, ToggleButton, ToggleButtonGroup, Typography } from '@mui/material'
 import { BarChart } from '@mui/x-charts/BarChart'
 import { LineChart } from '@mui/x-charts/LineChart'
 import TrendingUpIcon from '@mui/icons-material/TrendingUp'
@@ -9,7 +9,7 @@ import { errorMessage } from '../../api/client'
 import { listMonth, listMyEtablissements } from '../../api/daily'
 import { listArticles } from '../../api/costing'
 import type { Article, DailyEntry, MyEtablissement } from '../../api/types'
-import { aggregate, eur, eur2, eurAxis, intFr, priceMap, todayIso } from '../../dashboard/analytics'
+import { aggregate, eur, eur2, eurAxis, intFr, priceMap, todayIso, WEEKDAYS } from '../../dashboard/analytics'
 import {
   bucketRange,
   buildBucketSeries,
@@ -28,6 +28,13 @@ const TODAY = todayIso()
 // Mêmes teintes que les widgets : sable pour N-1, brun terre pour N.
 const COLOR_PREV = '#cdbba6'
 const COLOR_CUR = '#c2410c'
+
+const ALL_DAYS = [0, 1, 2, 3, 4, 5, 6]
+/** Jour de la semaine 0=Lun..6=Dim depuis une date ISO (sans décalage de fuseau). */
+const weekdayMon0 = (iso: string): number => {
+  const [y, m, d] = iso.split('-').map(Number)
+  return (new Date(y, m - 1, d).getDay() + 6) % 7
+}
 const eurTip = (v: number | null): string => (v == null ? '' : eur(v))
 
 /** Badge d'évolution vs N-1 (vert si en hausse, rouge si en baisse). */
@@ -177,6 +184,9 @@ export function AnalyticsPage() {
   const [articles, setArticles] = useState<Article[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Jours de semaine inclus dans l'analyse (0=Lun..6=Dim). Permet d'exclure p. ex. le
+  // dimanche pour comparer N/N-1 à périmètre égal quand l'ouverture a changé d'une année sur l'autre.
+  const [includedDays, setIncludedDays] = useState<number[]>(ALL_DAYS)
 
   useEffect(() => {
     listMyEtablissements()
@@ -213,19 +223,27 @@ export function AnalyticsPage() {
     }
   }, [etabId, gran, refKey])
 
+  // Saisie filtrée des jours de semaine exclus (mêmes jours retirés des deux années
+  // → comparaison N/N-1 honnête). Tous les calculs en aval partent de cette base.
+  const fEntries = useMemo(() => {
+    if (includedDays.length === ALL_DAYS.length) return entries
+    const keep = new Set(includedDays)
+    return entries.filter((e) => keep.has(weekdayMon0(e.date)))
+  }, [entries, includedDays])
+
   // Agrégat de LA période choisie (pas de la fenêtre glissante) → les KPI collent au sélecteur.
   const bucketAgg = useMemo(() => {
     const price = priceMap(articles)
     const { from, to } = bucketRange(gran, refKey, TODAY)
     return aggregate(
-      entries.filter((e) => e.date >= from && e.date <= to),
+      fEntries.filter((e) => e.date >= from && e.date <= to),
       price,
     )
-  }, [entries, articles, gran, refKey])
+  }, [fEntries, articles, gran, refKey])
 
   // Séries N vs N-1 : fenêtre glissante (vue d'ensemble) + détail interne de la période.
-  const cmp = useMemo(() => buildSeries(entries, gran, refKey, TODAY), [entries, gran, refKey])
-  const sub = useMemo(() => buildBucketSeries(entries, gran, refKey), [entries, gran, refKey])
+  const cmp = useMemo(() => buildSeries(fEntries, gran, refKey, TODAY), [fEntries, gran, refKey])
+  const sub = useMemo(() => buildBucketSeries(fEntries, gran, refKey), [fEntries, gran, refKey])
 
   // Les widgets « détail » lisent agg (= période choisie) ; les widgets « tendance » lisent comparison.
   const ctx: WidgetCtx = useMemo(() => ({ agg: bucketAgg, comparison: cmp }), [bucketAgg, cmp])
@@ -298,6 +316,38 @@ export function AnalyticsPage() {
         today={TODAY}
         loading={loading}
       />
+
+      {/* Jours analysés : permet d'exclure p. ex. le dimanche des deux années à la fois. */}
+      <Stack
+        direction="row"
+        sx={{ gap: 1, alignItems: 'center', flexWrap: 'wrap', mb: 2 }}
+      >
+        <Typography variant="body2" color="text.secondary">
+          Jours analysés :
+        </Typography>
+        <ToggleButtonGroup
+          size="small"
+          value={includedDays}
+          onChange={(_, v: number[]) => {
+            if (v.length > 0) setIncludedDays([...v].sort((a, b) => a - b))
+          }}
+          aria-label="Jours de la semaine inclus dans l'analyse"
+        >
+          {WEEKDAYS.map((d, i) => (
+            <ToggleButton key={d} value={i} sx={{ px: 1.25 }}>
+              {d}
+            </ToggleButton>
+          ))}
+        </ToggleButtonGroup>
+        {includedDays.length < ALL_DAYS.length && (
+          <Chip
+            size="small"
+            color="primary"
+            variant="outlined"
+            label={`${ALL_DAYS.filter((d) => !includedDays.includes(d)).map((d) => WEEKDAYS[d]).join(', ')} exclu(s) — comparaison à périmètre égal`}
+          />
+        )}
+      </Stack>
 
       {/* — Synthèse de la période choisie — */}
       <Box

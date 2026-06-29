@@ -28,41 +28,56 @@ export function PeriodNav({
 }) {
   const atPresent = refKey >= keyOf(today, gran)
   return (
-    <Stack direction="row" sx={{ gap: 1, flexWrap: 'wrap', alignItems: 'center', mb: 2 }}>
-      <TextField
-        select
-        size="small"
-        label="Établissement"
-        value={etabId ?? ''}
-        onChange={(e) => onEtab(Number(e.target.value))}
-        sx={{ minWidth: 150, flex: { xs: 1, sm: '0 1 auto' } }}
-      >
-        {etabs.length === 0 && <MenuItem value="">Aucun</MenuItem>}
-        {etabs.map((e) => (
-          <MenuItem key={e.id} value={e.id}>
-            {e.name}
-          </MenuItem>
-        ))}
-      </TextField>
+    <Stack sx={{ gap: 1.5, mb: 2 }}>
+      {/* Établissement + granularité : pleine largeur, côte à côte sur grand écran. */}
+      <Stack direction={{ xs: 'column', md: 'row' }} sx={{ gap: 1.5, alignItems: 'stretch' }}>
+        <TextField
+          select
+          size="small"
+          label="Établissement"
+          value={etabId ?? ''}
+          onChange={(e) => onEtab(Number(e.target.value))}
+          sx={{ flex: 1 }}
+        >
+          {etabs.length === 0 && <MenuItem value="">Aucun</MenuItem>}
+          {etabs.map((e) => (
+            <MenuItem key={e.id} value={e.id}>
+              {e.name}
+            </MenuItem>
+          ))}
+        </TextField>
 
-      <ToggleButtonGroup size="small" exclusive value={gran} onChange={(_, v) => v && onGran(v)}>
-        {GRANS.map((g) => (
-          <ToggleButton key={g.value} value={g.value}>
-            {g.label}
-          </ToggleButton>
-        ))}
-      </ToggleButtonGroup>
+        <ToggleButtonGroup
+          fullWidth
+          size="small"
+          exclusive
+          value={gran}
+          onChange={(_, v) => v && onGran(v)}
+          sx={{ flex: 1 }}
+        >
+          {GRANS.map((g) => (
+            <ToggleButton key={g.value} value={g.value}>
+              {g.label}
+            </ToggleButton>
+          ))}
+        </ToggleButtonGroup>
+      </Stack>
 
-      <Stack direction="row" sx={{ alignItems: 'center', gap: 0.25 }}>
+      {/* Navigateur de période : pleine largeur, flèches aux extrémités, libellé centré. */}
+      <Stack direction="row" sx={{ alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
         <IconButton size="small" onClick={() => onRef(stepKey(refKey, gran, -1))} aria-label="Période précédente">
           <ChevronLeftIcon />
         </IconButton>
-        <Typography
-          variant="body2"
-          sx={{ minWidth: 150, textAlign: 'center', textTransform: 'capitalize', fontWeight: 600 }}
-        >
-          {refLabel(gran, refKey)}
-        </Typography>
+        <Stack direction="row" sx={{ alignItems: 'center', gap: 1, minWidth: 0 }}>
+          <Typography
+            variant="body2"
+            sx={{ textAlign: 'center', textTransform: 'capitalize', fontWeight: 600 }}
+            noWrap
+          >
+            {refLabel(gran, refKey)}
+          </Typography>
+          {loading && <CircularProgress size={16} />}
+        </Stack>
         <IconButton
           size="small"
           disabled={atPresent}
@@ -72,8 +87,6 @@ export function PeriodNav({
           <ChevronRightIcon />
         </IconButton>
       </Stack>
-
-      {loading && <CircularProgress size={18} />}
     </Stack>
   )
 }
