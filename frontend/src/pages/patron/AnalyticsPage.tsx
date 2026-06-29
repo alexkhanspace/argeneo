@@ -27,7 +27,7 @@ const TODAY = todayIso()
 
 // Mêmes teintes que les widgets : sable pour N-1, brun terre pour N.
 const COLOR_PREV = '#cdbba6'
-const COLOR_CUR = '#b5651d'
+const COLOR_CUR = '#c2410c'
 const eurTip = (v: number | null): string => (v == null ? '' : eur(v))
 
 /** Badge d'évolution vs N-1 (vert si en hausse, rouge si en baisse). */

@@ -91,7 +91,7 @@ export const WIDGETS: WidgetDef[] = [
         yAxis={[{ valueFormatter: (v: number) => eurAxis(v) }]}
         series={[
           { data: c.caPrev, label: 'N-1', color: '#cdbba6', valueFormatter: eurTip },
-          { data: c.caCur, label: 'N', color: '#b5651d', valueFormatter: eurTip },
+          { data: c.caCur, label: 'N', color: '#c2410c', valueFormatter: eurTip },
         ]}
         margin={{ left: 70 }}
       />
@@ -108,7 +108,7 @@ export const WIDGETS: WidgetDef[] = [
         yAxis={[{ valueFormatter: (v: number) => eurAxis(v) }]}
         series={[
           { data: c.caPrev, label: 'N-1', color: '#cdbba6', valueFormatter: eurTip },
-          { data: c.caCur, label: 'N', color: '#b5651d', area: true, valueFormatter: eurTip },
+          { data: c.caCur, label: 'N', color: '#c2410c', area: true, valueFormatter: eurTip },
         ]}
         margin={{ left: 70 }}
       />
