@@ -1,5 +1,17 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
-import { Alert, Box, Card, CardContent, Chip, Stack, ToggleButton, ToggleButtonGroup, Typography } from '@mui/material'
+import {
+  Alert,
+  Box,
+  Card,
+  CardContent,
+  Chip,
+  MenuItem,
+  Stack,
+  TextField,
+  ToggleButton,
+  ToggleButtonGroup,
+  Typography,
+} from '@mui/material'
 import { BarChart } from '@mui/x-charts/BarChart'
 import { LineChart } from '@mui/x-charts/LineChart'
 import TrendingUpIcon from '@mui/icons-material/TrendingUp'
@@ -388,7 +400,30 @@ export function AnalyticsPage() {
 
   return (
     <>
-      <PageHeader title="Analytique" />
+      <PageHeader
+        title="Analytique"
+        action={
+          <TextField
+            select
+            size="small"
+            label="Établissement"
+            fullWidth={false}
+            value={etabId ?? ''}
+            onChange={(e) => {
+              setLoading(true)
+              setEtabId(Number(e.target.value))
+            }}
+            sx={{ minWidth: 200 }}
+          >
+            {etabs.length === 0 && <MenuItem value="">Aucun</MenuItem>}
+            {etabs.map((e) => (
+              <MenuItem key={e.id} value={e.id}>
+                {e.name}
+              </MenuItem>
+            ))}
+          </TextField>
+        }
+      />
 
       {error && (
         <Alert severity="error" sx={{ mb: 2 }}>
@@ -397,12 +432,6 @@ export function AnalyticsPage() {
       )}
 
       <PeriodNav
-        etabs={etabs}
-        etabId={etabId}
-        onEtab={(id) => {
-          setLoading(true)
-          setEtabId(id)
-        }}
         gran={gran}
         onGran={onGran}
         refKey={refKey}

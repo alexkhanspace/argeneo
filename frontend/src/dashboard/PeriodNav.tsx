@@ -1,17 +1,13 @@
-import { CircularProgress, IconButton, MenuItem, Stack, TextField, ToggleButton, ToggleButtonGroup, Typography } from '@mui/material'
+import { CircularProgress, IconButton, Stack, TextField, ToggleButton, ToggleButtonGroup, Typography } from '@mui/material'
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft'
 import ChevronRightIcon from '@mui/icons-material/ChevronRight'
-import type { MyEtablissement } from '../api/types'
 import { GRANS, keyOf, refLabel, stepKey, type Gran } from './period'
 
 /**
- * Établissement + sélecteur de période : granularité (Jour/Semaine/Mois/Année) avec
- * navigation ◀ ▶, ou « Libre » (plage de dates Du/Au) — le tout dans la même barre.
+ * Sélecteur de période : granularité (Jour/Semaine/Mois/Année) avec navigation ◀ ▶,
+ * ou « Libre » (plage de dates Du/Au) — le tout dans la même barre.
  */
 export function PeriodNav({
-  etabs,
-  etabId,
-  onEtab,
   gran,
   onGran,
   refKey,
@@ -25,9 +21,6 @@ export function PeriodNav({
   onFrom,
   onTo,
 }: {
-  etabs: MyEtablissement[]
-  etabId: number | null
-  onEtab: (id: number) => void
   gran: Gran
   onGran: (g: Gran) => void
   refKey: string
@@ -46,44 +39,25 @@ export function PeriodNav({
   const atPresent = refKey >= keyOf(today, gran)
   return (
     <Stack sx={{ gap: 1.5, mb: 2 }}>
-      {/* Établissement + sélecteur (granularités + Libre) : pleine largeur. */}
-      <Stack direction={{ xs: 'column', md: 'row' }} sx={{ gap: 1.5, alignItems: 'stretch' }}>
-        <TextField
-          select
-          size="small"
-          label="Établissement"
-          value={etabId ?? ''}
-          onChange={(e) => onEtab(Number(e.target.value))}
-          sx={{ flex: 1 }}
-        >
-          {etabs.length === 0 && <MenuItem value="">Aucun</MenuItem>}
-          {etabs.map((e) => (
-            <MenuItem key={e.id} value={e.id}>
-              {e.name}
-            </MenuItem>
-          ))}
-        </TextField>
-
-        <ToggleButtonGroup
-          fullWidth
-          size="small"
-          exclusive
-          value={libre ? 'libre' : gran}
-          onChange={(_, v: string | null) => {
-            if (!v) return
-            if (v === 'libre') onSelectLibre?.()
-            else onGran(v as Gran)
-          }}
-          sx={{ flex: 1.3 }}
-        >
-          {GRANS.map((g) => (
-            <ToggleButton key={g.value} value={g.value}>
-              {g.label}
-            </ToggleButton>
-          ))}
-          <ToggleButton value="libre">Libre</ToggleButton>
-        </ToggleButtonGroup>
-      </Stack>
+      {/* Sélecteur de période (granularités + Libre) : pleine largeur. */}
+      <ToggleButtonGroup
+        fullWidth
+        size="small"
+        exclusive
+        value={libre ? 'libre' : gran}
+        onChange={(_, v: string | null) => {
+          if (!v) return
+          if (v === 'libre') onSelectLibre?.()
+          else onGran(v as Gran)
+        }}
+      >
+        {GRANS.map((g) => (
+          <ToggleButton key={g.value} value={g.value}>
+            {g.label}
+          </ToggleButton>
+        ))}
+        <ToggleButton value="libre">Libre</ToggleButton>
+      </ToggleButtonGroup>
 
       {libre ? (
         /* Plage de dates libre : Du / Au. */
