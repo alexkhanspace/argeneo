@@ -100,7 +100,7 @@ function navGroupsFor(me: Me): NavGroup[] {
         items: [
           { to: '/articles', label: 'Articles', icon: 'fa-solid fa-box' },
           { to: '/materials', label: 'Matières', icon: 'fa-solid fa-wheat-awn' },
-          { to: '/factures', label: 'Factures', icon: 'fa-solid fa-file-invoice' },
+          { to: '/factures', label: 'Scan fournisseur', icon: 'fa-solid fa-file-invoice' },
         ],
       },
       {

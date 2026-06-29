@@ -188,7 +188,7 @@ export function InvoicesPage() {
   return (
     <>
       <PageHeader
-        title="Factures fournisseurs"
+        title="Scan fournisseur"
         action={
           <Button
             variant="contained"
