@@ -1,4 +1,4 @@
-import { useState, type MouseEvent } from 'react'
+import { useState, type MouseEvent, type ReactNode } from 'react'
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import {
   AppBar,
@@ -35,6 +35,7 @@ import { useAuth } from '../auth/AuthContext'
 import { isAdmin, isEmploye, isPatron } from '../auth/roles'
 import { useSettings } from '../settings/SettingsContext'
 import { BrandLogo } from './BrandLogo'
+import { HeaderSettingsContext } from './HeaderSettings'
 
 function roleLabel(me: Me): string {
   if (isAdmin(me)) return 'Super-Admin'
@@ -53,8 +54,6 @@ interface NavGroup {
   label: string
   /** Icône Font Awesome du groupe (bouton déroulant). */
   icon?: string
-  /** Couleur signature de l'univers (navigation color-codée). */
-  color?: string
   items: NavItem[]
 }
 
@@ -88,7 +87,6 @@ function navGroupsFor(me: Me): NavGroup[] {
       {
         label: 'Pilotage',
         icon: 'fa-solid fa-compass',
-        color: '#ea580c',
         items: [
           { to: '/dashboard', label: 'Tableau de bord', icon: 'fa-solid fa-gauge-high' },
           { to: '/analytique', label: 'Analytique', icon: 'fa-solid fa-chart-line' },
@@ -99,7 +97,6 @@ function navGroupsFor(me: Me): NavGroup[] {
       {
         label: 'Catalogue',
         icon: 'fa-solid fa-box-open',
-        color: '#7c3aed',
         items: [
           { to: '/articles', label: 'Articles', icon: 'fa-solid fa-box' },
           { to: '/materials', label: 'Matières', icon: 'fa-solid fa-wheat-awn' },
@@ -109,7 +106,6 @@ function navGroupsFor(me: Me): NavGroup[] {
       {
         label: 'Commercial',
         icon: 'fa-solid fa-handshake',
-        color: '#0d9488',
         items: [
           { to: '/clients', label: 'Clients', icon: 'fa-solid fa-users' },
           { to: '/billing', label: 'Facturation', icon: 'fa-solid fa-file-invoice-dollar' },
@@ -119,7 +115,6 @@ function navGroupsFor(me: Me): NavGroup[] {
       {
         label: 'Organisation',
         icon: 'fa-solid fa-sitemap',
-        color: '#e11d48',
         items: [
           { to: '/etablissements', label: 'Établissements', icon: 'fa-solid fa-store' },
           { to: '/employees', label: 'Équipe', icon: 'fa-solid fa-user-group' },
@@ -137,20 +132,19 @@ function NavMenu({ group }: { group: NavGroup }) {
   const [anchor, setAnchor] = useState<HTMLElement | null>(null)
   const loc = useLocation()
   const active = group.items.some((it) => loc.pathname === it.to || loc.pathname.startsWith(it.to + '/'))
-  const color = group.color ?? 'primary.main'
   return (
     <>
       <Button
         color="inherit"
-        startIcon={group.icon ? <FaIcon icon={group.icon} sx={{ color }} /> : undefined}
+        startIcon={group.icon ? <FaIcon icon={group.icon} sx={{ color: active ? 'primary.main' : 'text.secondary' }} /> : undefined}
         endIcon={<ExpandMoreIcon />}
         onClick={(e: MouseEvent<HTMLElement>) => setAnchor(e.currentTarget)}
         sx={{
           px: 1.5,
           fontWeight: active ? 700 : 500,
-          color: active ? color : 'text.primary',
-          bgcolor: active ? alpha(group.color ?? '#ea580c', 0.1) : 'transparent',
-          '&:hover': { bgcolor: alpha(group.color ?? '#ea580c', 0.08) },
+          color: active ? 'primary.main' : 'text.primary',
+          bgcolor: active ? alpha('#ea580c', 0.1) : 'transparent',
+          '&:hover': { bgcolor: alpha('#ea580c', 0.08) },
         }}
       >
         {group.label}
@@ -167,9 +161,14 @@ function NavMenu({ group }: { group: NavGroup }) {
             component={NavLink}
             to={it.to}
             onClick={() => setAnchor(null)}
-            sx={{ gap: 1.25, '&.active': { color, fontWeight: 600 }, '&.active i': { color } }}
+            sx={{
+              gap: 1.25,
+              '& i': { color: 'text.secondary' },
+              '&.active': { color: 'primary.main', fontWeight: 600 },
+              '&.active i': { color: 'primary.main' },
+            }}
           >
-            {it.icon && <FaIcon icon={it.icon} sx={{ color }} />}
+            {it.icon && <FaIcon icon={it.icon} />}
             {it.label}
           </MenuItem>
         ))}
@@ -209,6 +208,8 @@ export function Layout() {
   const isMobile = useMediaQuery(theme.breakpoints.down('md'))
   const [menuOpen, setMenuOpen] = useState(false)
   const [settingsAnchor, setSettingsAnchor] = useState<HTMLElement | null>(null)
+  // Réglages contextuels injectés par la page courante (affichés dans la roue crantée).
+  const [pageSettings, setPageSettings] = useState<ReactNode>(null)
   const { baseline, setBaseline } = useSettings()
 
   if (!me) return null
@@ -315,10 +316,17 @@ export function Layout() {
         anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
         transformOrigin={{ vertical: 'top', horizontal: 'right' }}
       >
-        <Box sx={{ p: 2, maxWidth: 280 }}>
+        <Box sx={{ p: 2, maxWidth: 320, minWidth: 250 }}>
           <Typography variant="subtitle2" gutterBottom>
             Réglages
           </Typography>
+          {/* Réglages spécifiques à la page courante (injectés via le contexte). */}
+          {pageSettings && (
+            <Box sx={{ mb: 1.5 }}>
+              {pageSettings}
+              <Divider sx={{ mt: 1.5 }} />
+            </Box>
+          )}
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
             Base des pourcentages des conseils IA
           </Typography>
@@ -366,16 +374,14 @@ export function Layout() {
             </>
           )}
           <List>
-            {groups.map((g) => {
-              const gc = g.color ?? '#ea580c'
-              return (
+            {groups.map((g) => (
               <Box key={g.label || 'main'}>
                 {g.label && (
                   <ListSubheader
                     sx={{
                       bgcolor: 'transparent',
                       lineHeight: '34px',
-                      color: gc,
+                      color: 'text.secondary',
                       fontWeight: 700,
                       textTransform: 'uppercase',
                       fontSize: '0.7rem',
@@ -393,23 +399,25 @@ export function Layout() {
                     sx={{
                       pl: g.label ? 3 : 2,
                       gap: 1.5,
-                      '&.active': { color: gc, fontWeight: 600, bgcolor: alpha(gc, 0.1) },
-                      '&.active i': { color: gc },
+                      '& i': { color: 'text.secondary' },
+                      '&.active': { color: 'primary.main', fontWeight: 600, bgcolor: alpha('#ea580c', 0.1) },
+                      '&.active i': { color: 'primary.main' },
                     }}
                   >
-                    {it.icon && <FaIcon icon={it.icon} sx={{ fontSize: 16, color: g.label ? gc : undefined }} />}
+                    {it.icon && <FaIcon icon={it.icon} sx={{ fontSize: 16 }} />}
                     {it.label}
                   </ListItemButton>
                 ))}
               </Box>
-              )
-            })}
+            ))}
           </List>
         </Box>
       </Drawer>
 
       <Container component="main" maxWidth="lg" sx={{ py: 4 }}>
-        <Outlet />
+        <HeaderSettingsContext.Provider value={setPageSettings}>
+          <Outlet />
+        </HeaderSettingsContext.Provider>
       </Container>
     </Box>
   )

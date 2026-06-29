@@ -58,7 +58,7 @@ export function BrandLogo({
             userSelect: 'none',
           }}
         >
-          Arg<Box component="span" sx={{ color: 'primary.main' }}>é</Box>neo
+          Ar<Box component="span" sx={{ color: 'primary.main' }}>gé</Box>neo
         </Box>
       )}
     </Box>

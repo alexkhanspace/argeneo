@@ -23,6 +23,7 @@ import {
 import { widgetDef, type WidgetCtx } from '../../dashboard/widgets'
 import { PeriodNav } from '../../dashboard/PeriodNav'
 import { PageHeader } from '../../components/PageHeader'
+import { useHeaderSettingsSetter } from '../../components/HeaderSettings'
 
 const TODAY = todayIso()
 
@@ -153,6 +154,7 @@ function PeriodChart({ sub }: { sub: BucketSeries }) {
           xAxis={[{ scaleType: 'point', data: sub.labels }]}
           yAxis={[{ valueFormatter: (v: number) => eurAxis(v) }]}
           series={[{ ...series[0] }, { ...series[1], area: true }]}
+          margin={{ top: 8, right: 14, bottom: 2, left: 4 }}
         />
       ) : (
         <BarChart
@@ -160,6 +162,7 @@ function PeriodChart({ sub }: { sub: BucketSeries }) {
           xAxis={[{ scaleType: 'band', data: sub.labels }]}
           yAxis={[{ valueFormatter: (v: number) => eurAxis(v) }]}
           series={series}
+          margin={{ top: 8, right: 14, bottom: 2, left: 4 }}
         />
       )}
     </Panel>
@@ -262,6 +265,49 @@ export function AnalyticsPage() {
     setRefKey(defaultRefKey(g, TODAY))
   }
 
+  // Réglages contextuels de la page, injectés dans la roue crantée du header (gain de place).
+  const setHeaderSettings = useHeaderSettingsSetter()
+  useEffect(() => {
+    setHeaderSettings(
+      <Stack spacing={1.5}>
+        <Box>
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+            Comparaison N-1
+          </Typography>
+          <ToggleButtonGroup
+            size="small"
+            exclusive
+            fullWidth
+            value={compareMode}
+            onChange={(_, v: CompareMode | null) => v && setCompareMode(v)}
+          >
+            <ToggleButton value="equiv">Jour équivalent</ToggleButton>
+            <ToggleButton value="date">Date à date</ToggleButton>
+          </ToggleButtonGroup>
+        </Box>
+        <Box>
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+            Jours analysés
+          </Typography>
+          <ToggleButtonGroup
+            size="small"
+            value={includedDays}
+            onChange={(_, v: number[]) => {
+              if (v.length > 0) setIncludedDays([...v].sort((a, b) => a - b))
+            }}
+          >
+            {WEEKDAYS.map((d, i) => (
+              <ToggleButton key={d} value={i} sx={{ px: 1 }}>
+                {d}
+              </ToggleButton>
+            ))}
+          </ToggleButtonGroup>
+        </Box>
+      </Stack>,
+    )
+    return () => setHeaderSettings(null)
+  }, [compareMode, includedDays, setHeaderSettings])
+
   type Stat = { label: string; value: string; sub?: string; accent?: boolean; delta?: number | null }
   const synthese: Stat[] = [
     {
@@ -325,59 +371,22 @@ export function AnalyticsPage() {
         loading={loading}
       />
 
-      {/* Mode de comparaison à N-1 : jour équivalent (même jour de semaine) ou date à date. */}
-      <Stack direction="row" sx={{ gap: 1, alignItems: 'center', flexWrap: 'wrap', mb: 1.5 }}>
-        <Typography variant="body2" color="text.secondary">
-          Comparaison N-1 :
-        </Typography>
-        <ToggleButtonGroup
-          size="small"
-          exclusive
-          value={compareMode}
-          onChange={(_, v: CompareMode | null) => v && setCompareMode(v)}
-          aria-label="Mode de comparaison à l'an dernier"
-        >
-          <ToggleButton value="equiv">Jour équivalent</ToggleButton>
-          <ToggleButton value="date">Date à date</ToggleButton>
-        </ToggleButtonGroup>
-        <Typography variant="caption" color="text.secondary">
-          {compareMode === 'equiv'
-            ? 'même jour de semaine l’an dernier (−364 j)'
-            : 'même date calendaire l’an dernier'}
-        </Typography>
-      </Stack>
-
-      {/* Jours analysés : permet d'exclure p. ex. le dimanche des deux années à la fois. */}
-      <Stack
-        direction="row"
-        sx={{ gap: 1, alignItems: 'center', flexWrap: 'wrap', mb: 2 }}
-      >
-        <Typography variant="body2" color="text.secondary">
-          Jours analysés :
-        </Typography>
-        <ToggleButtonGroup
-          size="small"
-          value={includedDays}
-          onChange={(_, v: number[]) => {
-            if (v.length > 0) setIncludedDays([...v].sort((a, b) => a - b))
-          }}
-          aria-label="Jours de la semaine inclus dans l'analyse"
-        >
-          {WEEKDAYS.map((d, i) => (
-            <ToggleButton key={d} value={i} sx={{ px: 1.25 }}>
-              {d}
-            </ToggleButton>
-          ))}
-        </ToggleButtonGroup>
-        {includedDays.length < ALL_DAYS.length && (
-          <Chip
-            size="small"
-            color="primary"
-            variant="outlined"
-            label={`${ALL_DAYS.filter((d) => !includedDays.includes(d)).map((d) => WEEKDAYS[d]).join(', ')} exclu(s) — comparaison à périmètre égal`}
-          />
-        )}
-      </Stack>
+      {/* Rappel compact des réglages d'analyse (configurables via la roue crantée du header). */}
+      {(compareMode === 'date' || includedDays.length < ALL_DAYS.length) && (
+        <Stack direction="row" sx={{ gap: 1, alignItems: 'center', flexWrap: 'wrap', mb: 2 }}>
+          {compareMode === 'date' && (
+            <Chip size="small" variant="outlined" label="Comparaison N-1 : date à date" />
+          )}
+          {includedDays.length < ALL_DAYS.length && (
+            <Chip
+              size="small"
+              color="primary"
+              variant="outlined"
+              label={`${ALL_DAYS.filter((d) => !includedDays.includes(d)).map((d) => WEEKDAYS[d]).join(', ')} exclu(s)`}
+            />
+          )}
+        </Stack>
+      )}
 
       {/* — Synthèse de la période choisie — */}
       <Box

@@ -10,6 +10,9 @@ import { eur, eur2, eurAxis, intFr, type Agg, type Comparison } from './analytic
 const eurTip = (v: number | null): string => (v == null ? '' : eur(v))
 const eur2Tip = (v: number | null): string => (v == null ? '' : eur2(v))
 
+// Marges compactes : les axes MUI X se dimensionnent seuls, on réduit donc l'espace résiduel.
+const CHART_MARGIN = { top: 8, right: 14, bottom: 2, left: 4 }
+
 export type WidgetSize = 'S' | 'M' | 'L'
 export interface WidgetCtx {
   agg: Agg
@@ -93,6 +96,7 @@ export const WIDGETS: WidgetDef[] = [
           { data: c.caPrev, label: 'N-1', color: '#cdbba6', valueFormatter: eurTip },
           { data: c.caCur, label: 'N', color: '#c2410c', valueFormatter: eurTip },
         ]}
+        margin={CHART_MARGIN}
       />
     ),
   },
@@ -109,6 +113,7 @@ export const WIDGETS: WidgetDef[] = [
           { data: c.caPrev, label: 'N-1', color: '#cdbba6', valueFormatter: eurTip },
           { data: c.caCur, label: 'N', color: '#c2410c', area: true, valueFormatter: eurTip },
         ]}
+        margin={CHART_MARGIN}
       />
     ),
   },
@@ -125,6 +130,7 @@ export const WIDGETS: WidgetDef[] = [
           { data: c.weekdayPrev, label: 'N-1', color: '#cdbba6', valueFormatter: eurTip },
           { data: c.weekdayCur, label: 'N', color: '#9a5417', valueFormatter: eurTip },
         ]}
+        margin={CHART_MARGIN}
       />
     ),
   },
@@ -141,6 +147,7 @@ export const WIDGETS: WidgetDef[] = [
           { data: c.ticketPrev, label: 'N-1', color: '#a5c7a6', valueFormatter: eur2Tip },
           { data: c.ticketCur, label: 'N', color: '#2e7d32', area: true, valueFormatter: eur2Tip },
         ]}
+        margin={CHART_MARGIN}
       />
     ),
   },

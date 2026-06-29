@@ -600,6 +600,9 @@ export function CommunicationPage() {
                   value={instruction}
                   onChange={(e) => setInstruction(e.target.value)}
                   size="small"
+                  multiline
+                  minRows={1}
+                  maxRows={8}
                   sx={{ flex: 1 }}
                 />
               </Stack>
