@@ -17,6 +17,7 @@ import {
   defaultRefKey,
   fetchFrom,
   type BucketSeries,
+  type CompareMode,
   type Gran,
 } from '../../dashboard/period'
 import { widgetDef, type WidgetCtx } from '../../dashboard/widgets'
@@ -152,7 +153,6 @@ function PeriodChart({ sub }: { sub: BucketSeries }) {
           xAxis={[{ scaleType: 'point', data: sub.labels }]}
           yAxis={[{ valueFormatter: (v: number) => eurAxis(v) }]}
           series={[{ ...series[0] }, { ...series[1], area: true }]}
-          margin={{ left: 70 }}
         />
       ) : (
         <BarChart
@@ -160,7 +160,6 @@ function PeriodChart({ sub }: { sub: BucketSeries }) {
           xAxis={[{ scaleType: 'band', data: sub.labels }]}
           yAxis={[{ valueFormatter: (v: number) => eurAxis(v) }]}
           series={series}
-          margin={{ left: 70 }}
         />
       )}
     </Panel>
@@ -187,6 +186,9 @@ export function AnalyticsPage() {
   // Jours de semaine inclus dans l'analyse (0=Lun..6=Dim). Permet d'exclure p. ex. le
   // dimanche pour comparer N/N-1 à périmètre égal quand l'ouverture a changé d'une année sur l'autre.
   const [includedDays, setIncludedDays] = useState<number[]>(ALL_DAYS)
+  // Comparaison N-1 : jour équivalent (même jour de semaine) par défaut — plus pertinent
+  // pour un commerce où l'activité dépend du jour de la semaine — ou date à date.
+  const [compareMode, setCompareMode] = useState<CompareMode>('equiv')
 
   useEffect(() => {
     listMyEtablissements()
@@ -242,8 +244,8 @@ export function AnalyticsPage() {
   }, [fEntries, articles, gran, refKey])
 
   // Séries N vs N-1 : fenêtre glissante (vue d'ensemble) + détail interne de la période.
-  const cmp = useMemo(() => buildSeries(fEntries, gran, refKey, TODAY), [fEntries, gran, refKey])
-  const sub = useMemo(() => buildBucketSeries(fEntries, gran, refKey), [fEntries, gran, refKey])
+  const cmp = useMemo(() => buildSeries(fEntries, gran, refKey, TODAY, compareMode), [fEntries, gran, refKey, compareMode])
+  const sub = useMemo(() => buildBucketSeries(fEntries, gran, refKey, compareMode), [fEntries, gran, refKey, compareMode])
 
   // Les widgets « détail » lisent agg (= période choisie) ; les widgets « tendance » lisent comparison.
   const ctx: WidgetCtx = useMemo(() => ({ agg: bucketAgg, comparison: cmp }), [bucketAgg, cmp])
@@ -316,6 +318,28 @@ export function AnalyticsPage() {
         today={TODAY}
         loading={loading}
       />
+
+      {/* Mode de comparaison à N-1 : jour équivalent (même jour de semaine) ou date à date. */}
+      <Stack direction="row" sx={{ gap: 1, alignItems: 'center', flexWrap: 'wrap', mb: 1.5 }}>
+        <Typography variant="body2" color="text.secondary">
+          Comparaison N-1 :
+        </Typography>
+        <ToggleButtonGroup
+          size="small"
+          exclusive
+          value={compareMode}
+          onChange={(_, v: CompareMode | null) => v && setCompareMode(v)}
+          aria-label="Mode de comparaison à l'an dernier"
+        >
+          <ToggleButton value="equiv">Jour équivalent</ToggleButton>
+          <ToggleButton value="date">Date à date</ToggleButton>
+        </ToggleButtonGroup>
+        <Typography variant="caption" color="text.secondary">
+          {compareMode === 'equiv'
+            ? 'même jour de semaine l’an dernier (−364 j)'
+            : 'même date calendaire l’an dernier'}
+        </Typography>
+      </Stack>
 
       {/* Jours analysés : permet d'exclure p. ex. le dimanche des deux années à la fois. */}
       <Stack

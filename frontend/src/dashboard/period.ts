@@ -3,6 +3,13 @@ import { MONTHS_SHORT, WEEKDAYS, type Comparison } from './analytics'
 
 export type Gran = 'jour' | 'semaine' | 'mois' | 'annee'
 
+/**
+ * Alignement de la comparaison N-1 :
+ * - 'equiv' = jour équivalent (même jour de semaine, −364 j / −52 sem.)
+ * - 'date'  = date à date (même date calendaire l'an dernier)
+ */
+export type CompareMode = 'equiv' | 'date'
+
 export const GRANS: { value: Gran; label: string }[] = [
   { value: 'jour', label: 'Jour' },
   { value: 'semaine', label: 'Semaine' },
@@ -61,6 +68,14 @@ const prevYearKey = (key: string, g: Gran): string => {
   return g === 'semaine' ? mondayOf(prev) : prev
 }
 
+/**
+ * Clé N-1 selon le mode. En « jour équivalent », on recule de 364 jours (= 52 semaines)
+ * pour conserver le même jour de semaine — pertinent au jour et à la semaine. Au mois et à
+ * l'année, le bucket reste calé sur l'an dernier (alignement par jour de semaine sans objet).
+ */
+const prevKeyOf = (key: string, g: Gran, mode: CompareMode): string =>
+  mode === 'equiv' && (g === 'jour' || g === 'semaine') ? addDays(key, -364) : prevYearKey(key, g)
+
 const bucketStart = (key: string, g: Gran): string =>
   g === 'mois' ? `${key}-01` : g === 'annee' ? `${key}-01-01` : key
 const bucketEnd = (key: string, g: Gran): string =>
@@ -116,10 +131,16 @@ export const refLabel = (g: Gran, refKey: string): string => {
 }
 
 /** Série N vs N-1 à la granularité choisie (structure Comparison réutilisée par les widgets). */
-export function buildSeries(entries: DailyEntry[], g: Gran, refKey: string, today: string): Comparison {
+export function buildSeries(
+  entries: DailyEntry[],
+  g: Gran,
+  refKey: string,
+  today: string,
+  mode: CompareMode = 'date',
+): Comparison {
   const n = COUNT[g]
   const curKeys = Array.from({ length: n }, (_, i) => stepKey(refKey, g, -(n - 1 - i)))
-  const prevKeys = curKeys.map((k) => prevYearKey(k, g))
+  const prevKeys = curKeys.map((k) => prevKeyOf(k, g, mode))
 
   const byKey = new Map<string, { ca: number; clients: number }>()
   const dayMap = new Map<string, { ca: number; clients: number }>()
@@ -159,7 +180,10 @@ export function buildSeries(entries: DailyEntry[], g: Gran, refKey: string, toda
   const refStart = bucketStart(refKey, g)
   const cappedEnd = bucketEnd(refKey, g) > today ? today : bucketEnd(refKey, g)
   const elapsed = Math.round((parse(cappedEnd).getTime() - parse(refStart).getTime()) / 86400000)
-  const prevStart = bucketStart(prevYearKey(refKey, g), g)
+  // En « jour équivalent », la fenêtre N-1 recule de 364 j (jours de semaine alignés) ;
+  // en « date à date », on se cale sur le même bucket l'an dernier.
+  const prevStart =
+    mode === 'equiv' && g !== 'annee' ? addDays(refStart, -364) : bucketStart(prevYearKey(refKey, g), g)
   const sumRange = (a: string, b: string) => {
     let s = 0
     for (let d = a; d <= b; d = addDays(d, 1)) s += dayMap.get(d)?.ca ?? 0
@@ -207,7 +231,12 @@ export interface BucketSeries {
  * mois → un point par jour (2026 vs 2025), année → un point par mois,
  * semaine → un point par jour de la semaine. Le jour n'a pas de détail interne.
  */
-export function buildBucketSeries(entries: DailyEntry[], g: Gran, refKey: string): BucketSeries {
+export function buildBucketSeries(
+  entries: DailyEntry[],
+  g: Gran,
+  refKey: string,
+  mode: CompareMode = 'date',
+): BucketSeries {
   const caByDate = new Map<string, number>()
   for (const e of entries) caByDate.set(e.date, (caByDate.get(e.date) ?? 0) + (e.revenue ?? 0))
   const ca = (iso: string) => Math.round(caByDate.get(iso) ?? 0)
@@ -220,9 +249,12 @@ export function buildBucketSeries(entries: DailyEntry[], g: Gran, refKey: string
     const caPrev: number[] = []
     for (let d = 1; d <= days; d++) {
       const dd = pad(d)
+      const cur = `${y}-${pad(m)}-${dd}`
+      // jour équivalent : même jour de semaine l'an dernier (−364 j) ; sinon même date.
+      const prev = mode === 'equiv' ? addDays(cur, -364) : `${y - 1}-${pad(m)}-${dd}`
       labels.push(String(d))
-      caCur.push(ca(`${y}-${pad(m)}-${dd}`))
-      caPrev.push(ca(`${y - 1}-${pad(m)}-${dd}`))
+      caCur.push(ca(cur))
+      caPrev.push(ca(prev))
     }
     return {
       kind: 'line', labels, caCur, caPrev,
@@ -252,7 +284,8 @@ export function buildBucketSeries(entries: DailyEntry[], g: Gran, refKey: string
   }
 
   if (g === 'semaine') {
-    const prevMon = prevYearKey(refKey, 'semaine')
+    // jour équivalent : la semaine 52 semaines plus tôt (jours de semaine alignés).
+    const prevMon = mode === 'equiv' ? addDays(refKey, -364) : prevYearKey(refKey, 'semaine')
     const labels: string[] = []
     const caCur: number[] = []
     const caPrev: number[] = []

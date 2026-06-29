@@ -93,7 +93,6 @@ export const WIDGETS: WidgetDef[] = [
           { data: c.caPrev, label: 'N-1', color: '#cdbba6', valueFormatter: eurTip },
           { data: c.caCur, label: 'N', color: '#c2410c', valueFormatter: eurTip },
         ]}
-        margin={{ left: 70 }}
       />
     ),
   },
@@ -110,7 +109,6 @@ export const WIDGETS: WidgetDef[] = [
           { data: c.caPrev, label: 'N-1', color: '#cdbba6', valueFormatter: eurTip },
           { data: c.caCur, label: 'N', color: '#c2410c', area: true, valueFormatter: eurTip },
         ]}
-        margin={{ left: 70 }}
       />
     ),
   },
@@ -127,7 +125,6 @@ export const WIDGETS: WidgetDef[] = [
           { data: c.weekdayPrev, label: 'N-1', color: '#cdbba6', valueFormatter: eurTip },
           { data: c.weekdayCur, label: 'N', color: '#9a5417', valueFormatter: eurTip },
         ]}
-        margin={{ left: 70 }}
       />
     ),
   },
