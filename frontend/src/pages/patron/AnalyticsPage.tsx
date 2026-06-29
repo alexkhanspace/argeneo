@@ -334,15 +334,24 @@ export function AnalyticsPage() {
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
             Jours analysés
           </Typography>
-          <ToggleButtonGroup
-            size="small"
-            value={includedDays}
-            onChange={(_, v: number[]) => {
-              if (v.length > 0) setIncludedDays([...v].sort((a, b) => a - b))
-            }}
-          >
+          <ToggleButtonGroup size="small" value={includedDays}>
             {WEEKDAYS.map((d, i) => (
-              <ToggleButton key={d} value={i} sx={{ px: 1 }}>
+              <ToggleButton
+                key={d}
+                value={i}
+                selected={includedDays.includes(i)}
+                sx={{ px: 1 }}
+                // Bascule par mise à jour FONCTIONNELLE (indépendante de la valeur figée du
+                // snapshot des réglages) → la sélection reste fiable, sans màj intermittente.
+                onClick={() =>
+                  setIncludedDays((prev) => {
+                    const has = prev.includes(i)
+                    if (has && prev.length === 1) return prev // garder au moins un jour
+                    const next = has ? prev.filter((x) => x !== i) : [...prev, i]
+                    return next.sort((a, b) => a - b)
+                  })
+                }
+              >
                 {d}
               </ToggleButton>
             ))}
