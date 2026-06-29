@@ -965,9 +965,14 @@ export function DashboardPage() {
                         <TableCell>{formatDateFr(r.date)}</TableCell>
                         <TableCell>{formatEur(r.revenue)}</TableCell>
                         <TableCell>
-                          {r.losses && r.losses.length > 0
-                            ? `${r.losses.length} article${r.losses.length > 1 ? 's' : ''}`
-                            : '—'}
+                          {(() => {
+                            const parts: string[] = []
+                            if (r.losses && r.losses.length > 0)
+                              parts.push(`${r.losses.length} article${r.losses.length > 1 ? 's' : ''}`)
+                            // Perte saisie directement en valeur (sans article détaillé).
+                            if (r.lossAmount != null && r.lossAmount > 0) parts.push(formatEur(r.lossAmount))
+                            return parts.length > 0 ? parts.join(' + ') : '—'
+                          })()}
                         </TableCell>
                         <TableCell>{r.noteProd || r.noteSale || '—'}</TableCell>
                       </TableRow>
