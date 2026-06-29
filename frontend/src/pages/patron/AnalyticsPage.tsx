@@ -87,6 +87,8 @@ function StatCard({
   accent?: boolean
   delta?: number | null
   onDeltaClick?: () => void
+  /** Valeur d'attente (état en attente, ex. liaison caisse) : rendu plus discret. */
+  placeholder?: boolean
 }) {
   return (
     <Card sx={{ height: '100%' }}>
@@ -94,13 +96,22 @@ function StatCard({
         <Typography variant="caption" color="text.secondary" sx={{ textTransform: 'uppercase', letterSpacing: 0.4 }}>
           {label}
         </Typography>
-        <Typography
-          variant="h4"
-          color={accent ? 'primary' : 'text.primary'}
-          sx={{ fontWeight: 700, fontSize: { xs: '1.4rem', sm: '1.9rem' }, lineHeight: 1.15 }}
-        >
-          {value}
-        </Typography>
+        {placeholder ? (
+          <Typography
+            color="text.secondary"
+            sx={{ fontStyle: 'italic', fontWeight: 500, fontSize: { xs: '0.95rem', sm: '1.05rem' }, lineHeight: 1.25 }}
+          >
+            {value}
+          </Typography>
+        ) : (
+          <Typography
+            variant="h4"
+            color={accent ? 'primary' : 'text.primary'}
+            sx={{ fontWeight: 700, fontSize: { xs: '1.4rem', sm: '1.9rem' }, lineHeight: 1.15 }}
+          >
+            {value}
+          </Typography>
+        )}
         <Stack direction="row" sx={{ alignItems: 'center', gap: 1, mt: 'auto', flexWrap: 'wrap' }}>
           {sub && (
             <Typography variant="caption" color="text.secondary">
@@ -351,6 +362,7 @@ export function AnalyticsPage() {
     accent?: boolean
     delta?: number | null
     onDeltaClick?: () => void
+    placeholder?: boolean
   }
   const caDiff = ref.curRef - ref.prevRef
   const synthese: Stat[] = [
@@ -375,9 +387,10 @@ export function AnalyticsPage() {
 
   const jourVeille: Stat[] = [
     {
-      label: "CA d'aujourd'hui",
-      value: cmp.todayCA == null ? '— (non saisi)' : eur2(cmp.todayCA),
-      sub: cmp.todayClients != null ? `${intFr(cmp.todayClients)} clients` : undefined,
+      label: 'CA temps réel',
+      // Pas encore de liaison caisse (POS) : on affiche l'attente plutôt qu'une valeur.
+      value: 'Attente liaison caisse',
+      placeholder: true,
     },
     {
       label: 'CA de la veille',
@@ -395,6 +408,7 @@ export function AnalyticsPage() {
       accent={s.accent}
       delta={s.delta}
       onDeltaClick={s.onDeltaClick}
+      placeholder={s.placeholder}
     />
   )
 
