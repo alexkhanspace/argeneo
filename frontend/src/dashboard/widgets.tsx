@@ -1,17 +1,9 @@
 /* eslint-disable react-refresh/only-export-components -- registre de widgets : composants + données mélangés volontairement */
 import type { ReactNode } from 'react'
 import { Box, Stack, Typography } from '@mui/material'
-import { BarChart } from '@mui/x-charts/BarChart'
-import { LineChart } from '@mui/x-charts/LineChart'
-import { PieChart } from '@mui/x-charts/PieChart'
 import { DataGrid, type GridColDef } from '@mui/x-data-grid'
-import { eur, eur2, eurAxis, intFr, type Agg, type Comparison } from './analytics'
-
-const eurTip = (v: number | null): string => (v == null ? '' : eur(v))
-const eur2Tip = (v: number | null): string => (v == null ? '' : eur2(v))
-
-// Marges compactes : les axes MUI X se dimensionnent seuls, on réduit donc l'espace résiduel.
-const CHART_MARGIN = { top: 8, right: 14, bottom: 2, left: 4 }
+import { eur, eur2, intFr, type Agg, type Comparison } from './analytics'
+import { CompareBar, CompareLine, LossPie } from './charts'
 
 export type WidgetSize = 'S' | 'M' | 'L'
 export interface WidgetCtx {
@@ -87,51 +79,20 @@ export const WIDGETS: WidgetDef[] = [
     type: 'compare',
     label: 'Comparaison N vs N-1 (CA)',
     defaultSize: 'L',
-    render: ({ comparison: c }) => (
-      <BarChart
-        height={280}
-        xAxis={[{ scaleType: 'band', data: c.labels }]}
-        yAxis={[{ valueFormatter: (v: number) => eurAxis(v) }]}
-        series={[
-          { data: c.caPrev, label: 'N-1', color: '#cdbba6', valueFormatter: eurTip },
-          { data: c.caCur, label: 'N', color: '#c2410c', valueFormatter: eurTip },
-        ]}
-        margin={CHART_MARGIN}
-      />
-    ),
+    render: ({ comparison: c }) => <CompareBar labels={c.labels} cur={c.caCur} prev={c.caPrev} height={280} />,
   },
   {
     type: 'ca_line',
     label: 'Évolution du CA — N vs N-1',
     defaultSize: 'L',
-    render: ({ comparison: c }) => (
-      <LineChart
-        height={260}
-        xAxis={[{ scaleType: 'point', data: c.labels }]}
-        yAxis={[{ valueFormatter: (v: number) => eurAxis(v) }]}
-        series={[
-          { data: c.caPrev, label: 'N-1', color: '#cdbba6', valueFormatter: eurTip },
-          { data: c.caCur, label: 'N', color: '#c2410c', area: true, valueFormatter: eurTip },
-        ]}
-        margin={CHART_MARGIN}
-      />
-    ),
+    render: ({ comparison: c }) => <CompareLine labels={c.labels} cur={c.caCur} prev={c.caPrev} area height={260} />,
   },
   {
     type: 'ca_weekday',
     label: 'CA moyen par jour de semaine — N vs N-1',
     defaultSize: 'M',
     render: ({ comparison: c }) => (
-      <BarChart
-        height={260}
-        xAxis={[{ scaleType: 'band', data: c.weekdayLabels }]}
-        yAxis={[{ valueFormatter: (v: number) => eurAxis(v) }]}
-        series={[
-          { data: c.weekdayPrev, label: 'N-1', color: '#cdbba6', valueFormatter: eurTip },
-          { data: c.weekdayCur, label: 'N', color: '#9a5417', valueFormatter: eurTip },
-        ]}
-        margin={CHART_MARGIN}
-      />
+      <CompareBar labels={c.weekdayLabels} cur={c.weekdayCur} prev={c.weekdayPrev} height={260} />
     ),
   },
   {
@@ -139,16 +100,7 @@ export const WIDGETS: WidgetDef[] = [
     label: 'Ticket moyen — N vs N-1',
     defaultSize: 'M',
     render: ({ comparison: c }) => (
-      <LineChart
-        height={260}
-        xAxis={[{ scaleType: 'point', data: c.labels }]}
-        yAxis={[{ valueFormatter: (v: number) => `${v.toLocaleString('fr-FR', { maximumFractionDigits: 1 })} €` }]}
-        series={[
-          { data: c.ticketPrev, label: 'N-1', color: '#a5c7a6', valueFormatter: eur2Tip },
-          { data: c.ticketCur, label: 'N', color: '#2e7d32', area: true, valueFormatter: eur2Tip },
-        ]}
-        margin={CHART_MARGIN}
-      />
+      <CompareLine labels={c.labels} cur={c.ticketCur} prev={c.ticketPrev} area money2 height={260} />
     ),
   },
   {
@@ -157,15 +109,9 @@ export const WIDGETS: WidgetDef[] = [
     defaultSize: 'M',
     render: ({ agg }) =>
       agg.lossByArticle.length ? (
-        <PieChart
+        <LossPie
+          data={agg.lossByArticle.map((l, i) => ({ id: String(i), label: l.name, value: Number(l.value.toFixed(2)) }))}
           height={260}
-          series={[
-            {
-              data: agg.lossByArticle.map((l, i) => ({ id: i, value: Number(l.value.toFixed(2)), label: l.name })),
-              valueFormatter: (item) => eur2(item.value),
-              highlightScope: { fade: 'global', highlight: 'item' },
-            },
-          ]}
         />
       ) : (
         <Typography color="text.secondary">Aucune perte.</Typography>

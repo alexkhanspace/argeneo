@@ -12,8 +12,6 @@ import {
   ToggleButtonGroup,
   Typography,
 } from '@mui/material'
-import { BarChart } from '@mui/x-charts/BarChart'
-import { LineChart } from '@mui/x-charts/LineChart'
 import TrendingUpIcon from '@mui/icons-material/TrendingUp'
 import TrendingDownIcon from '@mui/icons-material/TrendingDown'
 import TrendingFlatIcon from '@mui/icons-material/TrendingFlat'
@@ -21,7 +19,8 @@ import { errorMessage } from '../../api/client'
 import { listMonth, listMyEtablissements } from '../../api/daily'
 import { listArticles } from '../../api/costing'
 import type { Article, DailyEntry, MyEtablissement } from '../../api/types'
-import { aggregate, eur, eur2, eurAxis, intFr, priceMap, todayIso, WEEKDAYS } from '../../dashboard/analytics'
+import { aggregate, eur, eur2, intFr, priceMap, todayIso, WEEKDAYS } from '../../dashboard/analytics'
+import { CompareBar, CompareLine } from '../../dashboard/charts'
 import {
   bucketRange,
   buildBucketSeries,
@@ -40,10 +39,6 @@ import { useHeaderSettingsSetter } from '../../components/HeaderSettings'
 
 const TODAY = todayIso()
 
-// Mêmes teintes que les widgets : sable pour N-1, brun terre pour N.
-const COLOR_PREV = '#cdbba6'
-const COLOR_CUR = '#c2410c'
-
 const ALL_DAYS = [0, 1, 2, 3, 4, 5, 6]
 /** Jour de la semaine 0=Lun..6=Dim depuis une date ISO (sans décalage de fuseau). */
 const weekdayMon0 = (iso: string): number => {
@@ -52,7 +47,6 @@ const weekdayMon0 = (iso: string): number => {
 }
 /** Comparaison par défaut selon la granularité : mois/année → date à date, jour/semaine → jour équivalent. */
 const defaultCompareMode = (g: Gran): CompareMode => (g === 'mois' || g === 'annee' ? 'date' : 'equiv')
-const eurTip = (v: number | null): string => (v == null ? '' : eur(v))
 
 /** Badge d'évolution vs N-1 (vert si en hausse, rouge si en baisse). Cliquable pour révéler les € sous-jacents. */
 function Delta({ pct, onClick }: { pct: number | null; onClick?: () => void }) {
@@ -171,27 +165,26 @@ function WidgetPanel({ type, ctx, full }: { type: string; ctx: WidgetCtx; full?:
 /** Détail de la période choisie, sous-unité par sous-unité (jours / mois), N vs N-1. */
 function PeriodChart({ sub }: { sub: BucketSeries }) {
   if (sub.empty) return null
-  const series = [
-    { data: sub.caPrev, label: sub.prevLabel, color: COLOR_PREV, valueFormatter: eurTip },
-    { data: sub.caCur, label: sub.curLabel, color: COLOR_CUR, valueFormatter: eurTip },
-  ]
   return (
     <Panel title={sub.title} full>
       {sub.kind === 'line' ? (
-        <LineChart
+        <CompareLine
+          labels={sub.labels}
+          cur={sub.caCur}
+          prev={sub.caPrev}
+          curLabel={sub.curLabel}
+          prevLabel={sub.prevLabel}
+          area
           height={300}
-          xAxis={[{ scaleType: 'point', data: sub.labels }]}
-          yAxis={[{ valueFormatter: (v: number) => eurAxis(v) }]}
-          series={[{ ...series[0] }, { ...series[1], area: true }]}
-          margin={{ top: 8, right: 14, bottom: 2, left: 4 }}
         />
       ) : (
-        <BarChart
+        <CompareBar
+          labels={sub.labels}
+          cur={sub.caCur}
+          prev={sub.caPrev}
+          curLabel={sub.curLabel}
+          prevLabel={sub.prevLabel}
           height={300}
-          xAxis={[{ scaleType: 'band', data: sub.labels }]}
-          yAxis={[{ valueFormatter: (v: number) => eurAxis(v) }]}
-          series={series}
-          margin={{ top: 8, right: 14, bottom: 2, left: 4 }}
         />
       )}
     </Panel>
