@@ -66,6 +66,8 @@ export interface Comparison {
   ticketPrev: number[]
   weekdayCur: number[]
   weekdayPrev: number[]
+  /** Libellés des jours de semaine effectivement représentés (jours exclus retirés). */
+  weekdayLabels: string[]
   deltaPct: number | null
   todayCA: number | null
   todayClients: number | null
@@ -223,6 +225,7 @@ export function compare(compEntries: DailyEntry[]): Comparison {
     ticketPrev: caPrev.map((c, i) => ticket(c, clPrev[i])),
     weekdayCur: wdCur.map((w) => (w.n ? Math.round(w.ca / w.n) : 0)),
     weekdayPrev: wdPrev.map((w) => (w.n ? Math.round(w.ca / w.n) : 0)),
+    weekdayLabels: [...WEEKDAYS],
     deltaPct: prevYtd > 0 ? ((curYtd - prevYtd) / prevYtd) * 100 : null,
     todayCA,
     todayClients,

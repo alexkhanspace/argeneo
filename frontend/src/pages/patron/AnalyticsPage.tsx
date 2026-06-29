@@ -244,8 +244,14 @@ export function AnalyticsPage() {
   }, [fEntries, articles, gran, refKey])
 
   // Séries N vs N-1 : fenêtre glissante (vue d'ensemble) + détail interne de la période.
-  const cmp = useMemo(() => buildSeries(fEntries, gran, refKey, TODAY, compareMode), [fEntries, gran, refKey, compareMode])
-  const sub = useMemo(() => buildBucketSeries(fEntries, gran, refKey, compareMode), [fEntries, gran, refKey, compareMode])
+  const cmp = useMemo(
+    () => buildSeries(fEntries, gran, refKey, TODAY, compareMode, includedDays),
+    [fEntries, gran, refKey, compareMode, includedDays],
+  )
+  const sub = useMemo(
+    () => buildBucketSeries(fEntries, gran, refKey, compareMode, includedDays),
+    [fEntries, gran, refKey, compareMode, includedDays],
+  )
 
   // Les widgets « détail » lisent agg (= période choisie) ; les widgets « tendance » lisent comparison.
   const ctx: WidgetCtx = useMemo(() => ({ agg: bucketAgg, comparison: cmp }), [bucketAgg, cmp])

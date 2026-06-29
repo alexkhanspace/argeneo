@@ -137,6 +137,7 @@ export function buildSeries(
   refKey: string,
   today: string,
   mode: CompareMode = 'date',
+  included: number[] = [0, 1, 2, 3, 4, 5, 6],
 ): Comparison {
   const n = COUNT[g]
   const curKeys = Array.from({ length: n }, (_, i) => stepKey(refKey, g, -(n - 1 - i)))
@@ -200,8 +201,10 @@ export function buildSeries(
     caPrev: prevKeys.map((k) => Math.round(ca(k))),
     ticketCur: curKeys.map((k) => ticket(ca(k), cl(k))),
     ticketPrev: prevKeys.map((k) => ticket(ca(k), cl(k))),
-    weekdayCur: wdCur.map((w) => (w.n ? Math.round(w.ca / w.n) : 0)),
-    weekdayPrev: wdPrev.map((w) => (w.n ? Math.round(w.ca / w.n) : 0)),
+    // On ne représente que les jours de semaine inclus (jours exclus retirés du graphe).
+    weekdayCur: included.map((i) => (wdCur[i].n ? Math.round(wdCur[i].ca / wdCur[i].n) : 0)),
+    weekdayPrev: included.map((i) => (wdPrev[i].n ? Math.round(wdPrev[i].ca / wdPrev[i].n) : 0)),
+    weekdayLabels: included.map((i) => WEEKDAYS[i]),
     deltaPct: prevRef > 0 ? ((curRef - prevRef) / prevRef) * 100 : null,
     todayCA: dayMap.get(today)?.ca ?? null,
     todayClients: dayMap.get(today)?.clients ?? null,
@@ -236,10 +239,12 @@ export function buildBucketSeries(
   g: Gran,
   refKey: string,
   mode: CompareMode = 'date',
+  included: number[] = [0, 1, 2, 3, 4, 5, 6],
 ): BucketSeries {
   const caByDate = new Map<string, number>()
   for (const e of entries) caByDate.set(e.date, (caByDate.get(e.date) ?? 0) + (e.revenue ?? 0))
   const ca = (iso: string) => Math.round(caByDate.get(iso) ?? 0)
+  const includedSet = new Set(included)
 
   if (g === 'mois') {
     const [y, m] = refKey.split('-').map(Number)
@@ -250,6 +255,8 @@ export function buildBucketSeries(
     for (let d = 1; d <= days; d++) {
       const dd = pad(d)
       const cur = `${y}-${pad(m)}-${dd}`
+      // Jours de semaine exclus (p. ex. dimanche) : retirés du graphe, pas affichés à 0.
+      if (!includedSet.has(weekdayMon0(cur))) continue
       // jour équivalent : même jour de semaine l'an dernier (−364 j) ; sinon même date.
       const prev = mode === 'equiv' ? addDays(cur, -364) : `${y - 1}-${pad(m)}-${dd}`
       labels.push(String(d))
@@ -290,6 +297,7 @@ export function buildBucketSeries(
     const caCur: number[] = []
     const caPrev: number[] = []
     for (let i = 0; i < 7; i++) {
+      if (!includedSet.has(i)) continue // jour de semaine exclu → retiré du graphe
       labels.push(WEEKDAYS[i])
       caCur.push(ca(addDays(refKey, i)))
       caPrev.push(ca(addDays(prevMon, i)))

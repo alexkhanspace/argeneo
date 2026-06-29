@@ -5,7 +5,7 @@ import { BarChart } from '@mui/x-charts/BarChart'
 import { LineChart } from '@mui/x-charts/LineChart'
 import { PieChart } from '@mui/x-charts/PieChart'
 import { DataGrid, type GridColDef } from '@mui/x-data-grid'
-import { eur, eur2, eurAxis, intFr, WEEKDAYS, type Agg, type Comparison } from './analytics'
+import { eur, eur2, eurAxis, intFr, type Agg, type Comparison } from './analytics'
 
 const eurTip = (v: number | null): string => (v == null ? '' : eur(v))
 const eur2Tip = (v: number | null): string => (v == null ? '' : eur2(v))
@@ -119,7 +119,7 @@ export const WIDGETS: WidgetDef[] = [
     render: ({ comparison: c }) => (
       <BarChart
         height={260}
-        xAxis={[{ scaleType: 'band', data: WEEKDAYS }]}
+        xAxis={[{ scaleType: 'band', data: c.weekdayLabels }]}
         yAxis={[{ valueFormatter: (v: number) => eurAxis(v) }]}
         series={[
           { data: c.weekdayPrev, label: 'N-1', color: '#cdbba6', valueFormatter: eurTip },
