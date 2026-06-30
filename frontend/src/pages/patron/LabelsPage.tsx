@@ -42,6 +42,16 @@ const COLOR_PRESETS: { label: string; bg: string; text: string }[] = [
   { label: 'Crème / Brun', bg: '#f5f1e8', text: '#5b3a1a' },
 ]
 
+type Frame = 'none' | 'wood'
+const THEMES: { label: string; bg: string; text: string; frame: Frame; chalk: boolean }[] = [
+  { label: 'Libre', bg: '#ffffff', text: '#111111', frame: 'none', chalk: false },
+  { label: 'Ardoise', bg: '#24221f', text: '#f1ede4', frame: 'none', chalk: true },
+  { label: 'Ardoise + cadre bois', bg: '#24221f', text: '#f1ede4', frame: 'wood', chalk: true },
+  { label: 'Bois (cadre)', bg: '#f4ead7', text: '#4a2f15', frame: 'wood', chalk: false },
+  { label: 'Kraft', bg: '#cdb48c', text: '#3a2913', frame: 'none', chalk: false },
+]
+const CHALK_CSS = '"Permanent Marker", "Bricolage Grotesque", cursive'
+
 const eur = (v: number | null): string | null =>
   v == null ? null : v.toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' })
 
@@ -58,6 +68,8 @@ interface LabelTemplate {
   showPrice: boolean
   extraText?: string
   useDescription?: boolean
+  frame?: Frame
+  chalk?: boolean
 }
 
 const TPL_KEY = 'argeneo.labelTemplates'
@@ -82,6 +94,8 @@ export function LabelsPage() {
   const [heightCm, setHeightCm] = useState('6')
   const [bgColor, setBgColor] = useState('#ffffff')
   const [textColor, setTextColor] = useState('#111111')
+  const [frame, setFrame] = useState<Frame>('none')
+  const [chalk, setChalk] = useState(false)
   const [fontScale, setFontScale] = useState(1)
   const [showPrice, setShowPrice] = useState(true)
   // Texte libre (allergènes, promo…) commun à toutes les étiquettes.
@@ -125,6 +139,8 @@ export function LabelsPage() {
       showPrice,
       extraText,
       useDescription,
+      frame,
+      chalk,
     }
     // Remplace un modèle de même nom, sinon ajoute.
     const next = [...templates.filter((t) => t.name !== name), tpl]
@@ -143,6 +159,8 @@ export function LabelsPage() {
     setShowPrice(t.showPrice)
     setExtraText(t.extraText ?? '')
     setUseDescription(t.useDescription ?? false)
+    setFrame(t.frame ?? 'none')
+    setChalk(t.chalk ?? false)
   }
 
   const deleteTemplate = (id: string) => {
@@ -212,6 +230,8 @@ export function LabelsPage() {
         bgColor,
         textColor,
         fontScale,
+        frame,
+        chalk,
       })
       setPdf(blob)
     } catch (e) {
@@ -291,47 +311,65 @@ export function LabelsPage() {
                 border: '1px dashed',
                 borderColor: textColor,
                 borderRadius: 1,
-                p: 1.5,
+                p: 0.5,
                 mb: 2,
-                display: 'flex',
-                flexDirection: 'column',
                 maxWidth: 360,
                 mx: 'auto',
               }}
             >
-              <Box sx={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 0 }}>
-                <Box sx={{ textAlign: 'center', minWidth: 0 }}>
-                  <Typography
-                    sx={{
-                      fontWeight: 800,
-                      textTransform: 'uppercase',
-                      lineHeight: 1.15,
-                      fontSize: `${(1.05 * fontScale).toFixed(2)}rem`,
-                    }}
-                  >
-                    {previewName}
-                  </Typography>
-                  {previewNote && (
-                    <Typography sx={{ mt: 0.5, fontSize: `${(0.62 * fontScale).toFixed(2)}rem`, opacity: 0.85 }}>
-                      {previewNote}
+              <Box
+                sx={{
+                  height: '100%',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  p: frame === 'wood' ? 1.25 : 1,
+                  border: frame === 'wood' ? '5px solid #6b4423' : 'none',
+                  outline: frame === 'wood' ? '1px solid #caa06a' : 'none',
+                  outlineOffset: frame === 'wood' ? '-6px' : 0,
+                }}
+              >
+                <Box sx={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 0 }}>
+                  <Box sx={{ textAlign: 'center', minWidth: 0 }}>
+                    <Typography
+                      sx={{
+                        fontFamily: chalk ? CHALK_CSS : undefined,
+                        fontWeight: chalk ? 400 : 800,
+                        textTransform: 'uppercase',
+                        lineHeight: 1.15,
+                        fontSize: `${(1.05 * fontScale).toFixed(2)}rem`,
+                      }}
+                    >
+                      {previewName}
                     </Typography>
-                  )}
+                    {previewNote && (
+                      <Typography
+                        sx={{
+                          fontFamily: chalk ? CHALK_CSS : undefined,
+                          mt: 0.5,
+                          fontSize: `${(0.62 * fontScale).toFixed(2)}rem`,
+                          opacity: 0.85,
+                        }}
+                      >
+                        {previewNote}
+                      </Typography>
+                    )}
+                  </Box>
                 </Box>
-              </Box>
-              <Box sx={{ borderTop: '1px solid', borderColor: textColor, opacity: 0.25, my: 0.75 }} />
-              <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'flex-end', opacity: 1 }}>
-                <Stack direction="row" sx={{ alignItems: 'center', gap: 0.75, minWidth: 0 }}>
-                  {logoSrc && (
-                    <Box component="img" src={logoSrc} alt="" sx={{ height: 16, maxWidth: 56, objectFit: 'contain' }} />
+                <Box sx={{ borderTop: '1px solid', borderColor: textColor, opacity: 0.25, my: 0.75 }} />
+                <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'flex-end' }}>
+                  <Stack direction="row" sx={{ alignItems: 'center', gap: 0.75, minWidth: 0 }}>
+                    {logoSrc && (
+                      <Box component="img" src={logoSrc} alt="" sx={{ height: 16, maxWidth: 56, objectFit: 'contain' }} />
+                    )}
+                    <Typography sx={{ fontSize: '0.6rem', letterSpacing: 1, textTransform: 'uppercase', fontWeight: 700, opacity: 0.7 }} noWrap>
+                      {brand || 'Marque'}
+                    </Typography>
+                  </Stack>
+                  {showPrice && (
+                    <Typography sx={{ fontWeight: 700, fontSize: `${(1 * fontScale).toFixed(2)}rem` }}>1,80 €</Typography>
                   )}
-                  <Typography sx={{ fontSize: '0.6rem', letterSpacing: 1, textTransform: 'uppercase', fontWeight: 700, opacity: 0.7 }} noWrap>
-                    {brand || 'Marque'}
-                  </Typography>
                 </Stack>
-                {showPrice && (
-                  <Typography sx={{ fontWeight: 700, fontSize: `${(1 * fontScale).toFixed(2)}rem` }}>1,80 €</Typography>
-                )}
-              </Stack>
+              </Box>
             </Box>
 
             <Stack spacing={2}>
@@ -341,6 +379,44 @@ export function LabelsPage() {
                 onChange={(e) => setBrand(e.target.value)}
                 placeholder="Ex. Maison Alexandre"
               />
+
+              <Box>
+                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                  Style de fond
+                </Typography>
+                <Stack direction="row" sx={{ flexWrap: 'wrap', gap: 1 }}>
+                  {THEMES.map((t) => (
+                    <Chip
+                      key={t.label}
+                      label={t.label}
+                      size="small"
+                      variant="outlined"
+                      onClick={() => {
+                        setBgColor(t.bg)
+                        setTextColor(t.text)
+                        setFrame(t.frame)
+                        setChalk(t.chalk)
+                      }}
+                    />
+                  ))}
+                </Stack>
+                <Stack direction="row" sx={{ mt: 0.5, gap: 2, flexWrap: 'wrap' }}>
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        size="small"
+                        checked={frame === 'wood'}
+                        onChange={(e) => setFrame(e.target.checked ? 'wood' : 'none')}
+                      />
+                    }
+                    label="Cadre bois"
+                  />
+                  <FormControlLabel
+                    control={<Switch size="small" checked={chalk} onChange={(e) => setChalk(e.target.checked)} />}
+                    label="Police craie"
+                  />
+                </Stack>
+              </Box>
 
               <Box>
                 <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
