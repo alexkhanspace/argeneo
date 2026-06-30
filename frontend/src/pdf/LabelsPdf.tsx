@@ -6,13 +6,12 @@ const A4_W = 210
 const A4_H = 297
 const MARGIN = 8 // marge blanche autour de la planche (mm)
 
-// Police « craie » manuscrite — récupérée à la volée uniquement si le thème l'utilise.
+// Police « craie » manuscrite — servie en local (public/fonts), même origine que l'app.
+// Déposer le fichier TTF à : frontend/public/fonts/PermanentMarker-Regular.ttf
+// (téléchargeable sur fonts.google.com → « Permanent Marker »). Si absent, repli Helvetica.
 const CHALK = 'ChalkHand'
 try {
-  Font.register({
-    family: CHALK,
-    src: 'https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/permanentmarker/PermanentMarker-Regular.ttf',
-  })
+  Font.register({ family: CHALK, src: '/fonts/PermanentMarker-Regular.ttf' })
 } catch {
   // Police indisponible → repli silencieux sur Helvetica.
 }
