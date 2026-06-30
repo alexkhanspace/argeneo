@@ -22,6 +22,8 @@ export interface LabelItem {
   price: string | null
   /** Texte libre sous le nom (allergènes, ingrédients, promo…), ou null. */
   note?: string | null
+  /** Badges propres à CETTE étiquette (Kasher, Vegan, médaille…). */
+  badges?: { text?: string | null; img?: string | null; color?: string }[]
 }
 
 export interface LabelsPdfData {
@@ -44,8 +46,6 @@ export interface LabelsPdfData {
   chalk: boolean
   /** Logo de l'entreprise (data URL), affiché en petit en bas — ou null. */
   logoUrl: string | null
-  /** Badges persos (ex. « Kasher », « Vegan », médaille) — texte ou image, plusieurs possibles. */
-  badges?: { text?: string | null; img?: string | null }[]
   /** Position des badges : haut-droite, haut-gauche, ou dans le pied (entre marque et prix). */
   badgePos?: 'tr' | 'tl' | 'footer'
   /** Multiplicateur de taille de l'image du badge (médaille). */
@@ -56,7 +56,6 @@ export interface LabelsPdfData {
 export function LabelsPdf({ data }: { data: LabelsPdfData }) {
   const { items, widthMm, heightMm, brand, bgColor, textColor, borderColor, fill, fontScale, frame, chalk, logoUrl } =
     data
-  const badges = (data.badges ?? []).filter((b) => b.img || b.text?.trim())
   const badgePos = data.badgePos ?? 'tr'
   const badgeScale = data.badgeScale ?? 1
 
@@ -149,7 +148,7 @@ export function LabelsPdf({ data }: { data: LabelsPdfData }) {
     badgeImgFooter: { height: logoH * badgeScale, maxWidth: 26 * MM, objectFit: 'contain', alignSelf: 'flex-end' },
     badgeText: {
       fontFamily: 'Helvetica-Bold',
-      fontSize: Math.max(6, Math.round(nameSize * 0.32)),
+      fontSize: Math.max(6, Math.round(nameSize * 0.32 * badgeScale)),
       color: '#ffffff',
       borderRadius: 3,
       paddingTop: 1.4 * MM,
@@ -160,7 +159,7 @@ export function LabelsPdf({ data }: { data: LabelsPdfData }) {
     },
     badgeTextFooter: {
       fontFamily: 'Helvetica-Bold',
-      fontSize: 8,
+      fontSize: Math.max(6, Math.round(8 * badgeScale)),
       color: '#ffffff',
       borderRadius: 2,
       paddingTop: 0.8 * MM,
@@ -181,13 +180,20 @@ export function LabelsPdf({ data }: { data: LabelsPdfData }) {
         {b.text}
       </Text>
     )
-  const cornerBadge = badges.length > 0 && badgePos !== 'footer' && (
-    <View style={styles.badgeCorner}>{badges.map((b, i) => renderBadge(b, i, false))}</View>
-  )
-  const footerBadge =
-    badges.length > 0 && badgePos === 'footer' ? (
-      <View style={styles.footerBadges}>{badges.map((b, i) => renderBadge(b, i, true))}</View>
+  // Badges de l'étiquette courante (chaque produit peut avoir les siens).
+  const itemBadges = (it: LabelItem) => (it.badges ?? []).filter((b) => b.img || b.text?.trim())
+  const cornerBadgeFor = (it: LabelItem) => {
+    const bs = itemBadges(it)
+    return bs.length > 0 && badgePos !== 'footer' ? (
+      <View style={styles.badgeCorner}>{bs.map((b, i) => renderBadge(b, i, false))}</View>
     ) : null
+  }
+  const footerBadgeFor = (it: LabelItem) => {
+    const bs = itemBadges(it)
+    return bs.length > 0 && badgePos === 'footer' ? (
+      <View style={styles.footerBadges}>{bs.map((b, i) => renderBadge(b, i, true))}</View>
+    ) : null
+  }
 
   // Pagination déterministe : autant d'étiquettes que la grille cols×rois calculée plus haut.
   const perPage = cols * rows
@@ -208,7 +214,7 @@ export function LabelsPdf({ data }: { data: LabelsPdfData }) {
             {logoUrl ? <Image src={logoUrl} style={styles.logo} /> : null}
             <Text style={styles.brand}>{brand}</Text>
           </View>
-          {footerBadge}
+          {footerBadgeFor(it)}
           {it.price ? <Text style={styles.price}>{it.price}</Text> : null}
         </View>
       </View>
@@ -229,7 +235,7 @@ export function LabelsPdf({ data }: { data: LabelsPdfData }) {
                 ) : (
                   body(it)
                 )}
-                {cornerBadge}
+                {cornerBadgeFor(it)}
               </View>
             ))}
           </View>

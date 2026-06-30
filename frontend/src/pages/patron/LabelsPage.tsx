@@ -10,6 +10,7 @@ import {
   CircularProgress,
   Divider,
   FormControlLabel,
+  MenuItem,
   Slider,
   Stack,
   Switch,
@@ -106,7 +107,6 @@ interface LabelTemplate {
   chalk?: boolean
   borderColor?: string
   fillSheet?: boolean
-  badges?: { text?: string; color?: string }[]
   badgePos?: 'tr' | 'tl' | 'footer'
   badgeScale?: number
 }
@@ -140,8 +140,10 @@ export function LabelsPage() {
   const [showPrice, setShowPrice] = useState(true)
   // Agrandir les étiquettes pour remplir l'A4 (moins de blanc/perte).
   const [fillSheet, setFillSheet] = useState(false)
-  // Badges persos (Kasher, Vegan, Bio, Halal, médaille…) : liste, chacun texte+couleur ou image.
-  const [badges, setBadges] = useState<Badge[]>([])
+  // Badges PAR étiquette : clé `a<articleId>` ou `f<freeId>` → liste de badges (texte+couleur ou image).
+  const [itemBadges, setItemBadges] = useState<Record<string, Badge[]>>({})
+  // Étiquette ciblée par l'éditeur de badges.
+  const [badgeTarget, setBadgeTarget] = useState('')
   const [badgeInput, setBadgeInput] = useState('')
   const [badgeInputColor, setBadgeInputColor] = useState('#37474f')
   const [badgePos, setBadgePos] = useState<'tr' | 'tl' | 'footer'>('tr')
@@ -201,7 +203,6 @@ export function LabelsPage() {
       chalk,
       borderColor,
       fillSheet,
-      badges: badges.filter((b) => b.text).map((b) => ({ text: b.text, color: b.color })),
       badgePos,
       badgeScale,
     }
@@ -226,7 +227,6 @@ export function LabelsPage() {
     setChalk(t.chalk ?? false)
     setBorderColor(t.borderColor ?? t.textColor)
     setFillSheet(t.fillSheet ?? false)
-    setBadges((t.badges ?? []).map((b, i) => ({ id: `${Date.now()}-${i}`, text: b.text, color: b.color })))
     setBadgePos(t.badgePos ?? 'tr')
     setBadgeScale(t.badgeScale ?? 1)
   }
@@ -282,29 +282,54 @@ export function LabelsPage() {
     if (editId === id) cancelEditFree()
   }
 
-  // --- Badges (liste) ---
-  const hasImageBadge = badges.some((b) => b.img)
+  // --- Badges PAR étiquette ---
+  const selectedItems = useMemo(() => {
+    const arts = articles.filter((a) => a.id in sel).map((a) => ({ key: `a${a.id}`, name: a.name }))
+    const frees = freeLabels.map((f) => ({ key: `f${f.id}`, name: f.name }))
+    return [...arts, ...frees]
+  }, [articles, sel, freeLabels])
+  // Cible effective : la cible choisie si encore sélectionnée, sinon la 1re.
+  const target = selectedItems.some((i) => i.key === badgeTarget) ? badgeTarget : selectedItems[0]?.key ?? ''
+  const targetBadges = itemBadges[target] ?? []
+  const targetName = selectedItems.find((i) => i.key === target)?.name ?? ''
+  const anyBadge = Object.values(itemBadges).some((list) => list.length > 0)
+
+  const updateTarget = (fn: (list: Badge[]) => Badge[]) => {
+    if (!target) return
+    setItemBadges((prev) => ({ ...prev, [target]: fn(prev[target] ?? []) }))
+  }
   const togglePreset = (p: { label: string; color: string }) =>
-    setBadges((prev) =>
-      prev.some((b) => b.text === p.label)
-        ? prev.filter((b) => b.text !== p.label)
-        : [...prev, { id: `${Date.now()}-${p.label}`, text: p.label, color: p.color }],
+    updateTarget((list) =>
+      list.some((b) => b.text === p.label)
+        ? list.filter((b) => b.text !== p.label)
+        : [...list, { id: `${Date.now()}-${p.label}`, text: p.label, color: p.color }],
     )
   const addCustomBadge = () => {
     const t = badgeInput.trim()
     if (!t) return
-    setBadges((prev) => [...prev, { id: `${Date.now()}`, text: t, color: badgeInputColor }])
+    updateTarget((list) => [...list, { id: `${Date.now()}`, text: t, color: badgeInputColor }])
     setBadgeInput('')
   }
-  const addImageBadge = (img: string) => setBadges((prev) => [...prev, { id: `${Date.now()}`, img }])
-  const removeBadge = (id: string) => setBadges((prev) => prev.filter((b) => b.id !== id))
+  const addImageBadge = (img: string) => updateTarget((list) => [...list, { id: `${Date.now()}`, img }])
+  const removeBadge = (id: string) => updateTarget((list) => list.filter((b) => b.id !== id))
+  // Recopie les badges de la cible sur TOUTES les étiquettes sélectionnées.
+  const applyBadgesToAll = () =>
+    setItemBadges((prev) => {
+      const list = prev[target] ?? []
+      const next = { ...prev }
+      selectedItems.forEach((i) => {
+        next[i.key] = list.map((b) => ({ ...b, id: `${i.key}-${b.id}` }))
+      })
+      return next
+    })
 
-  // Nom d'aperçu : la saisie libre en cours (édition/ajout) prime, sinon 1er produit, sinon exemple.
+  // Nom d'aperçu : saisie libre en cours, sinon l'étiquette ciblée par les badges, sinon exemple.
   const previewName = useMemo(() => {
     if (fName.trim()) return fName.trim()
+    if (targetName) return targetName
     const firstId = articles.find((a) => a.id in sel)?.id
     return (firstId != null && articles.find((a) => a.id === firstId)?.name) || 'Croissant choco noisette'
-  }, [fName, articles, sel])
+  }, [fName, targetName, articles, sel])
 
   // Prix d'aperçu : reflète la saisie libre en cours, sinon un prix d'exemple.
   const previewPrice = useMemo(
@@ -349,11 +374,14 @@ export function LabelsPage() {
         if (useDescription && a.description) noteParts.push(a.description)
         if (extra) noteParts.push(extra)
         const note = noteParts.length ? noteParts.join(' · ') : null
-        for (let i = 0; i < qty; i++) items.push({ name: a.name, price, note })
+        const aBadges = itemBadges[`a${a.id}`] ?? []
+        for (let i = 0; i < qty; i++) items.push({ name: a.name, price, note, badges: aBadges })
       }
       // Étiquettes libres (saisies à la main, sans produit).
       for (const f of freeLabels) {
-        for (let i = 0; i < f.qty; i++) items.push({ name: f.name, price: f.price || null, note: extra || null })
+        const fBadges = itemBadges[`f${f.id}`] ?? []
+        for (let i = 0; i < f.qty; i++)
+          items.push({ name: f.name, price: f.price || null, note: extra || null, badges: fBadges })
       }
       if (items.length === 0) {
         setError('Sélectionne au moins un produit ou ajoute une étiquette libre.')
@@ -372,7 +400,6 @@ export function LabelsPage() {
         fill: fillSheet,
         fontScale,
         frame,
-        badges,
         badgePos,
         badgeScale,
       }
@@ -425,7 +452,7 @@ export function LabelsPage() {
           whiteSpace: 'nowrap',
           lineHeight: 1.3,
         }}
-        style={{ fontSize: footer ? '2.2cqw' : '2.4cqw' }}
+        style={{ fontSize: `${((footer ? 2.2 : 2.4) * badgeScale).toFixed(1)}cqw` }}
       >
         {b.text}
       </Box>
@@ -513,7 +540,7 @@ export function LabelsPage() {
                 mx: 'auto',
               }}
             >
-              {badges.length > 0 && badgePos !== 'footer' && (
+              {targetBadges.length > 0 && badgePos !== 'footer' && (
                 <Box
                   sx={{
                     position: 'absolute',
@@ -529,7 +556,7 @@ export function LabelsPage() {
                     alignItems: badgePos === 'tl' ? 'flex-start' : 'flex-end',
                   }}
                 >
-                  {badges.map((b) => previewBadge(b, false))}
+                  {targetBadges.map((b) => previewBadge(b, false))}
                 </Box>
               )}
               <Box
@@ -551,6 +578,7 @@ export function LabelsPage() {
                         fontWeight: chalk ? 400 : 800,
                         textTransform: 'uppercase',
                         lineHeight: 1.15,
+                        whiteSpace: 'pre-line',
                       }}
                       style={{ fontSize: `${(7.06 * fontScale).toFixed(2)}cqw` }}
                     >
@@ -580,9 +608,9 @@ export function LabelsPage() {
                       {brand || 'Marque'}
                     </Typography>
                   </Stack>
-                  {badges.length > 0 && badgePos === 'footer' && (
+                  {targetBadges.length > 0 && badgePos === 'footer' && (
                     <Stack direction="row" sx={{ gap: 0.5, alignItems: 'flex-end' }}>
-                      {badges.map((b) => previewBadge(b, true))}
+                      {targetBadges.map((b) => previewBadge(b, true))}
                     </Stack>
                   )}
                   {showPrice && previewPrice && (
@@ -709,11 +737,39 @@ export function LabelsPage() {
 
               <Box>
                 <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
-                  Badges — Kasher, Halal, Vegan, Bio… (plusieurs possibles)
+                  Badges par étiquette — chaque produit a les siens (Kasher, Halal, Vegan…)
                 </Typography>
+                {selectedItems.length === 0 ? (
+                  <Typography variant="body2" color="text.secondary">
+                    Sélectionne un article (ou ajoute une étiquette libre) pour lui attribuer des badges.
+                  </Typography>
+                ) : (
+                  <>
+                <Stack direction="row" sx={{ gap: 1, alignItems: 'center', flexWrap: 'wrap', mb: 1 }}>
+                  <TextField
+                    select
+                    size="small"
+                    label="Badges pour"
+                    value={target}
+                    onChange={(e) => setBadgeTarget(e.target.value)}
+                    sx={{ flex: 1, minWidth: 160 }}
+                  >
+                    {selectedItems.map((it) => (
+                      <MenuItem key={it.key} value={it.key}>
+                        {it.name}
+                        {itemBadges[it.key]?.length ? ` • ${itemBadges[it.key].length}` : ''}
+                      </MenuItem>
+                    ))}
+                  </TextField>
+                  {selectedItems.length > 1 && (
+                    <Button size="small" onClick={applyBadgesToAll} disabled={targetBadges.length === 0}>
+                      Appliquer à tous
+                    </Button>
+                  )}
+                </Stack>
                 <Stack direction="row" sx={{ flexWrap: 'wrap', gap: 1, mb: 1 }}>
                   {BADGE_PRESETS.map((p) => {
-                    const on = badges.some((b) => b.text === p.label)
+                    const on = targetBadges.some((b) => b.text === p.label)
                     return (
                       <Chip
                         key={p.label}
@@ -773,9 +829,9 @@ export function LabelsPage() {
                     />
                   </Button>
                 </Stack>
-                {badges.length > 0 && (
+                {targetBadges.length > 0 && (
                   <Stack direction="row" sx={{ flexWrap: 'wrap', gap: 1, mt: 1.5 }}>
-                    {badges.map((b) => (
+                    {targetBadges.map((b) => (
                       <Chip
                         key={b.id}
                         label={b.img ? 'Image' : b.text}
@@ -795,7 +851,7 @@ export function LabelsPage() {
                     ))}
                   </Stack>
                 )}
-                {badges.length > 0 && (
+                {anyBadge && (
                   <ToggleButtonGroup
                     size="small"
                     exclusive
@@ -808,10 +864,10 @@ export function LabelsPage() {
                     <ToggleButton value="footer">Près du prix</ToggleButton>
                   </ToggleButtonGroup>
                 )}
-                {hasImageBadge && (
+                {anyBadge && (
                   <Box sx={{ mt: 1 }}>
                     <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
-                      Taille des images (× {badgeScale.toFixed(2)})
+                      Taille des badges, texte &amp; image (× {badgeScale.toFixed(2)})
                     </Typography>
                     <Slider
                       value={badgeScale}
@@ -824,6 +880,8 @@ export function LabelsPage() {
                       sx={{ maxWidth: 280 }}
                     />
                   </Box>
+                )}
+                  </>
                 )}
               </Box>
 
@@ -975,9 +1033,9 @@ export function LabelsPage() {
                 label="Nom"
                 value={fName}
                 onChange={(e) => setFName(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') submitFree()
-                }}
+                multiline
+                minRows={1}
+                helperText="Entrée = saut de ligne (ex. Bagel ⏎ Saumon)"
                 sx={{ flex: 1, minWidth: 140 }}
               />
               <TextField
