@@ -10,12 +10,14 @@ import {
   CircularProgress,
   Divider,
   FormControlLabel,
+  Slider,
   Stack,
   Switch,
   TextField,
   Typography,
 } from '@mui/material'
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf'
+import SaveIcon from '@mui/icons-material/Save'
 import { errorMessage } from '../../api/client'
 import { listArticles } from '../../api/costing'
 import { listMyEtablissements } from '../../api/daily'
@@ -43,6 +45,32 @@ const COLOR_PRESETS: { label: string; bg: string; text: string }[] = [
 const eur = (v: number | null): string | null =>
   v == null ? null : v.toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' })
 
+/** Modèle d'étiquette enregistré (mise en forme réutilisable, hors sélection de produits). */
+interface LabelTemplate {
+  id: string
+  name: string
+  brand: string
+  bgColor: string
+  textColor: string
+  widthCm: string
+  heightCm: string
+  fontScale: number
+  showPrice: boolean
+  extraText?: string
+  useDescription?: boolean
+}
+
+const TPL_KEY = 'argeneo.labelTemplates'
+const loadTemplates = (): LabelTemplate[] => {
+  try {
+    const v = JSON.parse(localStorage.getItem(TPL_KEY) ?? '[]')
+    return Array.isArray(v) ? (v as LabelTemplate[]) : []
+  } catch {
+    return []
+  }
+}
+const persistTemplates = (t: LabelTemplate[]) => localStorage.setItem(TPL_KEY, JSON.stringify(t))
+
 /** Générateur d'étiquettes : sélection de produits + modèle (couleurs, logo) → planche A4 à découper. */
 export function LabelsPage() {
   const [articles, setArticles] = useState<Article[]>([])
@@ -54,10 +82,17 @@ export function LabelsPage() {
   const [heightCm, setHeightCm] = useState('6')
   const [bgColor, setBgColor] = useState('#ffffff')
   const [textColor, setTextColor] = useState('#111111')
+  const [fontScale, setFontScale] = useState(1)
   const [showPrice, setShowPrice] = useState(true)
+  // Texte libre (allergènes, promo…) commun à toutes les étiquettes.
+  const [extraText, setExtraText] = useState('')
+  // Reprend la description du produit (ingrédients) sur chaque étiquette.
+  const [useDescription, setUseDescription] = useState(false)
   const [logoSrc, setLogoSrc] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
+  const [templates, setTemplates] = useState<LabelTemplate[]>(() => loadTemplates())
+  const [tplName, setTplName] = useState('')
   const [busy, setBusy] = useState(false)
   const [pdf, setPdf] = useState<Blob | null>(null)
 
@@ -75,6 +110,47 @@ export function LabelsPage() {
       .catch(() => undefined)
   }, [])
 
+  const saveTemplate = () => {
+    const name = tplName.trim()
+    if (!name) return
+    const tpl: LabelTemplate = {
+      id: `${Date.now()}`,
+      name,
+      brand,
+      bgColor,
+      textColor,
+      widthCm,
+      heightCm,
+      fontScale,
+      showPrice,
+      extraText,
+      useDescription,
+    }
+    // Remplace un modèle de même nom, sinon ajoute.
+    const next = [...templates.filter((t) => t.name !== name), tpl]
+    setTemplates(next)
+    persistTemplates(next)
+    setTplName('')
+  }
+
+  const applyTemplate = (t: LabelTemplate) => {
+    setBrand(t.brand)
+    setBgColor(t.bgColor)
+    setTextColor(t.textColor)
+    setWidthCm(t.widthCm)
+    setHeightCm(t.heightCm)
+    setFontScale(t.fontScale ?? 1)
+    setShowPrice(t.showPrice)
+    setExtraText(t.extraText ?? '')
+    setUseDescription(t.useDescription ?? false)
+  }
+
+  const deleteTemplate = (id: string) => {
+    const next = templates.filter((t) => t.id !== id)
+    setTemplates(next)
+    persistTemplates(next)
+  }
+
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
     if (!q) return articles
@@ -88,6 +164,16 @@ export function LabelsPage() {
     const firstId = articles.find((a) => a.id in sel)?.id
     return (firstId != null && articles.find((a) => a.id === firstId)?.name) || 'Croissant choco noisette'
   }, [articles, sel])
+
+  const previewNote = useMemo(() => {
+    const parts: string[] = []
+    if (useDescription) {
+      const first = articles.find((a) => a.id in sel)
+      parts.push(first?.description || 'Ingrédients du produit…')
+    }
+    if (extraText.trim()) parts.push(extraText.trim())
+    return parts.length ? parts.join(' · ') : null
+  }, [useDescription, extraText, articles, sel])
 
   const toggle = (id: number) =>
     setSel((prev) => {
@@ -105,15 +191,28 @@ export function LabelsPage() {
     setBusy(true)
     try {
       const items: LabelItem[] = []
+      const extra = extraText.trim()
       for (const a of articles) {
         const qty = sel[a.id]
         if (!qty) continue
         const price = showPrice ? eur(a.salePriceTtc) : null
-        for (let i = 0; i < qty; i++) items.push({ name: a.name, price })
+        const noteParts: string[] = []
+        if (useDescription && a.description) noteParts.push(a.description)
+        if (extra) noteParts.push(extra)
+        const note = noteParts.length ? noteParts.join(' · ') : null
+        for (let i = 0; i < qty; i++) items.push({ name: a.name, price, note })
       }
       const w = Math.max(2, Math.min(20, Number(widthCm) || 10))
       const h = Math.max(2, Math.min(28, Number(heightCm) || 6))
-      const blob = await buildLabelsPdfBlob({ items, widthMm: w * 10, heightMm: h * 10, brand, bgColor, textColor })
+      const blob = await buildLabelsPdfBlob({
+        items,
+        widthMm: w * 10,
+        heightMm: h * 10,
+        brand,
+        bgColor,
+        textColor,
+        fontScale,
+      })
       setPdf(blob)
     } catch (e) {
       setError(errorMessage(e))
@@ -146,6 +245,43 @@ export function LabelsPage() {
               Modèle
             </Typography>
 
+            {/* Modèles enregistrés */}
+            <Stack direction="row" sx={{ gap: 1, flexWrap: 'wrap', alignItems: 'center', mb: 2 }}>
+              {templates.length === 0 ? (
+                <Typography variant="caption" color="text.secondary">
+                  Aucun modèle enregistré.
+                </Typography>
+              ) : (
+                templates.map((t) => (
+                  <Chip
+                    key={t.id}
+                    label={t.name}
+                    size="small"
+                    onClick={() => applyTemplate(t)}
+                    onDelete={() => deleteTemplate(t.id)}
+                  />
+                ))
+              )}
+            </Stack>
+            <Stack direction="row" sx={{ gap: 1, alignItems: 'center', mb: 2 }}>
+              <TextField
+                size="small"
+                label="Nom du modèle"
+                value={tplName}
+                onChange={(e) => setTplName(e.target.value)}
+                sx={{ flex: 1 }}
+              />
+              <Button
+                variant="outlined"
+                startIcon={<SaveIcon />}
+                onClick={saveTemplate}
+                disabled={!tplName.trim()}
+              >
+                Enregistrer
+              </Button>
+            </Stack>
+            <Divider sx={{ mb: 2 }} />
+
             {/* Aperçu live de l'étiquette */}
             <Box
               sx={{
@@ -164,11 +300,23 @@ export function LabelsPage() {
               }}
             >
               <Box sx={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 0 }}>
-                <Typography
-                  sx={{ fontWeight: 800, textAlign: 'center', textTransform: 'uppercase', lineHeight: 1.15, fontSize: '1.05rem' }}
-                >
-                  {previewName}
-                </Typography>
+                <Box sx={{ textAlign: 'center', minWidth: 0 }}>
+                  <Typography
+                    sx={{
+                      fontWeight: 800,
+                      textTransform: 'uppercase',
+                      lineHeight: 1.15,
+                      fontSize: `${(1.05 * fontScale).toFixed(2)}rem`,
+                    }}
+                  >
+                    {previewName}
+                  </Typography>
+                  {previewNote && (
+                    <Typography sx={{ mt: 0.5, fontSize: `${(0.62 * fontScale).toFixed(2)}rem`, opacity: 0.85 }}>
+                      {previewNote}
+                    </Typography>
+                  )}
+                </Box>
               </Box>
               <Box sx={{ borderTop: '1px solid', borderColor: textColor, opacity: 0.25, my: 0.75 }} />
               <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'flex-end', opacity: 1 }}>
@@ -180,7 +328,9 @@ export function LabelsPage() {
                     {brand || 'Marque'}
                   </Typography>
                 </Stack>
-                {showPrice && <Typography sx={{ fontWeight: 700 }}>1,80 €</Typography>}
+                {showPrice && (
+                  <Typography sx={{ fontWeight: 700, fontSize: `${(1 * fontScale).toFixed(2)}rem` }}>1,80 €</Typography>
+                )}
               </Stack>
             </Box>
 
@@ -270,6 +420,35 @@ export function LabelsPage() {
                   ))}
                 </Stack>
               </Box>
+
+              <Box>
+                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                  Taille du texte (× {fontScale.toFixed(2)})
+                </Typography>
+                <Slider
+                  value={fontScale}
+                  onChange={(_, v) => setFontScale(v as number)}
+                  min={0.6}
+                  max={1.6}
+                  step={0.05}
+                  size="small"
+                  sx={{ maxWidth: 280 }}
+                />
+              </Box>
+
+              <TextField
+                label="Texte libre (allergènes, promo…)"
+                value={extraText}
+                onChange={(e) => setExtraText(e.target.value)}
+                placeholder="Ex. Contient : gluten, fruits à coque"
+                multiline
+                minRows={1}
+                maxRows={4}
+              />
+              <FormControlLabel
+                control={<Switch checked={useDescription} onChange={(e) => setUseDescription(e.target.checked)} />}
+                label="Reprendre la description du produit (ingrédients)"
+              />
 
               <FormControlLabel
                 control={<Switch checked={showPrice} onChange={(e) => setShowPrice(e.target.checked)} />}

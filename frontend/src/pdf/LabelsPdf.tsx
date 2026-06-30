@@ -10,6 +10,8 @@ export interface LabelItem {
   name: string
   /** Prix déjà formaté (ex. « 1,80 € »), ou null pour ne pas l'afficher. */
   price: string | null
+  /** Texte libre sous le nom (allergènes, ingrédients, promo…), ou null. */
+  note?: string | null
 }
 
 export interface LabelsPdfData {
@@ -20,19 +22,21 @@ export interface LabelsPdfData {
   /** Couleurs du modèle (libres). */
   bgColor: string
   textColor: string
+  /** Multiplicateur de taille de police du nom/prix (1 = auto). */
+  fontScale: number
   /** Logo de l'entreprise (data URL), affiché en petit en bas — ou null. */
   logoUrl: string | null
 }
 
 /** Planche A4 d'étiquettes à découper (grille calculée selon la taille demandée). */
 export function LabelsPdf({ data }: { data: LabelsPdfData }) {
-  const { items, widthMm, heightMm, brand, bgColor, textColor, logoUrl } = data
+  const { items, widthMm, heightMm, brand, bgColor, textColor, fontScale, logoUrl } = data
   const w = widthMm * MM
   const h = heightMm * MM
 
-  // Police du nom adaptée à la largeur de l'étiquette.
-  const nameSize = Math.max(8, Math.min(24, Math.round(widthMm * 0.2)))
-  const priceSize = Math.max(8, Math.min(18, Math.round(widthMm * 0.16)))
+  // Police du nom adaptée à la largeur, ajustée par le multiplicateur du modèle.
+  const nameSize = Math.max(7, Math.min(44, Math.round(widthMm * 0.2 * fontScale)))
+  const priceSize = Math.max(7, Math.min(32, Math.round(widthMm * 0.16 * fontScale)))
   const logoH = Math.min(heightMm * 0.16, 9) * MM
 
   const styles = StyleSheet.create({
@@ -57,6 +61,14 @@ export function LabelsPdf({ data }: { data: LabelsPdfData }) {
       textAlign: 'center',
       textTransform: 'uppercase',
       lineHeight: 1.15,
+    },
+    note: {
+      color: textColor,
+      opacity: 0.85,
+      fontSize: Math.max(6, Math.round(nameSize * 0.42)),
+      textAlign: 'center',
+      marginTop: 2 * MM,
+      lineHeight: 1.2,
     },
     sep: { borderTopWidth: 0.7, borderTopColor: textColor, opacity: 0.25, marginTop: 4 * MM, marginBottom: 3 * MM },
     footer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end' },
@@ -90,6 +102,7 @@ export function LabelsPdf({ data }: { data: LabelsPdfData }) {
               <View key={i} style={styles.label} wrap={false}>
                 <View style={styles.nameWrap}>
                   <Text style={styles.name}>{it.name}</Text>
+                  {it.note ? <Text style={styles.note}>{it.note}</Text> : null}
                 </View>
                 <View>
                   <View style={styles.sep} />
