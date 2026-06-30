@@ -127,6 +127,8 @@ export function LabelsPage() {
   const [fName, setFName] = useState('')
   const [fPrice, setFPrice] = useState('')
   const [fQty, setFQty] = useState('1')
+  // Étiquette libre en cours d'édition (clic sur une puce) ; null = ajout.
+  const [editId, setEditId] = useState<string | null>(null)
 
   const [templates, setTemplates] = useState<LabelTemplate[]>(() => loadTemplates())
   const [tplName, setTplName] = useState('')
@@ -203,22 +205,52 @@ export function LabelsPage() {
     [sel, freeLabels],
   )
 
-  const addFreeLabel = () => {
+  // Ajoute (ou met à jour si on édite) une étiquette libre, puis réinitialise le formulaire.
+  const submitFree = () => {
     const name = fName.trim()
     if (!name) return
     const qty = Math.max(1, Math.min(999, Math.round(Number(fQty)) || 1))
-    setFreeLabels((prev) => [...prev, { id: `${Date.now()}`, name, price: fmtFreePrice(fPrice), qty }])
+    const price = fmtFreePrice(fPrice)
+    if (editId) {
+      setFreeLabels((prev) => prev.map((f) => (f.id === editId ? { ...f, name, price, qty } : f)))
+    } else {
+      setFreeLabels((prev) => [...prev, { id: `${Date.now()}`, name, price, qty }])
+    }
+    setFName('')
+    setFPrice('')
+    setFQty('1')
+    setEditId(null)
+  }
+  // Charge une étiquette libre dans le formulaire pour l'éditer (et la prévisualiser).
+  const startEditFree = (f: FreeLabel) => {
+    setEditId(f.id)
+    setFName(f.name)
+    setFPrice(f.price ? f.price.replace(/[^\d.,]/g, '').trim() : '')
+    setFQty(String(f.qty))
+  }
+  const cancelEditFree = () => {
+    setEditId(null)
     setFName('')
     setFPrice('')
     setFQty('1')
   }
-  const removeFreeLabel = (id: string) => setFreeLabels((prev) => prev.filter((f) => f.id !== id))
+  const removeFreeLabel = (id: string) => {
+    setFreeLabels((prev) => prev.filter((f) => f.id !== id))
+    if (editId === id) cancelEditFree()
+  }
 
-  // Nom d'exemple pour l'aperçu : 1er produit sélectionné, sinon générique.
+  // Nom d'aperçu : la saisie libre en cours (édition/ajout) prime, sinon 1er produit, sinon exemple.
   const previewName = useMemo(() => {
+    if (fName.trim()) return fName.trim()
     const firstId = articles.find((a) => a.id in sel)?.id
     return (firstId != null && articles.find((a) => a.id === firstId)?.name) || 'Croissant choco noisette'
-  }, [articles, sel])
+  }, [fName, articles, sel])
+
+  // Prix d'aperçu : reflète la saisie libre en cours, sinon un prix d'exemple.
+  const previewPrice = useMemo(
+    () => (fName.trim() ? fmtFreePrice(fPrice) || null : '1,80 €'),
+    [fName, fPrice],
+  )
 
   const previewNote = useMemo(() => {
     const parts: string[] = []
@@ -363,10 +395,13 @@ export function LabelsPage() {
             </Stack>
             <Divider sx={{ mb: 2 }} />
 
-            {/* Aperçu live de l'étiquette */}
+            {/* Aperçu live de l'étiquette — fidèle au PDF : conteneur CSS + tailles en cqw
+                (mêmes ratios que LabelsPdf), et overflow masqué comme le PDF (hauteur fixe). */}
             <Box
               sx={{
                 aspectRatio: `${wNum} / ${hNum}`,
+                containerType: 'inline-size',
+                overflow: 'hidden',
                 bgcolor: bgColor,
                 color: textColor,
                 border: '1px dashed',
@@ -398,14 +433,14 @@ export function LabelsPage() {
                         textTransform: 'uppercase',
                         lineHeight: 1.15,
                       }}
-                      style={{ fontSize: `${(17 * fontScale).toFixed(1)}px` }}
+                      style={{ fontSize: `${(7.06 * fontScale).toFixed(2)}cqw` }}
                     >
                       {previewName}
                     </Typography>
                     {previewNote && (
                       <Typography
                         sx={{ fontFamily: chalk ? CHALK_CSS : undefined, mt: 0.5, opacity: 0.85 }}
-                        style={{ fontSize: `${(10 * fontScale).toFixed(1)}px` }}
+                        style={{ fontSize: `${(2.96 * fontScale).toFixed(2)}cqw` }}
                       >
                         {previewNote}
                       </Typography>
@@ -418,13 +453,17 @@ export function LabelsPage() {
                     {logoSrc && (
                       <Box component="img" src={logoSrc} alt="" sx={{ height: 16, maxWidth: 56, objectFit: 'contain' }} />
                     )}
-                    <Typography sx={{ fontSize: '0.6rem', letterSpacing: 1, textTransform: 'uppercase', fontWeight: 700, opacity: 0.7 }} noWrap>
+                    <Typography
+                      sx={{ letterSpacing: 1, textTransform: 'uppercase', fontWeight: 700, opacity: 0.7 }}
+                      style={{ fontSize: `${(28.23 / wNum).toFixed(2)}cqw` }}
+                      noWrap
+                    >
                       {brand || 'Marque'}
                     </Typography>
                   </Stack>
-                  {showPrice && (
-                    <Typography sx={{ fontWeight: 700 }} style={{ fontSize: `${(16 * fontScale).toFixed(1)}px` }}>
-                      1,80 €
+                  {showPrice && previewPrice && (
+                    <Typography sx={{ fontWeight: 700 }} style={{ fontSize: `${(5.64 * fontScale).toFixed(2)}cqw` }}>
+                      {previewPrice}
                     </Typography>
                   )}
                 </Stack>
@@ -666,7 +705,7 @@ export function LabelsPage() {
                 value={fName}
                 onChange={(e) => setFName(e.target.value)}
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter') addFreeLabel()
+                  if (e.key === 'Enter') submitFree()
                 }}
                 sx={{ flex: 1, minWidth: 140 }}
               />
@@ -686,21 +725,34 @@ export function LabelsPage() {
                 onChange={(e) => setFQty(e.target.value)}
                 sx={{ width: 72 }}
               />
-              <Button variant="outlined" onClick={addFreeLabel} disabled={!fName.trim()} sx={{ mt: 0.25 }}>
-                Ajouter
+              <Button variant="contained" onClick={submitFree} disabled={!fName.trim()} sx={{ mt: 0.25 }}>
+                {editId ? 'Modifier' : 'Ajouter'}
               </Button>
+              {editId && (
+                <Button color="inherit" onClick={cancelEditFree} sx={{ mt: 0.25 }}>
+                  Annuler
+                </Button>
+              )}
             </Stack>
             {freeLabels.length > 0 && (
-              <Stack direction="row" sx={{ gap: 1, flexWrap: 'wrap', mt: 1.5 }}>
-                {freeLabels.map((f) => (
-                  <Chip
-                    key={f.id}
-                    label={`${f.name}${f.price ? ` · ${f.price}` : ''} ×${f.qty}`}
-                    size="small"
-                    onDelete={() => removeFreeLabel(f.id)}
-                  />
-                ))}
-              </Stack>
+              <>
+                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1.5 }}>
+                  Clique sur une étiquette pour la prévisualiser et la modifier.
+                </Typography>
+                <Stack direction="row" sx={{ gap: 1, flexWrap: 'wrap', mt: 0.5 }}>
+                  {freeLabels.map((f) => (
+                    <Chip
+                      key={f.id}
+                      label={`${f.name}${f.price ? ` · ${f.price}` : ''} ×${f.qty}`}
+                      size="small"
+                      color={editId === f.id ? 'primary' : 'default'}
+                      variant={editId === f.id ? 'filled' : 'outlined'}
+                      onClick={() => startEditFree(f)}
+                      onDelete={() => removeFreeLabel(f.id)}
+                    />
+                  ))}
+                </Stack>
+              </>
             )}
           </CardContent>
         </Card>
