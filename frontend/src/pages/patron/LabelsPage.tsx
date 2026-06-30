@@ -23,7 +23,7 @@ import SaveIcon from '@mui/icons-material/Save'
 import { errorMessage } from '../../api/client'
 import { listArticles } from '../../api/costing'
 import { listMyEtablissements } from '../../api/daily'
-import { getProfile, logoUrl } from '../../api/billing'
+import { getProfile, getSettings, logoUrl } from '../../api/billing'
 import type { Article } from '../../api/types'
 import { PageHeader } from '../../components/PageHeader'
 import { PdfViewerModal } from '../../components/PdfViewerModal'
@@ -153,6 +153,8 @@ export function LabelsPage() {
   // Reprend la description du produit (ingrédients) sur chaque étiquette.
   const [useDescription, setUseDescription] = useState(false)
   const [logoSrc, setLogoSrc] = useState<string | null>(null)
+  // Couleurs de marque définies sur le profil de facturation (réutilisées pour le style « Enseigne »).
+  const [brandColors, setBrandColors] = useState<{ c1: string; c2: string }>({ c1: '#c2410c', c2: '#c2410c' })
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
 
@@ -180,6 +182,11 @@ export function LabelsPage() {
       .catch(() => undefined)
     getProfile()
       .then((p) => setLogoSrc(p.logoFile ? logoUrl(p.logoFile) : null))
+      .catch(() => undefined)
+    getSettings()
+      .then((s) =>
+        setBrandColors({ c1: s.brandColor1 || '#c2410c', c2: s.brandColor2 || s.brandColor1 || '#111111' }),
+      )
       .catch(() => undefined)
   }, [])
 
@@ -543,11 +550,11 @@ export function LabelsPage() {
                 <Box
                   sx={{
                     position: 'absolute',
-                    // Écarté de la bordure / du cadre bois pour ne pas être « mangé ».
-                    top: frame === 'wood' ? 11 : 5,
+                    // Marge proportionnelle (comme le PDF : ~4 mm, plus avec cadre bois).
+                    top: frame === 'wood' ? `${(70 / wNum).toFixed(1)}cqw` : `${(40 / wNum).toFixed(1)}cqw`,
                     ...(badgePos === 'tl'
-                      ? { left: frame === 'wood' ? 11 : 5 }
-                      : { right: frame === 'wood' ? 11 : 5 }),
+                      ? { left: frame === 'wood' ? `${(70 / wNum).toFixed(1)}cqw` : `${(40 / wNum).toFixed(1)}cqw` }
+                      : { right: frame === 'wood' ? `${(70 / wNum).toFixed(1)}cqw` : `${(40 / wNum).toFixed(1)}cqw` }),
                     zIndex: 1,
                     display: 'flex',
                     flexDirection: 'column',
@@ -600,20 +607,29 @@ export function LabelsPage() {
                       <Box component="img" src={logoSrc} alt="" sx={{ height: 16, maxWidth: 56, objectFit: 'contain' }} />
                     )}
                     <Typography
-                      sx={{ letterSpacing: 1, textTransform: 'uppercase', fontWeight: 700, opacity: 0.7 }}
+                      sx={{
+                        fontFamily: chalk ? CHALK_CSS : undefined,
+                        letterSpacing: 1,
+                        textTransform: 'uppercase',
+                        fontWeight: 700,
+                        opacity: 0.7,
+                      }}
                       style={{ fontSize: `${(28.23 / wNum).toFixed(2)}cqw` }}
                       noWrap
                     >
                       {brand || 'Marque'}
                     </Typography>
-                    {targetBadges.length > 0 && badgePos === 'footer' && (
-                      <Stack direction="row" sx={{ gap: 0.5, alignItems: 'center', ml: 0.5 }}>
-                        {targetBadges.map((b) => previewBadge(b, true))}
-                      </Stack>
-                    )}
                   </Stack>
+                  {targetBadges.length > 0 && badgePos === 'footer' && (
+                    <Stack direction="row" sx={{ gap: 0.5, alignItems: 'center', mx: 0.5 }}>
+                      {targetBadges.map((b) => previewBadge(b, true))}
+                    </Stack>
+                  )}
                   {showPrice && previewPrice && (
-                    <Typography sx={{ fontWeight: 700 }} style={{ fontSize: `${(5.64 * fontScale).toFixed(2)}cqw` }}>
+                    <Typography
+                      sx={{ fontFamily: chalk ? CHALK_CSS : undefined, fontWeight: chalk ? 400 : 700 }}
+                      style={{ fontSize: `${(5.64 * fontScale).toFixed(2)}cqw` }}
+                    >
                       {previewPrice}
                     </Typography>
                   )}
@@ -723,12 +739,12 @@ export function LabelsPage() {
                   <Chip
                     label="Enseigne"
                     size="small"
-                    color="primary"
                     variant="outlined"
+                    sx={{ borderColor: brandColors.c1, color: brandColors.c1, fontWeight: 600 }}
                     onClick={() => {
                       setBgColor('#ffffff')
-                      setTextColor('#c2410c')
-                      setBorderColor('#c2410c')
+                      setTextColor(brandColors.c1)
+                      setBorderColor(brandColors.c2)
                     }}
                   />
                 </Stack>
