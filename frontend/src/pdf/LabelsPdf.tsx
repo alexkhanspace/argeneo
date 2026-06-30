@@ -137,8 +137,11 @@ export function LabelsPdf({ data }: { data: LabelsPdfData }) {
     price: { fontFamily: titleFont, color: textColor, fontSize: priceSize },
     badgeCorner: {
       position: 'absolute',
-      top: 3.5 * MM,
-      ...(badgePos === 'tl' ? { left: 3.5 * MM } : { right: 3.5 * MM }),
+      // On écarte de la bordure (et de l'épaisseur du cadre bois) pour ne pas « manger » le badge.
+      top: (frame === 'wood' ? woodW + 2.5 : 4) * MM,
+      ...(badgePos === 'tl'
+        ? { left: (frame === 'wood' ? woodW + 2.5 : 4) * MM }
+        : { right: (frame === 'wood' ? woodW + 2.5 : 4) * MM }),
       alignItems: 'center',
     },
     badgeImg: {

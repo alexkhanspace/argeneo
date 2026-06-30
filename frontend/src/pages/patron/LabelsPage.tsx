@@ -458,8 +458,11 @@ export function LabelsPage() {
                 <Box
                   sx={{
                     position: 'absolute',
-                    top: 4,
-                    ...(badgePos === 'tl' ? { left: 4 } : { right: 4 }),
+                    // Écarté de la bordure / du cadre bois pour ne pas être « mangé ».
+                    top: frame === 'wood' ? 11 : 5,
+                    ...(badgePos === 'tl'
+                      ? { left: frame === 'wood' ? 11 : 5 }
+                      : { right: frame === 'wood' ? 11 : 5 }),
                     zIndex: 1,
                     display: 'flex',
                   }}
