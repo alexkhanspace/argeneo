@@ -94,6 +94,8 @@ interface LabelTemplate {
   fillSheet?: boolean
   badgeText?: string
   badgePos?: 'tr' | 'tl' | 'footer'
+  badgeScale?: number
+  badgeColor?: string
 }
 
 const TPL_KEY = 'argeneo.labelTemplates'
@@ -129,6 +131,10 @@ export function LabelsPage() {
   const [badgeText, setBadgeText] = useState('')
   const [badgeUrl, setBadgeUrl] = useState<string | null>(null)
   const [badgePos, setBadgePos] = useState<'tr' | 'tl' | 'footer'>('tr')
+  // Multiplicateur de taille de l'image du badge (médaille).
+  const [badgeScale, setBadgeScale] = useState(1)
+  // Couleur du badge texte (texte + contour).
+  const [badgeColor, setBadgeColor] = useState('#111111')
   // Texte libre (allergènes, promo…) commun à toutes les étiquettes.
   const [extraText, setExtraText] = useState('')
   // Reprend la description du produit (ingrédients) sur chaque étiquette.
@@ -185,6 +191,8 @@ export function LabelsPage() {
       fillSheet,
       badgeText,
       badgePos,
+      badgeScale,
+      badgeColor,
     }
     // Remplace un modèle de même nom, sinon ajoute.
     const next = [...templates.filter((t) => t.name !== name), tpl]
@@ -209,6 +217,8 @@ export function LabelsPage() {
     setFillSheet(t.fillSheet ?? false)
     setBadgeText(t.badgeText ?? '')
     setBadgePos(t.badgePos ?? 'tr')
+    setBadgeScale(t.badgeScale ?? 1)
+    setBadgeColor(t.badgeColor ?? t.textColor)
   }
 
   const deleteTemplate = (id: string) => {
@@ -338,6 +348,8 @@ export function LabelsPage() {
         badgeText: badgeText.trim() || null,
         badgeUrl,
         badgePos,
+        badgeScale,
+        badgeColor,
       }
       try {
         setPdf(await buildLabelsPdfBlob({ ...base, chalk }))
@@ -453,15 +465,22 @@ export function LabelsPage() {
                   }}
                 >
                   {badgeUrl ? (
-                    <Box component="img" src={badgeUrl} alt="" style={{ width: '22cqw', objectFit: 'contain' }} />
+                    <Box
+                      component="img"
+                      src={badgeUrl}
+                      alt=""
+                      style={{ width: `${(22 * badgeScale).toFixed(1)}cqw`, objectFit: 'contain' }}
+                    />
                   ) : (
                     <Box
                       sx={{
                         border: '1px solid',
-                        borderColor: textColor,
+                        borderColor: badgeColor,
+                        color: badgeColor,
                         borderRadius: 0.5,
                         px: 0.5,
                         fontWeight: 700,
+                        textAlign: 'center',
                         textTransform: 'uppercase',
                         whiteSpace: 'nowrap',
                         lineHeight: 1.3,
@@ -523,18 +542,26 @@ export function LabelsPage() {
                   </Stack>
                   {(badgeText.trim() || badgeUrl) && badgePos === 'footer' && (
                     badgeUrl ? (
-                      <Box component="img" src={badgeUrl} alt="" style={{ height: '12cqw', objectFit: 'contain' }} />
+                      <Box
+                        component="img"
+                        src={badgeUrl}
+                        alt=""
+                        style={{ height: `${(12 * badgeScale).toFixed(1)}cqw`, objectFit: 'contain' }}
+                      />
                     ) : (
                       <Box
                         sx={{
                           border: '1px solid',
-                          borderColor: textColor,
+                          borderColor: badgeColor,
+                          color: badgeColor,
                           borderRadius: 0.5,
                           px: 0.5,
                           fontWeight: 700,
+                          textAlign: 'center',
                           textTransform: 'uppercase',
                           whiteSpace: 'nowrap',
                           lineHeight: 1.3,
+                          alignSelf: 'center',
                         }}
                         style={{ fontSize: '2.2cqw' }}
                       >
@@ -707,6 +734,17 @@ export function LabelsPage() {
                   </Button>
                   {badgeUrl && <Chip label="Image badge" size="small" onDelete={() => setBadgeUrl(null)} />}
                 </Stack>
+                {badgeText.trim() && !badgeUrl && (
+                  <TextField
+                    type="color"
+                    size="small"
+                    label="Couleur du badge"
+                    value={badgeColor}
+                    onChange={(e) => setBadgeColor(e.target.value)}
+                    slotProps={{ inputLabel: { shrink: true } }}
+                    sx={{ width: 140, mt: 1 }}
+                  />
+                )}
                 {(badgeText.trim() || badgeUrl) && (
                   <ToggleButtonGroup
                     size="small"
@@ -721,9 +759,24 @@ export function LabelsPage() {
                   </ToggleButtonGroup>
                 )}
                 {badgeUrl && (
-                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
-                    L'image du badge prime sur le texte.
-                  </Typography>
+                  <Box sx={{ mt: 1 }}>
+                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                      Taille de l'image (× {badgeScale.toFixed(2)})
+                    </Typography>
+                    <Slider
+                      value={badgeScale}
+                      onChange={(_, v) => setBadgeScale(Array.isArray(v) ? v[0] : v)}
+                      min={0.4}
+                      max={2.5}
+                      step={0.1}
+                      valueLabelDisplay="auto"
+                      size="small"
+                      sx={{ maxWidth: 280 }}
+                    />
+                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                      L'image du badge prime sur le texte.
+                    </Typography>
+                  </Box>
                 )}
               </Box>
 

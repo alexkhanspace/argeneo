@@ -49,6 +49,10 @@ export interface LabelsPdfData {
   badgeUrl?: string | null
   /** Position du badge : haut-droite, haut-gauche, ou dans le pied (entre marque et prix). */
   badgePos?: 'tr' | 'tl' | 'footer'
+  /** Multiplicateur de taille de l'image du badge (médaille). */
+  badgeScale?: number
+  /** Couleur du badge texte (texte + contour). */
+  badgeColor?: string
 }
 
 /** Planche A4 d'étiquettes à découper (grille calculée selon la taille demandée). */
@@ -58,6 +62,8 @@ export function LabelsPdf({ data }: { data: LabelsPdfData }) {
   const badgeText = data.badgeText?.trim() || null
   const badgeUrl = data.badgeUrl || null
   const badgePos = data.badgePos ?? 'tr'
+  const badgeScale = data.badgeScale ?? 1
+  const badgeColor = data.badgeColor ?? textColor
 
   // Combien d'étiquettes par page A4, puis agrandissement éventuel pour remplir la feuille.
   const usableW = A4_W - 2 * MARGIN
@@ -133,30 +139,40 @@ export function LabelsPdf({ data }: { data: LabelsPdfData }) {
       position: 'absolute',
       top: 3.5 * MM,
       ...(badgePos === 'tl' ? { left: 3.5 * MM } : { right: 3.5 * MM }),
+      alignItems: 'center',
     },
-    badgeImg: { width: Math.min(effW * 0.24, 18) * MM, height: Math.min(effW * 0.24, 18) * MM, objectFit: 'contain' },
-    badgeImgFooter: { height: logoH, maxWidth: 18 * MM, objectFit: 'contain' },
+    badgeImg: {
+      width: Math.min(effW * 0.24, 18) * MM * badgeScale,
+      height: Math.min(effW * 0.24, 18) * MM * badgeScale,
+      objectFit: 'contain',
+    },
+    badgeImgFooter: { height: logoH * badgeScale, maxWidth: 26 * MM, objectFit: 'contain', alignSelf: 'center' },
     badgeText: {
       fontFamily: 'Helvetica-Bold',
       fontSize: Math.max(6, Math.round(nameSize * 0.34)),
-      color: textColor,
+      color: badgeColor,
       borderWidth: 0.8,
-      borderColor: textColor,
+      borderColor: badgeColor,
       borderRadius: 3,
-      paddingVertical: 1 * MM,
+      paddingTop: 1.4 * MM,
+      paddingBottom: 0.6 * MM,
       paddingHorizontal: 2 * MM,
+      textAlign: 'center',
       textTransform: 'uppercase',
     },
     badgeTextFooter: {
       fontFamily: 'Helvetica-Bold',
       fontSize: 8,
-      color: textColor,
+      color: badgeColor,
       borderWidth: 0.7,
-      borderColor: textColor,
+      borderColor: badgeColor,
       borderRadius: 2,
-      paddingVertical: 0.6 * MM,
+      paddingTop: 1 * MM,
+      paddingBottom: 0.4 * MM,
       paddingHorizontal: 1.6 * MM,
+      textAlign: 'center',
       textTransform: 'uppercase',
+      alignSelf: 'center',
     },
   })
 
