@@ -10,7 +10,6 @@ import {
   CircularProgress,
   Divider,
   FormControlLabel,
-  MenuItem,
   Slider,
   Stack,
   Switch,
@@ -595,7 +594,7 @@ export function LabelsPage() {
                   </Box>
                 </Box>
                 <Box sx={{ borderTop: '1px solid', borderColor: textColor, opacity: 0.25, my: 0.75 }} />
-                <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'flex-end' }}>
+                <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'center' }}>
                   <Stack direction="row" sx={{ alignItems: 'center', gap: 0.75, minWidth: 0 }}>
                     {logoSrc && (
                       <Box component="img" src={logoSrc} alt="" sx={{ height: 16, maxWidth: 56, objectFit: 'contain' }} />
@@ -607,12 +606,12 @@ export function LabelsPage() {
                     >
                       {brand || 'Marque'}
                     </Typography>
+                    {targetBadges.length > 0 && badgePos === 'footer' && (
+                      <Stack direction="row" sx={{ gap: 0.5, alignItems: 'center', ml: 0.5 }}>
+                        {targetBadges.map((b) => previewBadge(b, true))}
+                      </Stack>
+                    )}
                   </Stack>
-                  {targetBadges.length > 0 && badgePos === 'footer' && (
-                    <Stack direction="row" sx={{ gap: 0.5, alignItems: 'flex-end' }}>
-                      {targetBadges.map((b) => previewBadge(b, true))}
-                    </Stack>
-                  )}
                   {showPrice && previewPrice && (
                     <Typography sx={{ fontWeight: 700 }} style={{ fontSize: `${(5.64 * fontScale).toFixed(2)}cqw` }}>
                       {previewPrice}
@@ -745,22 +744,24 @@ export function LabelsPage() {
                   </Typography>
                 ) : (
                   <>
+                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                  Étiquette à badger (clique pour choisir) :
+                </Typography>
                 <Stack direction="row" sx={{ gap: 1, alignItems: 'center', flexWrap: 'wrap', mb: 1 }}>
-                  <TextField
-                    select
-                    size="small"
-                    label="Badges pour"
-                    value={target}
-                    onChange={(e) => setBadgeTarget(e.target.value)}
-                    sx={{ flex: 1, minWidth: 160 }}
-                  >
-                    {selectedItems.map((it) => (
-                      <MenuItem key={it.key} value={it.key}>
-                        {it.name}
-                        {itemBadges[it.key]?.length ? ` • ${itemBadges[it.key].length}` : ''}
-                      </MenuItem>
-                    ))}
-                  </TextField>
+                  {selectedItems.map((it) => {
+                    const n = itemBadges[it.key]?.length ?? 0
+                    const active = it.key === target
+                    return (
+                      <Chip
+                        key={it.key}
+                        label={`${it.name}${n ? ` • ${n}` : ''}`}
+                        size="small"
+                        color={active ? 'primary' : 'default'}
+                        variant={active ? 'filled' : 'outlined'}
+                        onClick={() => setBadgeTarget(it.key)}
+                      />
+                    )
+                  })}
                   {selectedItems.length > 1 && (
                     <Button size="small" onClick={applyBadgesToAll} disabled={targetBadges.length === 0}>
                       Appliquer à tous

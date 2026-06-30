@@ -118,7 +118,7 @@ export function LabelsPdf({ data }: { data: LabelsPdfData }) {
     },
     sep: { borderTopWidth: 0.7, borderTopColor: textColor, opacity: 0.25, marginTop: 4 * MM, marginBottom: 3 * MM },
     footer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end' },
-    brandWrap: { flexDirection: 'row', alignItems: 'center', maxWidth: '65%' },
+    brandWrap: { flexDirection: 'row', alignItems: 'center', maxWidth: '82%' },
     logo: { height: logoH, maxWidth: 22 * MM, objectFit: 'contain', marginRight: 3 * MM },
     brand: {
       fontFamily: titleFont,
@@ -139,13 +139,13 @@ export function LabelsPdf({ data }: { data: LabelsPdfData }) {
       alignItems: badgePos === 'tl' ? 'flex-start' : 'flex-end',
       gap: 1.5 * MM,
     },
-    footerBadges: { flexDirection: 'row', alignItems: 'flex-end', gap: 1.2 * MM },
+    footerBadges: { flexDirection: 'row', alignItems: 'center', gap: 1.2 * MM, marginLeft: 2 * MM },
     badgeImg: {
       width: Math.min(effW * 0.24, 18) * MM * badgeScale,
       height: Math.min(effW * 0.24, 18) * MM * badgeScale,
       objectFit: 'contain',
     },
-    badgeImgFooter: { height: logoH * badgeScale, maxWidth: 26 * MM, objectFit: 'contain', alignSelf: 'flex-end' },
+    badgeImgFooter: { height: logoH * badgeScale, maxWidth: 26 * MM, objectFit: 'contain', alignSelf: 'center' },
     badgeText: {
       fontFamily: 'Helvetica-Bold',
       fontSize: Math.max(6, Math.round(nameSize * 0.32 * badgeScale)),
@@ -167,7 +167,7 @@ export function LabelsPdf({ data }: { data: LabelsPdfData }) {
       paddingHorizontal: 1.6 * MM,
       textAlign: 'center',
       textTransform: 'uppercase',
-      alignSelf: 'flex-end',
+      alignSelf: 'center',
     },
   })
 
@@ -213,8 +213,8 @@ export function LabelsPdf({ data }: { data: LabelsPdfData }) {
           <View style={styles.brandWrap}>
             {logoUrl ? <Image src={logoUrl} style={styles.logo} /> : null}
             <Text style={styles.brand}>{brand}</Text>
+            {footerBadgeFor(it)}
           </View>
-          {footerBadgeFor(it)}
           {it.price ? <Text style={styles.price}>{it.price}</Text> : null}
         </View>
       </View>
