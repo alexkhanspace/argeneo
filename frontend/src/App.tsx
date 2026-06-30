@@ -19,6 +19,7 @@ import { AnalyticsPage } from './pages/patron/AnalyticsPage'
 import { ArticlesPage } from './pages/patron/ArticlesPage'
 import { CommunicationPage } from './pages/patron/CommunicationPage'
 import { InvoicesPage } from './pages/patron/InvoicesPage'
+import { LabelsPage } from './pages/patron/LabelsPage'
 import { EtablissementsPage } from './pages/patron/EtablissementsPage'
 import { EmployeePermissionsPage } from './pages/patron/EmployeePermissionsPage'
 import { EmployeesPage } from './pages/patron/EmployeesPage'
@@ -155,6 +156,14 @@ export default function App() {
           element={
             <ProtectedRoute allow={isPatron}>
               <InvoicesPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/etiquettes"
+          element={
+            <ProtectedRoute allow={isPatron}>
+              <LabelsPage />
             </ProtectedRoute>
           }
         />
