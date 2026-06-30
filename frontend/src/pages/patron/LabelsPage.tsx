@@ -282,7 +282,7 @@ export function LabelsPage() {
       try {
         setPdf(await buildLabelsPdfBlob({ ...base, chalk }))
       } catch (e) {
-        // La police « craie » se charge depuis un CDN au rendu : si ça échoue, on régénère sans.
+        // La police « craie » est servie en local (public/fonts) : si le rendu échoue malgré tout, on régénère sans.
         if (chalk) {
           setPdf(await buildLabelsPdfBlob({ ...base, chalk: false }))
           setNotice('La police « craie » n’a pas pu se charger : étiquettes générées avec une police standard.')
