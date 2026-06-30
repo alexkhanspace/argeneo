@@ -397,19 +397,15 @@ export function LabelsPage() {
                         fontWeight: chalk ? 400 : 800,
                         textTransform: 'uppercase',
                         lineHeight: 1.15,
-                        fontSize: `${(1.05 * fontScale).toFixed(2)}rem`,
                       }}
+                      style={{ fontSize: `${(17 * fontScale).toFixed(1)}px` }}
                     >
                       {previewName}
                     </Typography>
                     {previewNote && (
                       <Typography
-                        sx={{
-                          fontFamily: chalk ? CHALK_CSS : undefined,
-                          mt: 0.5,
-                          fontSize: `${(0.62 * fontScale).toFixed(2)}rem`,
-                          opacity: 0.85,
-                        }}
+                        sx={{ fontFamily: chalk ? CHALK_CSS : undefined, mt: 0.5, opacity: 0.85 }}
+                        style={{ fontSize: `${(10 * fontScale).toFixed(1)}px` }}
                       >
                         {previewNote}
                       </Typography>
@@ -427,7 +423,9 @@ export function LabelsPage() {
                     </Typography>
                   </Stack>
                   {showPrice && (
-                    <Typography sx={{ fontWeight: 700, fontSize: `${(1 * fontScale).toFixed(2)}rem` }}>1,80 €</Typography>
+                    <Typography sx={{ fontWeight: 700 }} style={{ fontSize: `${(16 * fontScale).toFixed(1)}px` }}>
+                      1,80 €
+                    </Typography>
                   )}
                 </Stack>
               </Box>
