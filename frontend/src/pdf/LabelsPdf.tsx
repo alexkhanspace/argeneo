@@ -44,26 +44,21 @@ export interface LabelsPdfData {
   chalk: boolean
   /** Logo de l'entreprise (data URL), affiché en petit en bas — ou null. */
   logoUrl: string | null
-  /** Badge perso (ex. « Kasher », médaille) — image prioritaire, sinon texte. */
-  badgeText?: string | null
-  badgeUrl?: string | null
-  /** Position du badge : haut-droite, haut-gauche, ou dans le pied (entre marque et prix). */
+  /** Badges persos (ex. « Kasher », « Vegan », médaille) — texte ou image, plusieurs possibles. */
+  badges?: { text?: string | null; img?: string | null }[]
+  /** Position des badges : haut-droite, haut-gauche, ou dans le pied (entre marque et prix). */
   badgePos?: 'tr' | 'tl' | 'footer'
   /** Multiplicateur de taille de l'image du badge (médaille). */
   badgeScale?: number
-  /** Couleur du badge texte (texte + contour). */
-  badgeColor?: string
 }
 
 /** Planche A4 d'étiquettes à découper (grille calculée selon la taille demandée). */
 export function LabelsPdf({ data }: { data: LabelsPdfData }) {
   const { items, widthMm, heightMm, brand, bgColor, textColor, borderColor, fill, fontScale, frame, chalk, logoUrl } =
     data
-  const badgeText = data.badgeText?.trim() || null
-  const badgeUrl = data.badgeUrl || null
+  const badges = (data.badges ?? []).filter((b) => b.img || b.text?.trim())
   const badgePos = data.badgePos ?? 'tr'
   const badgeScale = data.badgeScale ?? 1
-  const badgeColor = data.badgeColor ?? textColor
 
   // Combien d'étiquettes par page A4, puis agrandissement éventuel pour remplir la feuille.
   const usableW = A4_W - 2 * MARGIN
@@ -142,20 +137,20 @@ export function LabelsPdf({ data }: { data: LabelsPdfData }) {
       ...(badgePos === 'tl'
         ? { left: (frame === 'wood' ? woodW + 2.5 : 4) * MM }
         : { right: (frame === 'wood' ? woodW + 2.5 : 4) * MM }),
-      alignItems: 'center',
+      alignItems: badgePos === 'tl' ? 'flex-start' : 'flex-end',
+      gap: 1.5 * MM,
     },
+    footerBadges: { flexDirection: 'row', alignItems: 'flex-end', gap: 1.2 * MM },
     badgeImg: {
       width: Math.min(effW * 0.24, 18) * MM * badgeScale,
       height: Math.min(effW * 0.24, 18) * MM * badgeScale,
       objectFit: 'contain',
     },
-    badgeImgFooter: { height: logoH * badgeScale, maxWidth: 26 * MM, objectFit: 'contain', alignSelf: 'center' },
+    badgeImgFooter: { height: logoH * badgeScale, maxWidth: 26 * MM, objectFit: 'contain', alignSelf: 'flex-end' },
     badgeText: {
       fontFamily: 'Helvetica-Bold',
-      fontSize: Math.max(6, Math.round(nameSize * 0.34)),
-      color: badgeColor,
-      borderWidth: 0.8,
-      borderColor: badgeColor,
+      fontSize: Math.max(6, Math.round(nameSize * 0.32)),
+      color: '#ffffff',
       borderRadius: 3,
       paddingTop: 1.4 * MM,
       paddingBottom: 0.6 * MM,
@@ -166,34 +161,32 @@ export function LabelsPdf({ data }: { data: LabelsPdfData }) {
     badgeTextFooter: {
       fontFamily: 'Helvetica-Bold',
       fontSize: 8,
-      color: badgeColor,
-      borderWidth: 0.7,
-      borderColor: badgeColor,
+      color: '#ffffff',
       borderRadius: 2,
-      paddingTop: 1 * MM,
-      paddingBottom: 0.4 * MM,
+      paddingTop: 0.8 * MM,
+      paddingBottom: 0.5 * MM,
       paddingHorizontal: 1.6 * MM,
       textAlign: 'center',
       textTransform: 'uppercase',
-      alignSelf: 'center',
+      alignSelf: 'flex-end',
     },
   })
 
-  const hasBadge = Boolean(badgeUrl || badgeText)
-  // Badge en coin (absolu) — sauf en mode « footer ».
-  const cornerBadge = hasBadge && badgePos !== 'footer' && (
-    <View style={styles.badgeCorner}>
-      {badgeUrl ? <Image src={badgeUrl} style={styles.badgeImg} /> : <Text style={styles.badgeText}>{badgeText}</Text>}
-    </View>
+  // Pastille pleine : fond = couleur du badge, police blanche.
+  const renderBadge = (b: { text?: string | null; img?: string | null; color?: string }, i: number, footer: boolean) =>
+    b.img ? (
+      <Image key={i} src={b.img} style={footer ? styles.badgeImgFooter : styles.badgeImg} />
+    ) : (
+      <Text key={i} style={[footer ? styles.badgeTextFooter : styles.badgeText, { backgroundColor: b.color || textColor }]}>
+        {b.text}
+      </Text>
+    )
+  const cornerBadge = badges.length > 0 && badgePos !== 'footer' && (
+    <View style={styles.badgeCorner}>{badges.map((b, i) => renderBadge(b, i, false))}</View>
   )
-  // Badge dans le pied (entre la marque et le prix).
   const footerBadge =
-    hasBadge && badgePos === 'footer' ? (
-      badgeUrl ? (
-        <Image src={badgeUrl} style={styles.badgeImgFooter} />
-      ) : (
-        <Text style={styles.badgeTextFooter}>{badgeText}</Text>
-      )
+    badges.length > 0 && badgePos === 'footer' ? (
+      <View style={styles.footerBadges}>{badges.map((b, i) => renderBadge(b, i, true))}</View>
     ) : null
 
   // Pagination déterministe : autant d'étiquettes que la grille cols×rois calculée plus haut.

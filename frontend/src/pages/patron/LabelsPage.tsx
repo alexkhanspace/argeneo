@@ -53,8 +53,22 @@ const THEMES: { label: string; bg: string; text: string; frame: Frame; chalk: bo
   { label: 'Kraft', bg: '#cdb48c', text: '#3a2913', frame: 'none', chalk: false },
 ]
 const CHALK_CSS = '"Permanent Marker", "Bricolage Grotesque", cursive'
-// Badges prêts à l'emploi (le patron peut aussi taper un texte libre ou charger une image/médaille).
-const BADGE_PRESETS = ['Kasher', 'Halal', 'Vegan', 'Bio', 'Sans gluten', 'Fait maison']
+/** Un badge de l'étiquette : texte coloré OU image (médaille). */
+interface Badge {
+  id: string
+  text?: string
+  img?: string
+  color?: string
+}
+// Badges prêts à l'emploi, avec une couleur par défaut adaptée au label.
+const BADGE_PRESETS: { label: string; color: string }[] = [
+  { label: 'Kasher', color: '#7b1fa2' },
+  { label: 'Halal', color: '#7b1fa2' },
+  { label: 'Vegan', color: '#2e7d32' },
+  { label: 'Bio', color: '#66bb6a' },
+  { label: 'Sans gluten', color: '#8d6e63' },
+  { label: 'Fait maison', color: '#5d4037' },
+]
 
 const eur = (v: number | null): string | null =>
   v == null ? null : v.toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' })
@@ -92,10 +106,9 @@ interface LabelTemplate {
   chalk?: boolean
   borderColor?: string
   fillSheet?: boolean
-  badgeText?: string
+  badges?: { text?: string; color?: string }[]
   badgePos?: 'tr' | 'tl' | 'footer'
   badgeScale?: number
-  badgeColor?: string
 }
 
 const TPL_KEY = 'argeneo.labelTemplates'
@@ -127,14 +140,13 @@ export function LabelsPage() {
   const [showPrice, setShowPrice] = useState(true)
   // Agrandir les étiquettes pour remplir l'A4 (moins de blanc/perte).
   const [fillSheet, setFillSheet] = useState(false)
-  // Badge perso (Kasher, Vegan, Bio, Halal, médaille…) : texte et/ou image.
-  const [badgeText, setBadgeText] = useState('')
-  const [badgeUrl, setBadgeUrl] = useState<string | null>(null)
+  // Badges persos (Kasher, Vegan, Bio, Halal, médaille…) : liste, chacun texte+couleur ou image.
+  const [badges, setBadges] = useState<Badge[]>([])
+  const [badgeInput, setBadgeInput] = useState('')
+  const [badgeInputColor, setBadgeInputColor] = useState('#37474f')
   const [badgePos, setBadgePos] = useState<'tr' | 'tl' | 'footer'>('tr')
-  // Multiplicateur de taille de l'image du badge (médaille).
+  // Multiplicateur de taille des images de badge (médaille).
   const [badgeScale, setBadgeScale] = useState(1)
-  // Couleur du badge texte (texte + contour).
-  const [badgeColor, setBadgeColor] = useState('#111111')
   // Texte libre (allergènes, promo…) commun à toutes les étiquettes.
   const [extraText, setExtraText] = useState('')
   // Reprend la description du produit (ingrédients) sur chaque étiquette.
@@ -189,10 +201,9 @@ export function LabelsPage() {
       chalk,
       borderColor,
       fillSheet,
-      badgeText,
+      badges: badges.filter((b) => b.text).map((b) => ({ text: b.text, color: b.color })),
       badgePos,
       badgeScale,
-      badgeColor,
     }
     // Remplace un modèle de même nom, sinon ajoute.
     const next = [...templates.filter((t) => t.name !== name), tpl]
@@ -215,10 +226,9 @@ export function LabelsPage() {
     setChalk(t.chalk ?? false)
     setBorderColor(t.borderColor ?? t.textColor)
     setFillSheet(t.fillSheet ?? false)
-    setBadgeText(t.badgeText ?? '')
+    setBadges((t.badges ?? []).map((b, i) => ({ id: `${Date.now()}-${i}`, text: b.text, color: b.color })))
     setBadgePos(t.badgePos ?? 'tr')
     setBadgeScale(t.badgeScale ?? 1)
-    setBadgeColor(t.badgeColor ?? t.textColor)
   }
 
   const deleteTemplate = (id: string) => {
@@ -271,6 +281,23 @@ export function LabelsPage() {
     setFreeLabels((prev) => prev.filter((f) => f.id !== id))
     if (editId === id) cancelEditFree()
   }
+
+  // --- Badges (liste) ---
+  const hasImageBadge = badges.some((b) => b.img)
+  const togglePreset = (p: { label: string; color: string }) =>
+    setBadges((prev) =>
+      prev.some((b) => b.text === p.label)
+        ? prev.filter((b) => b.text !== p.label)
+        : [...prev, { id: `${Date.now()}-${p.label}`, text: p.label, color: p.color }],
+    )
+  const addCustomBadge = () => {
+    const t = badgeInput.trim()
+    if (!t) return
+    setBadges((prev) => [...prev, { id: `${Date.now()}`, text: t, color: badgeInputColor }])
+    setBadgeInput('')
+  }
+  const addImageBadge = (img: string) => setBadges((prev) => [...prev, { id: `${Date.now()}`, img }])
+  const removeBadge = (id: string) => setBadges((prev) => prev.filter((b) => b.id !== id))
 
   // Nom d'aperçu : la saisie libre en cours (édition/ajout) prime, sinon 1er produit, sinon exemple.
   const previewName = useMemo(() => {
@@ -345,11 +372,9 @@ export function LabelsPage() {
         fill: fillSheet,
         fontScale,
         frame,
-        badgeText: badgeText.trim() || null,
-        badgeUrl,
+        badges,
         badgePos,
         badgeScale,
-        badgeColor,
       }
       try {
         setPdf(await buildLabelsPdfBlob({ ...base, chalk }))
@@ -371,6 +396,40 @@ export function LabelsPage() {
 
   const wNum = Math.max(2, Math.min(20, Number(widthCm) || 10))
   const hNum = Math.max(2, Math.min(28, Number(heightCm) || 6))
+
+  // Rendu d'un badge dans l'aperçu (pastille pleine ou image), fidèle au PDF.
+  const previewBadge = (b: Badge, footer: boolean) =>
+    b.img ? (
+      <Box
+        key={b.id}
+        component="img"
+        src={b.img}
+        alt=""
+        style={
+          footer
+            ? { height: `${(12 * badgeScale).toFixed(1)}cqw`, objectFit: 'contain' }
+            : { width: `${(22 * badgeScale).toFixed(1)}cqw`, objectFit: 'contain' }
+        }
+      />
+    ) : (
+      <Box
+        key={b.id}
+        sx={{
+          bgcolor: b.color,
+          color: '#fff',
+          borderRadius: 0.5,
+          px: 0.5,
+          fontWeight: 700,
+          textAlign: 'center',
+          textTransform: 'uppercase',
+          whiteSpace: 'nowrap',
+          lineHeight: 1.3,
+        }}
+        style={{ fontSize: footer ? '2.2cqw' : '2.4cqw' }}
+      >
+        {b.text}
+      </Box>
+    )
 
   return (
     <>
@@ -454,7 +513,7 @@ export function LabelsPage() {
                 mx: 'auto',
               }}
             >
-              {(badgeText.trim() || badgeUrl) && badgePos !== 'footer' && (
+              {badges.length > 0 && badgePos !== 'footer' && (
                 <Box
                   sx={{
                     position: 'absolute',
@@ -465,34 +524,12 @@ export function LabelsPage() {
                       : { right: frame === 'wood' ? 11 : 5 }),
                     zIndex: 1,
                     display: 'flex',
+                    flexDirection: 'column',
+                    gap: 0.5,
+                    alignItems: badgePos === 'tl' ? 'flex-start' : 'flex-end',
                   }}
                 >
-                  {badgeUrl ? (
-                    <Box
-                      component="img"
-                      src={badgeUrl}
-                      alt=""
-                      style={{ width: `${(22 * badgeScale).toFixed(1)}cqw`, objectFit: 'contain' }}
-                    />
-                  ) : (
-                    <Box
-                      sx={{
-                        border: '1px solid',
-                        borderColor: badgeColor,
-                        color: badgeColor,
-                        borderRadius: 0.5,
-                        px: 0.5,
-                        fontWeight: 700,
-                        textAlign: 'center',
-                        textTransform: 'uppercase',
-                        whiteSpace: 'nowrap',
-                        lineHeight: 1.3,
-                      }}
-                      style={{ fontSize: '2.4cqw' }}
-                    >
-                      {badgeText.trim()}
-                    </Box>
-                  )}
+                  {badges.map((b) => previewBadge(b, false))}
                 </Box>
               )}
               <Box
@@ -543,34 +580,10 @@ export function LabelsPage() {
                       {brand || 'Marque'}
                     </Typography>
                   </Stack>
-                  {(badgeText.trim() || badgeUrl) && badgePos === 'footer' && (
-                    badgeUrl ? (
-                      <Box
-                        component="img"
-                        src={badgeUrl}
-                        alt=""
-                        style={{ height: `${(12 * badgeScale).toFixed(1)}cqw`, objectFit: 'contain' }}
-                      />
-                    ) : (
-                      <Box
-                        sx={{
-                          border: '1px solid',
-                          borderColor: badgeColor,
-                          color: badgeColor,
-                          borderRadius: 0.5,
-                          px: 0.5,
-                          fontWeight: 700,
-                          textAlign: 'center',
-                          textTransform: 'uppercase',
-                          whiteSpace: 'nowrap',
-                          lineHeight: 1.3,
-                          alignSelf: 'center',
-                        }}
-                        style={{ fontSize: '2.2cqw' }}
-                      >
-                        {badgeText.trim()}
-                      </Box>
-                    )
+                  {badges.length > 0 && badgePos === 'footer' && (
+                    <Stack direction="row" sx={{ gap: 0.5, alignItems: 'flex-end' }}>
+                      {badges.map((b) => previewBadge(b, true))}
+                    </Stack>
                   )}
                   {showPrice && previewPrice && (
                     <Typography sx={{ fontWeight: 700 }} style={{ fontSize: `${(5.64 * fontScale).toFixed(2)}cqw` }}>
@@ -696,29 +709,53 @@ export function LabelsPage() {
 
               <Box>
                 <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
-                  Badge (coin haut-droit) — ex. Kasher, Halal, médaille…
+                  Badges — Kasher, Halal, Vegan, Bio… (plusieurs possibles)
                 </Typography>
                 <Stack direction="row" sx={{ flexWrap: 'wrap', gap: 1, mb: 1 }}>
-                  {BADGE_PRESETS.map((b) => (
-                    <Chip
-                      key={b}
-                      label={b}
-                      size="small"
-                      color={badgeText === b ? 'primary' : 'default'}
-                      variant={badgeText === b ? 'filled' : 'outlined'}
-                      onClick={() => setBadgeText(badgeText === b ? '' : b)}
-                    />
-                  ))}
+                  {BADGE_PRESETS.map((p) => {
+                    const on = badges.some((b) => b.text === p.label)
+                    return (
+                      <Chip
+                        key={p.label}
+                        label={p.label}
+                        size="small"
+                        onClick={() => togglePreset(p)}
+                        sx={{
+                          border: '1px solid',
+                          borderColor: p.color,
+                          bgcolor: on ? p.color : 'transparent',
+                          color: on ? '#fff' : p.color,
+                          fontWeight: 600,
+                          '&:hover': { bgcolor: on ? p.color : 'transparent' },
+                        }}
+                      />
+                    )
+                  })}
                 </Stack>
                 <Stack direction="row" sx={{ gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>
                   <TextField
                     size="small"
-                    label="Texte du badge"
-                    value={badgeText}
-                    onChange={(e) => setBadgeText(e.target.value)}
-                    placeholder="ex. Kasher"
-                    sx={{ flex: 1, minWidth: 140 }}
+                    label="Badge perso"
+                    value={badgeInput}
+                    onChange={(e) => setBadgeInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') addCustomBadge()
+                    }}
+                    placeholder="ex. Médaille d'or"
+                    sx={{ flex: 1, minWidth: 120 }}
                   />
+                  <TextField
+                    type="color"
+                    size="small"
+                    label="Couleur"
+                    value={badgeInputColor}
+                    onChange={(e) => setBadgeInputColor(e.target.value)}
+                    slotProps={{ inputLabel: { shrink: true } }}
+                    sx={{ width: 80 }}
+                  />
+                  <Button variant="outlined" size="small" onClick={addCustomBadge} disabled={!badgeInput.trim()}>
+                    Ajouter
+                  </Button>
                   <Button component="label" variant="outlined" size="small" sx={{ whiteSpace: 'nowrap' }}>
                     Image / médaille…
                     <input
@@ -730,41 +767,51 @@ export function LabelsPage() {
                         e.target.value = ''
                         if (!f) return
                         const r = new FileReader()
-                        r.onloadend = () => setBadgeUrl(r.result as string)
+                        r.onloadend = () => addImageBadge(r.result as string)
                         r.readAsDataURL(f)
                       }}
                     />
                   </Button>
-                  {badgeUrl && <Chip label="Image badge" size="small" onDelete={() => setBadgeUrl(null)} />}
                 </Stack>
-                {badgeText.trim() && !badgeUrl && (
-                  <TextField
-                    type="color"
-                    size="small"
-                    label="Couleur du badge"
-                    value={badgeColor}
-                    onChange={(e) => setBadgeColor(e.target.value)}
-                    slotProps={{ inputLabel: { shrink: true } }}
-                    sx={{ width: 140, mt: 1 }}
-                  />
+                {badges.length > 0 && (
+                  <Stack direction="row" sx={{ flexWrap: 'wrap', gap: 1, mt: 1.5 }}>
+                    {badges.map((b) => (
+                      <Chip
+                        key={b.id}
+                        label={b.img ? 'Image' : b.text}
+                        size="small"
+                        onDelete={() => removeBadge(b.id)}
+                        sx={
+                          b.img
+                            ? undefined
+                            : {
+                                bgcolor: b.color,
+                                color: '#fff',
+                                fontWeight: 600,
+                                '& .MuiChip-deleteIcon': { color: 'rgba(255,255,255,0.85)' },
+                              }
+                        }
+                      />
+                    ))}
+                  </Stack>
                 )}
-                {(badgeText.trim() || badgeUrl) && (
+                {badges.length > 0 && (
                   <ToggleButtonGroup
                     size="small"
                     exclusive
                     value={badgePos}
                     onChange={(_: unknown, v: 'tr' | 'tl' | 'footer' | null) => v && setBadgePos(v)}
-                    sx={{ mt: 1 }}
+                    sx={{ mt: 1.5 }}
                   >
                     <ToggleButton value="tl">Haut gauche</ToggleButton>
                     <ToggleButton value="tr">Haut droite</ToggleButton>
                     <ToggleButton value="footer">Près du prix</ToggleButton>
                   </ToggleButtonGroup>
                 )}
-                {badgeUrl && (
+                {hasImageBadge && (
                   <Box sx={{ mt: 1 }}>
                     <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
-                      Taille de l'image (× {badgeScale.toFixed(2)})
+                      Taille des images (× {badgeScale.toFixed(2)})
                     </Typography>
                     <Slider
                       value={badgeScale}
@@ -776,9 +823,6 @@ export function LabelsPage() {
                       size="small"
                       sx={{ maxWidth: 280 }}
                     />
-                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-                      L'image du badge prime sur le texte.
-                    </Typography>
                   </Box>
                 )}
               </Box>
