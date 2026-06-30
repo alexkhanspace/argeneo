@@ -55,6 +55,22 @@ const CHALK_CSS = '"Permanent Marker", "Bricolage Grotesque", cursive'
 const eur = (v: number | null): string | null =>
   v == null ? null : v.toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' })
 
+/** Étiquette saisie à la main (sans produit du catalogue). */
+interface FreeLabel {
+  id: string
+  name: string
+  price: string | null
+  qty: number
+}
+
+/** Met en forme un prix saisi librement : « 1,80 » → « 1,80 € », « Promo » → tel quel. */
+const fmtFreePrice = (s: string): string | null => {
+  const t = s.trim()
+  if (!t) return null
+  const num = Number(t.replace(',', '.'))
+  return /^\d/.test(t) && Number.isFinite(num) ? (eur(num) ?? t) : t
+}
+
 /** Modèle d'étiquette enregistré (mise en forme réutilisable, hors sélection de produits). */
 interface LabelTemplate {
   id: string
@@ -104,6 +120,13 @@ export function LabelsPage() {
   const [useDescription, setUseDescription] = useState(false)
   const [logoSrc, setLogoSrc] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
+
+  // Étiquettes libres (sans produit) + champs de saisie.
+  const [freeLabels, setFreeLabels] = useState<FreeLabel[]>([])
+  const [fName, setFName] = useState('')
+  const [fPrice, setFPrice] = useState('')
+  const [fQty, setFQty] = useState('1')
 
   const [templates, setTemplates] = useState<LabelTemplate[]>(() => loadTemplates())
   const [tplName, setTplName] = useState('')
@@ -175,7 +198,21 @@ export function LabelsPage() {
     return articles.filter((a) => a.name.toLowerCase().includes(q) || a.code.toLowerCase().includes(q))
   }, [articles, search])
 
-  const total = useMemo(() => Object.values(sel).reduce((s, n) => s + n, 0), [sel])
+  const total = useMemo(
+    () => Object.values(sel).reduce((s, n) => s + n, 0) + freeLabels.reduce((s, f) => s + f.qty, 0),
+    [sel, freeLabels],
+  )
+
+  const addFreeLabel = () => {
+    const name = fName.trim()
+    if (!name) return
+    const qty = Math.max(1, Math.min(999, Math.round(Number(fQty)) || 1))
+    setFreeLabels((prev) => [...prev, { id: `${Date.now()}`, name, price: fmtFreePrice(fPrice), qty }])
+    setFName('')
+    setFPrice('')
+    setFQty('1')
+  }
+  const removeFreeLabel = (id: string) => setFreeLabels((prev) => prev.filter((f) => f.id !== id))
 
   // Nom d'exemple pour l'aperçu : 1er produit sélectionné, sinon générique.
   const previewName = useMemo(() => {
@@ -206,10 +243,12 @@ export function LabelsPage() {
 
   const generate = async () => {
     setError(null)
+    setNotice(null)
     setBusy(true)
     try {
       const items: LabelItem[] = []
       const extra = extraText.trim()
+      // Étiquettes issues des produits du catalogue.
       for (const a of articles) {
         const qty = sel[a.id]
         if (!qty) continue
@@ -220,9 +259,17 @@ export function LabelsPage() {
         const note = noteParts.length ? noteParts.join(' · ') : null
         for (let i = 0; i < qty; i++) items.push({ name: a.name, price, note })
       }
+      // Étiquettes libres (saisies à la main, sans produit).
+      for (const f of freeLabels) {
+        for (let i = 0; i < f.qty; i++) items.push({ name: f.name, price: f.price || null, note: extra || null })
+      }
+      if (items.length === 0) {
+        setError('Sélectionne au moins un produit ou ajoute une étiquette libre.')
+        return
+      }
       const w = Math.max(2, Math.min(20, Number(widthCm) || 10))
       const h = Math.max(2, Math.min(28, Number(heightCm) || 6))
-      const blob = await buildLabelsPdfBlob({
+      const base = {
         items,
         widthMm: w * 10,
         heightMm: h * 10,
@@ -231,9 +278,18 @@ export function LabelsPage() {
         textColor,
         fontScale,
         frame,
-        chalk,
-      })
-      setPdf(blob)
+      }
+      try {
+        setPdf(await buildLabelsPdfBlob({ ...base, chalk }))
+      } catch (e) {
+        // La police « craie » se charge depuis un CDN au rendu : si ça échoue, on régénère sans.
+        if (chalk) {
+          setPdf(await buildLabelsPdfBlob({ ...base, chalk: false }))
+          setNotice('La police « craie » n’a pas pu se charger : étiquettes générées avec une police standard.')
+        } else {
+          throw e
+        }
+      }
     } catch (e) {
       setError(errorMessage(e))
     } finally {
@@ -254,6 +310,11 @@ export function LabelsPage() {
       {error && (
         <Alert severity="error" sx={{ mb: 2 }}>
           {error}
+        </Alert>
+      )}
+      {notice && (
+        <Alert severity="warning" sx={{ mb: 2 }} onClose={() => setNotice(null)}>
+          {notice}
         </Alert>
       )}
 
@@ -503,10 +564,11 @@ export function LabelsPage() {
                 </Typography>
                 <Slider
                   value={fontScale}
-                  onChange={(_, v) => setFontScale(v as number)}
-                  min={0.6}
-                  max={1.6}
+                  onChange={(_, v) => setFontScale(Array.isArray(v) ? v[0] : v)}
+                  min={0.5}
+                  max={2}
                   step={0.05}
+                  valueLabelDisplay="auto"
                   size="small"
                   sx={{ maxWidth: 280 }}
                 />
@@ -593,6 +655,55 @@ export function LabelsPage() {
                 })
               )}
             </Box>
+
+            {/* Étiquettes libres : saisie manuelle, sans produit du catalogue. */}
+            <Divider sx={{ my: 2 }} />
+            <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1 }}>
+              Étiquette libre (sans produit)
+            </Typography>
+            <Stack direction="row" sx={{ gap: 1, flexWrap: 'wrap', alignItems: 'flex-start' }}>
+              <TextField
+                size="small"
+                label="Nom"
+                value={fName}
+                onChange={(e) => setFName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') addFreeLabel()
+                }}
+                sx={{ flex: 1, minWidth: 140 }}
+              />
+              <TextField
+                size="small"
+                label="Prix"
+                value={fPrice}
+                onChange={(e) => setFPrice(e.target.value)}
+                placeholder="ex. 1,80"
+                sx={{ width: 90 }}
+              />
+              <TextField
+                type="number"
+                size="small"
+                label="Qté"
+                value={fQty}
+                onChange={(e) => setFQty(e.target.value)}
+                sx={{ width: 72 }}
+              />
+              <Button variant="outlined" onClick={addFreeLabel} disabled={!fName.trim()} sx={{ mt: 0.25 }}>
+                Ajouter
+              </Button>
+            </Stack>
+            {freeLabels.length > 0 && (
+              <Stack direction="row" sx={{ gap: 1, flexWrap: 'wrap', mt: 1.5 }}>
+                {freeLabels.map((f) => (
+                  <Chip
+                    key={f.id}
+                    label={`${f.name}${f.price ? ` · ${f.price}` : ''} ×${f.qty}`}
+                    size="small"
+                    onDelete={() => removeFreeLabel(f.id)}
+                  />
+                ))}
+              </Stack>
+            )}
           </CardContent>
         </Card>
       </Box>
