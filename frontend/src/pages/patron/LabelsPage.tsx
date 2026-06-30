@@ -13,6 +13,8 @@ import {
   Slider,
   Stack,
   Switch,
+  ToggleButton,
+  ToggleButtonGroup,
   TextField,
   Typography,
 } from '@mui/material'
@@ -51,6 +53,8 @@ const THEMES: { label: string; bg: string; text: string; frame: Frame; chalk: bo
   { label: 'Kraft', bg: '#cdb48c', text: '#3a2913', frame: 'none', chalk: false },
 ]
 const CHALK_CSS = '"Permanent Marker", "Bricolage Grotesque", cursive'
+// Badges prêts à l'emploi (le patron peut aussi taper un texte libre ou charger une image/médaille).
+const BADGE_PRESETS = ['Kasher', 'Halal', 'Vegan', 'Bio', 'Sans gluten', 'Fait maison']
 
 const eur = (v: number | null): string | null =>
   v == null ? null : v.toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' })
@@ -86,6 +90,10 @@ interface LabelTemplate {
   useDescription?: boolean
   frame?: Frame
   chalk?: boolean
+  borderColor?: string
+  fillSheet?: boolean
+  badgeText?: string
+  badgePos?: 'tr' | 'tl' | 'footer'
 }
 
 const TPL_KEY = 'argeneo.labelTemplates'
@@ -110,10 +118,17 @@ export function LabelsPage() {
   const [heightCm, setHeightCm] = useState('6')
   const [bgColor, setBgColor] = useState('#ffffff')
   const [textColor, setTextColor] = useState('#111111')
+  const [borderColor, setBorderColor] = useState('#111111')
   const [frame, setFrame] = useState<Frame>('none')
   const [chalk, setChalk] = useState(false)
   const [fontScale, setFontScale] = useState(1)
   const [showPrice, setShowPrice] = useState(true)
+  // Agrandir les étiquettes pour remplir l'A4 (moins de blanc/perte).
+  const [fillSheet, setFillSheet] = useState(false)
+  // Badge perso (Kasher, Vegan, Bio, Halal, médaille…) : texte et/ou image.
+  const [badgeText, setBadgeText] = useState('')
+  const [badgeUrl, setBadgeUrl] = useState<string | null>(null)
+  const [badgePos, setBadgePos] = useState<'tr' | 'tl' | 'footer'>('tr')
   // Texte libre (allergènes, promo…) commun à toutes les étiquettes.
   const [extraText, setExtraText] = useState('')
   // Reprend la description du produit (ingrédients) sur chaque étiquette.
@@ -166,6 +181,10 @@ export function LabelsPage() {
       useDescription,
       frame,
       chalk,
+      borderColor,
+      fillSheet,
+      badgeText,
+      badgePos,
     }
     // Remplace un modèle de même nom, sinon ajoute.
     const next = [...templates.filter((t) => t.name !== name), tpl]
@@ -186,6 +205,10 @@ export function LabelsPage() {
     setUseDescription(t.useDescription ?? false)
     setFrame(t.frame ?? 'none')
     setChalk(t.chalk ?? false)
+    setBorderColor(t.borderColor ?? t.textColor)
+    setFillSheet(t.fillSheet ?? false)
+    setBadgeText(t.badgeText ?? '')
+    setBadgePos(t.badgePos ?? 'tr')
   }
 
   const deleteTemplate = (id: string) => {
@@ -308,8 +331,13 @@ export function LabelsPage() {
         brand,
         bgColor,
         textColor,
+        borderColor,
+        fill: fillSheet,
         fontScale,
         frame,
+        badgeText: badgeText.trim() || null,
+        badgeUrl,
+        badgePos,
       }
       try {
         setPdf(await buildLabelsPdfBlob({ ...base, chalk }))
@@ -402,10 +430,11 @@ export function LabelsPage() {
                 aspectRatio: `${wNum} / ${hNum}`,
                 containerType: 'inline-size',
                 overflow: 'hidden',
+                position: 'relative',
                 bgcolor: bgColor,
                 color: textColor,
                 border: '1px dashed',
-                borderColor: textColor,
+                borderColor: borderColor,
                 borderRadius: 1,
                 p: 0.5,
                 mb: 2,
@@ -413,6 +442,37 @@ export function LabelsPage() {
                 mx: 'auto',
               }}
             >
+              {(badgeText.trim() || badgeUrl) && badgePos !== 'footer' && (
+                <Box
+                  sx={{
+                    position: 'absolute',
+                    top: 4,
+                    ...(badgePos === 'tl' ? { left: 4 } : { right: 4 }),
+                    zIndex: 1,
+                    display: 'flex',
+                  }}
+                >
+                  {badgeUrl ? (
+                    <Box component="img" src={badgeUrl} alt="" style={{ width: '22cqw', objectFit: 'contain' }} />
+                  ) : (
+                    <Box
+                      sx={{
+                        border: '1px solid',
+                        borderColor: textColor,
+                        borderRadius: 0.5,
+                        px: 0.5,
+                        fontWeight: 700,
+                        textTransform: 'uppercase',
+                        whiteSpace: 'nowrap',
+                        lineHeight: 1.3,
+                      }}
+                      style={{ fontSize: '2.4cqw' }}
+                    >
+                      {badgeText.trim()}
+                    </Box>
+                  )}
+                </Box>
+              )}
               <Box
                 sx={{
                   height: '100%',
@@ -461,6 +521,27 @@ export function LabelsPage() {
                       {brand || 'Marque'}
                     </Typography>
                   </Stack>
+                  {(badgeText.trim() || badgeUrl) && badgePos === 'footer' && (
+                    badgeUrl ? (
+                      <Box component="img" src={badgeUrl} alt="" style={{ height: '12cqw', objectFit: 'contain' }} />
+                    ) : (
+                      <Box
+                        sx={{
+                          border: '1px solid',
+                          borderColor: textColor,
+                          borderRadius: 0.5,
+                          px: 0.5,
+                          fontWeight: 700,
+                          textTransform: 'uppercase',
+                          whiteSpace: 'nowrap',
+                          lineHeight: 1.3,
+                        }}
+                        style={{ fontSize: '2.2cqw' }}
+                      >
+                        {badgeText.trim()}
+                      </Box>
+                    )
+                  )}
                   {showPrice && previewPrice && (
                     <Typography sx={{ fontWeight: 700 }} style={{ fontSize: `${(5.64 * fontScale).toFixed(2)}cqw` }}>
                       {previewPrice}
@@ -513,6 +594,12 @@ export function LabelsPage() {
                     control={<Switch size="small" checked={chalk} onChange={(e) => setChalk(e.target.checked)} />}
                     label="Police craie"
                   />
+                  <FormControlLabel
+                    control={
+                      <Switch size="small" checked={fillSheet} onChange={(e) => setFillSheet(e.target.checked)} />
+                    }
+                    label="Remplir l'A4 (moins de perte)"
+                  />
                 </Stack>
               </Box>
 
@@ -539,6 +626,15 @@ export function LabelsPage() {
                     slotProps={{ inputLabel: { shrink: true } }}
                     sx={{ width: 90 }}
                   />
+                  <TextField
+                    type="color"
+                    size="small"
+                    label="Bordure"
+                    value={borderColor}
+                    onChange={(e) => setBorderColor(e.target.value)}
+                    slotProps={{ inputLabel: { shrink: true } }}
+                    sx={{ width: 90 }}
+                  />
                 </Stack>
                 <Stack direction="row" sx={{ mt: 1, flexWrap: 'wrap', gap: 1 }}>
                   {COLOR_PRESETS.map((c) => (
@@ -550,10 +646,85 @@ export function LabelsPage() {
                       onClick={() => {
                         setBgColor(c.bg)
                         setTextColor(c.text)
+                        setBorderColor(c.text)
                       }}
                     />
                   ))}
+                  <Chip
+                    label="Enseigne"
+                    size="small"
+                    color="primary"
+                    variant="outlined"
+                    onClick={() => {
+                      setBgColor('#ffffff')
+                      setTextColor('#c2410c')
+                      setBorderColor('#c2410c')
+                    }}
+                  />
                 </Stack>
+              </Box>
+
+              <Box>
+                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                  Badge (coin haut-droit) — ex. Kasher, Halal, médaille…
+                </Typography>
+                <Stack direction="row" sx={{ flexWrap: 'wrap', gap: 1, mb: 1 }}>
+                  {BADGE_PRESETS.map((b) => (
+                    <Chip
+                      key={b}
+                      label={b}
+                      size="small"
+                      color={badgeText === b ? 'primary' : 'default'}
+                      variant={badgeText === b ? 'filled' : 'outlined'}
+                      onClick={() => setBadgeText(badgeText === b ? '' : b)}
+                    />
+                  ))}
+                </Stack>
+                <Stack direction="row" sx={{ gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <TextField
+                    size="small"
+                    label="Texte du badge"
+                    value={badgeText}
+                    onChange={(e) => setBadgeText(e.target.value)}
+                    placeholder="ex. Kasher"
+                    sx={{ flex: 1, minWidth: 140 }}
+                  />
+                  <Button component="label" variant="outlined" size="small" sx={{ whiteSpace: 'nowrap' }}>
+                    Image / médaille…
+                    <input
+                      type="file"
+                      accept="image/*"
+                      hidden
+                      onChange={(e) => {
+                        const f = e.target.files?.[0]
+                        e.target.value = ''
+                        if (!f) return
+                        const r = new FileReader()
+                        r.onloadend = () => setBadgeUrl(r.result as string)
+                        r.readAsDataURL(f)
+                      }}
+                    />
+                  </Button>
+                  {badgeUrl && <Chip label="Image badge" size="small" onDelete={() => setBadgeUrl(null)} />}
+                </Stack>
+                {(badgeText.trim() || badgeUrl) && (
+                  <ToggleButtonGroup
+                    size="small"
+                    exclusive
+                    value={badgePos}
+                    onChange={(_: unknown, v: 'tr' | 'tl' | 'footer' | null) => v && setBadgePos(v)}
+                    sx={{ mt: 1 }}
+                  >
+                    <ToggleButton value="tl">Haut gauche</ToggleButton>
+                    <ToggleButton value="tr">Haut droite</ToggleButton>
+                    <ToggleButton value="footer">Près du prix</ToggleButton>
+                  </ToggleButtonGroup>
+                )}
+                {badgeUrl && (
+                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+                    L'image du badge prime sur le texte.
+                  </Typography>
+                )}
               </Box>
 
               <Box>

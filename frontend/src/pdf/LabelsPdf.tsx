@@ -4,7 +4,7 @@ import { Document, Page, View, Text, Image, Font, StyleSheet } from '@react-pdf/
 const MM = 2.83465
 const A4_W = 210
 const A4_H = 297
-const MARGIN = 8 // marge blanche autour de la planche (mm)
+const MARGIN = 5 // marge blanche autour de la planche (mm) — réduite pour limiter les pertes
 
 // Police « craie » manuscrite — servie en local (public/fonts), même origine que l'app.
 // Déposer le fichier TTF à : frontend/public/fonts/PermanentMarker-Regular.ttf
@@ -32,6 +32,10 @@ export interface LabelsPdfData {
   /** Couleurs du modèle (libres). */
   bgColor: string
   textColor: string
+  /** Couleur de la bordure (pointillés de découpe). */
+  borderColor: string
+  /** Agrandit les étiquettes pour remplir l'A4 (moins de blanc/perte), ratio conservé. */
+  fill: boolean
   /** Multiplicateur de taille de police du nom/prix (1 = auto). */
   fontScale: number
   /** Cadre décoratif : aucun ou « bois ». */
@@ -40,20 +44,40 @@ export interface LabelsPdfData {
   chalk: boolean
   /** Logo de l'entreprise (data URL), affiché en petit en bas — ou null. */
   logoUrl: string | null
+  /** Badge perso (ex. « Kasher », médaille) — image prioritaire, sinon texte. */
+  badgeText?: string | null
+  badgeUrl?: string | null
+  /** Position du badge : haut-droite, haut-gauche, ou dans le pied (entre marque et prix). */
+  badgePos?: 'tr' | 'tl' | 'footer'
 }
 
 /** Planche A4 d'étiquettes à découper (grille calculée selon la taille demandée). */
 export function LabelsPdf({ data }: { data: LabelsPdfData }) {
-  const { items, widthMm, heightMm, brand, bgColor, textColor, fontScale, frame, chalk, logoUrl } = data
-  const w = widthMm * MM
-  const h = heightMm * MM
+  const { items, widthMm, heightMm, brand, bgColor, textColor, borderColor, fill, fontScale, frame, chalk, logoUrl } =
+    data
+  const badgeText = data.badgeText?.trim() || null
+  const badgeUrl = data.badgeUrl || null
+  const badgePos = data.badgePos ?? 'tr'
+
+  // Combien d'étiquettes par page A4, puis agrandissement éventuel pour remplir la feuille.
+  const usableW = A4_W - 2 * MARGIN
+  const usableH = A4_H - 2 * MARGIN
+  const cols = Math.max(1, Math.floor(usableW / widthMm))
+  const rows = Math.max(1, Math.floor(usableH / heightMm))
+  // « Remplir » : agrandit uniformément (ratio conservé) jusqu'à la dimension la plus contraignante.
+  const fillScale = fill ? Math.min(usableW / (cols * widthMm), usableH / (rows * heightMm)) : 1
+  const effW = widthMm * fillScale
+  const effH = heightMm * fillScale
+
+  const w = effW * MM
+  const h = effH * MM
   const titleFont = chalk ? CHALK : 'Helvetica-Bold'
 
   // Police du nom adaptée à la largeur, ajustée par le multiplicateur du modèle.
-  const nameSize = Math.max(7, Math.min(44, Math.round(widthMm * 0.2 * fontScale)))
-  const priceSize = Math.max(7, Math.min(32, Math.round(widthMm * 0.16 * fontScale)))
-  const logoH = Math.min(heightMm * 0.16, 9) * MM
-  const woodW = Math.max(4, Math.min(16, Math.round(Math.min(widthMm, heightMm) * 0.06)))
+  const nameSize = Math.max(7, Math.min(60, Math.round(effW * 0.2 * fontScale)))
+  const priceSize = Math.max(7, Math.min(44, Math.round(effW * 0.16 * fontScale)))
+  const logoH = Math.min(effH * 0.16, 9) * MM
+  const woodW = Math.max(4, Math.min(16, Math.round(Math.min(effW, effH) * 0.06)))
 
   const styles = StyleSheet.create({
     page: { padding: MARGIN * MM, backgroundColor: '#ffffff' },
@@ -64,7 +88,7 @@ export function LabelsPdf({ data }: { data: LabelsPdfData }) {
       backgroundColor: bgColor,
       borderWidth: 0.7,
       borderStyle: 'dashed',
-      borderColor: textColor,
+      borderColor: borderColor,
     },
     woodOuter: { flexGrow: 1, borderWidth: woodW, borderColor: '#6b4423' },
     woodInner: { flexGrow: 1, borderWidth: 0.8, borderColor: '#caa06a' },
@@ -105,11 +129,55 @@ export function LabelsPdf({ data }: { data: LabelsPdfData }) {
       textTransform: 'uppercase',
     },
     price: { fontFamily: titleFont, color: textColor, fontSize: priceSize },
+    badgeCorner: {
+      position: 'absolute',
+      top: 3.5 * MM,
+      ...(badgePos === 'tl' ? { left: 3.5 * MM } : { right: 3.5 * MM }),
+    },
+    badgeImg: { width: Math.min(effW * 0.24, 18) * MM, height: Math.min(effW * 0.24, 18) * MM, objectFit: 'contain' },
+    badgeImgFooter: { height: logoH, maxWidth: 18 * MM, objectFit: 'contain' },
+    badgeText: {
+      fontFamily: 'Helvetica-Bold',
+      fontSize: Math.max(6, Math.round(nameSize * 0.34)),
+      color: textColor,
+      borderWidth: 0.8,
+      borderColor: textColor,
+      borderRadius: 3,
+      paddingVertical: 1 * MM,
+      paddingHorizontal: 2 * MM,
+      textTransform: 'uppercase',
+    },
+    badgeTextFooter: {
+      fontFamily: 'Helvetica-Bold',
+      fontSize: 8,
+      color: textColor,
+      borderWidth: 0.7,
+      borderColor: textColor,
+      borderRadius: 2,
+      paddingVertical: 0.6 * MM,
+      paddingHorizontal: 1.6 * MM,
+      textTransform: 'uppercase',
+    },
   })
 
-  // Pagination déterministe : combien d'étiquettes tiennent par page A4.
-  const cols = Math.max(1, Math.floor((A4_W - 2 * MARGIN) / widthMm))
-  const rows = Math.max(1, Math.floor((A4_H - 2 * MARGIN) / heightMm))
+  const hasBadge = Boolean(badgeUrl || badgeText)
+  // Badge en coin (absolu) — sauf en mode « footer ».
+  const cornerBadge = hasBadge && badgePos !== 'footer' && (
+    <View style={styles.badgeCorner}>
+      {badgeUrl ? <Image src={badgeUrl} style={styles.badgeImg} /> : <Text style={styles.badgeText}>{badgeText}</Text>}
+    </View>
+  )
+  // Badge dans le pied (entre la marque et le prix).
+  const footerBadge =
+    hasBadge && badgePos === 'footer' ? (
+      badgeUrl ? (
+        <Image src={badgeUrl} style={styles.badgeImgFooter} />
+      ) : (
+        <Text style={styles.badgeTextFooter}>{badgeText}</Text>
+      )
+    ) : null
+
+  // Pagination déterministe : autant d'étiquettes que la grille cols×rois calculée plus haut.
   const perPage = cols * rows
   const pages: LabelItem[][] = []
   for (let i = 0; i < items.length; i += perPage) pages.push(items.slice(i, i + perPage))
@@ -128,6 +196,7 @@ export function LabelsPdf({ data }: { data: LabelsPdfData }) {
             {logoUrl ? <Image src={logoUrl} style={styles.logo} /> : null}
             <Text style={styles.brand}>{brand}</Text>
           </View>
+          {footerBadge}
           {it.price ? <Text style={styles.price}>{it.price}</Text> : null}
         </View>
       </View>
@@ -148,6 +217,7 @@ export function LabelsPdf({ data }: { data: LabelsPdfData }) {
                 ) : (
                   body(it)
                 )}
+                {cornerBadge}
               </View>
             ))}
           </View>
