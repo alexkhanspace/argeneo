@@ -25,6 +25,9 @@ import AddIcon from '@mui/icons-material/Add'
 import DeleteIcon from '@mui/icons-material/Delete'
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined'
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome'
+import TrendingUpIcon from '@mui/icons-material/TrendingUp'
+import TrendingDownIcon from '@mui/icons-material/TrendingDown'
+import TrendingFlatIcon from '@mui/icons-material/TrendingFlat'
 import LayersIcon from '@mui/icons-material/Layers'
 import Tooltip from '@mui/material/Tooltip'
 import { errorMessage } from '../api/client'
@@ -66,6 +69,42 @@ function formatEur(value: number | null | undefined): string {
     currency: 'EUR',
     maximumFractionDigits: 4,
   })
+}
+
+/** Petite flèche de progression du CA d'un jour vs le même jour de semaine l'an dernier. */
+function DayTrend({ delta }: { delta: number | null }) {
+  if (delta == null) return null
+  const flat = Math.abs(delta) < 2
+  const up = delta >= 0
+  const Icon = flat ? TrendingFlatIcon : up ? TrendingUpIcon : TrendingDownIcon
+  const color = flat ? 'text.disabled' : up ? 'success.main' : 'error.main'
+  return (
+    <Tooltip title={`vs même jour l'an dernier : ${up && !flat ? '+' : ''}${delta.toFixed(0)} %`}>
+      <Stack direction="row" sx={{ alignItems: 'center', color, gap: 0.1, flexShrink: 0 }}>
+        <Icon sx={{ fontSize: '0.95rem' }} />
+        <Typography
+          component="span"
+          sx={{ fontWeight: 700, fontSize: '0.6rem', lineHeight: 1, display: { xs: 'none', sm: 'block' } }}
+        >
+          {up && !flat ? '+' : ''}
+          {delta.toFixed(0)}%
+        </Typography>
+      </Stack>
+    </Tooltip>
+  )
+}
+
+/** Progression d'un jour vs le même jour de semaine N-1 (J-364), ou null si incomparable. */
+function dayTrendPct(
+  entries: Record<string, DailyEntry>,
+  prevEntries: Record<string, DailyEntry>,
+  date: Date,
+): number | null {
+  const iso = toISODate(date)
+  const prevIso = toISODate(addDays(date, -364))
+  const cur = entries[iso]?.revenue ?? null
+  const prev = prevEntries[prevIso]?.revenue ?? null
+  return cur != null && prev != null && prev > 0 ? ((cur - prev) / prev) * 100 : null
 }
 
 /** ISO YYYY-MM-DD à partir d'une Date locale (sans décalage de fuseau). */
@@ -943,8 +982,8 @@ export function DailyPage() {
                     ))}
                   </Box>
 
-                  {/* CA + comparaison */}
-                  <Stack direction="row" sx={{ alignItems: 'center', gap: 0.25, flexShrink: 0 }}>
+                  {/* CA + progression + comparaison */}
+                  <Stack direction="row" sx={{ alignItems: 'center', gap: 0.5, flexShrink: 0 }}>
                     {entry && entry.revenue != null ? (
                       <Typography variant="body2" sx={{ fontWeight: 700, color: 'primary.main' }}>
                         {formatEur(entry.revenue)}
@@ -952,6 +991,7 @@ export function DailyPage() {
                     ) : entry ? (
                       <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: 'primary.main' }} />
                     ) : null}
+                    <DayTrend delta={dayTrendPct(entries, prevEntries, new Date(year, month, d))} />
                     {iaAdvice[iso] && (
                       <Box
                         component="span"
@@ -1126,17 +1166,18 @@ export function DailyPage() {
                     </Box>
                   )}
 
-                  {/* Pied de case : CA + bouton comparaison */}
+                  {/* Pied de case : CA + progression + bouton comparaison */}
                   <Stack direction="row" sx={{ mt: 'auto', alignItems: 'flex-end', justifyContent: 'space-between' }}>
-                    {entry && entry.revenue != null ? (
-                      <Typography variant="caption" sx={{ fontWeight: 700, color: 'primary.main', fontSize: { xs: '0.7rem', sm: '0.75rem' } }}>
-                        {formatEur(entry.revenue)}
-                      </Typography>
-                    ) : entry ? (
-                      <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: 'primary.main' }} />
-                    ) : (
-                      <span />
-                    )}
+                    <Stack direction="row" sx={{ alignItems: 'center', gap: 0.5, minWidth: 0 }}>
+                      {entry && entry.revenue != null ? (
+                        <Typography variant="caption" sx={{ fontWeight: 700, color: 'primary.main', fontSize: { xs: '0.7rem', sm: '0.75rem' } }}>
+                          {formatEur(entry.revenue)}
+                        </Typography>
+                      ) : entry ? (
+                        <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: 'primary.main' }} />
+                      ) : null}
+                      <DayTrend delta={dayTrendPct(entries, prevEntries, new Date(year, month, d))} />
+                    </Stack>
                     <Stack direction="row" sx={{ alignItems: 'center', gap: 0.25 }}>
                       {iaAdvice[iso] && (
                         <Tooltip title="Conseil IA — voir le détail">
