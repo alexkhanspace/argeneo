@@ -78,6 +78,10 @@ public class Article {
     @Column(name = "sous_famille_id")
     private Long sousFamilleId;
 
+    /** Modèle d'étiquette affecté (mise en forme + badges), optionnel. */
+    @Column(name = "label_template_id")
+    private Long labelTemplateId;
+
     @Column(nullable = false)
     private boolean active = true;
 

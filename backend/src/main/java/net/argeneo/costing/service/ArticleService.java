@@ -55,6 +55,7 @@ public class ArticleService {
         article.setDescription(request.description());
         article.setFamilleId(request.familleId());
         article.setSousFamilleId(request.sousFamilleId());
+        article.setLabelTemplateId(request.labelTemplateId());
         if (request.type() == ArticleType.ACHAT_REVENTE) {
             article.setPurchasePrice(request.purchasePrice());
         }
@@ -82,6 +83,7 @@ public class ArticleService {
         article.setDescription(request.description());
         article.setFamilleId(request.familleId());
         article.setSousFamilleId(request.sousFamilleId());
+        article.setLabelTemplateId(request.labelTemplateId());
         if (article.getType() == ArticleType.ACHAT_REVENTE) {
             article.setPurchasePrice(request.purchasePrice());
         }
