@@ -22,6 +22,7 @@ import CalculateIcon from '@mui/icons-material/Calculate'
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome'
 import CampaignIcon from '@mui/icons-material/Campaign'
 import FolderIcon from '@mui/icons-material/Folder'
+import PhotoCameraIcon from '@mui/icons-material/PhotoCamera'
 import { errorMessage } from '../../api/client'
 import {
   createArticle,
@@ -96,6 +97,9 @@ export function ArticlesPage() {
   const [description, setDescription] = useState('')
   const [cFamilleId, setCFamilleId] = useState<number | null>(null)
   const [cSousFamilleId, setCSousFamilleId] = useState<number | null>(null)
+  // Photo prise/importée à la création : conservée puis uploadée dès que l'article a un id.
+  const [cPhotoFile, setCPhotoFile] = useState<File | null>(null)
+  const [cPhotoPreview, setCPhotoPreview] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
@@ -155,12 +159,32 @@ export function ArticlesPage() {
     }
   }
 
+  // Enregistre la photo prise/importée pour l'article en cours de création (aperçu local).
+  const onCreatePhotoChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    e.target.value = '' // permet de re-sélectionner le même fichier
+    if (!file) return
+    setCPhotoFile(file)
+    setCPhotoPreview((prev) => {
+      if (prev) URL.revokeObjectURL(prev)
+      return URL.createObjectURL(file)
+    })
+  }
+
+  const clearCreatePhoto = () => {
+    setCPhotoFile(null)
+    setCPhotoPreview((prev) => {
+      if (prev) URL.revokeObjectURL(prev)
+      return null
+    })
+  }
+
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault()
     setError(null)
     setBusy(true)
     try {
-      await createArticle({
+      const created = await createArticle({
         name,
         type,
         unit,
@@ -171,12 +195,21 @@ export function ArticlesPage() {
         familleId: cFamilleId,
         sousFamilleId: cSousFamilleId,
       })
+      // La photo ne peut s'attacher qu'à un article existant : on l'envoie après création.
+      if (cPhotoFile) {
+        try {
+          await uploadArticlePhoto(created.id, cPhotoFile)
+        } catch {
+          // Article créé quand même : la photo pourra être ré-ajoutée depuis l'édition.
+        }
+      }
       setName('')
       setSalePrice('')
       setPurchasePrice('')
       setDescription('')
       setCFamilleId(null)
       setCSousFamilleId(null)
+      clearCreatePhoto()
       setOpen(false)
       refresh()
     } catch (err) {
@@ -542,6 +575,39 @@ export function ArticlesPage() {
               minRows={2}
               placeholder="Ex. bagel garni et refermé, saumon fumé, cream cheese, aneth…"
             />
+            {/* Photo du produit : prise directement (caméra) ou importée dès la création. */}
+            <Box
+              sx={{
+                display: 'flex',
+                flexDirection: { xs: 'column', sm: 'row' },
+                alignItems: { xs: 'flex-start', sm: 'center' },
+                gap: 2,
+              }}
+            >
+              <Avatar
+                variant="rounded"
+                src={cPhotoPreview ?? undefined}
+                alt={name}
+                sx={{ width: 72, height: 72, bgcolor: 'action.hover', color: 'text.disabled' }}
+              >
+                ?
+              </Avatar>
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+                <Button variant="outlined" component="label" startIcon={<PhotoCameraIcon />}>
+                  Prendre une photo
+                  <input type="file" accept="image/*" capture="environment" hidden onChange={onCreatePhotoChange} />
+                </Button>
+                <Button variant="outlined" component="label">
+                  {cPhotoFile ? 'Changer' : 'Importer'}
+                  <input type="file" accept="image/*" hidden onChange={onCreatePhotoChange} />
+                </Button>
+                {cPhotoFile && (
+                  <Button color="inherit" onClick={clearCreatePhoto}>
+                    Retirer
+                  </Button>
+                )}
+              </Stack>
+            </Box>
             <TextField
               select
               label="Type"
@@ -679,8 +745,17 @@ export function ArticlesPage() {
                   sx={{ width: 72, height: 72 }}
                 />
                 <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+                  <Button
+                    variant="outlined"
+                    component="label"
+                    startIcon={<PhotoCameraIcon />}
+                    disabled={editBusy || genBusy}
+                  >
+                    Prendre une photo
+                    <input type="file" accept="image/*" capture="environment" hidden onChange={onPhotoChange} />
+                  </Button>
                   <Button variant="outlined" component="label" disabled={editBusy || genBusy}>
-                    {editPhotoFile ? 'Changer la photo' : 'Ajouter une photo'}
+                    {editPhotoFile ? 'Changer la photo' : 'Importer'}
                     <input type="file" accept="image/*" hidden onChange={onPhotoChange} />
                   </Button>
                   <Button
