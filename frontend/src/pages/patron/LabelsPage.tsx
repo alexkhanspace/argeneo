@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { Link as RouterLink } from 'react-router-dom'
 import {
   Alert,
   Box,
@@ -10,76 +11,28 @@ import {
   CircularProgress,
   Divider,
   FormControlLabel,
-  Slider,
+  MenuItem,
   Stack,
   Switch,
-  ToggleButton,
-  ToggleButtonGroup,
   TextField,
   Typography,
 } from '@mui/material'
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf'
-import SaveIcon from '@mui/icons-material/Save'
+import StyleIcon from '@mui/icons-material/Style'
 import { errorMessage } from '../../api/client'
 import { listArticles } from '../../api/costing'
 import { listMyEtablissements } from '../../api/daily'
-import { getProfile, getSettings, logoUrl } from '../../api/billing'
+import { getProfile, logoUrl } from '../../api/billing'
+import { listLabelTemplates, type LabelTemplate } from '../../api/labels'
 import type { Article } from '../../api/types'
 import { PageHeader } from '../../components/PageHeader'
 import { PdfViewerModal } from '../../components/PdfViewerModal'
+import { LabelPreview } from '../../components/LabelPreview'
 import { buildLabelsPdfBlob } from '../../pdf/buildLabelsPdf'
 import type { LabelItem } from '../../pdf/LabelsPdf'
 
-const SIZE_PRESETS: { label: string; w: number; h: number }[] = [
-  { label: '10 × 6', w: 10, h: 6 },
-  { label: '6 × 10', w: 6, h: 10 },
-  { label: '8 × 5', w: 8, h: 5 },
-  { label: '5 × 3', w: 5, h: 3 },
-]
-
-const COLOR_PRESETS: { label: string; bg: string; text: string }[] = [
-  { label: 'Blanc / Noir', bg: '#ffffff', text: '#111111' },
-  { label: 'Noir / Blanc', bg: '#111111', text: '#ffffff' },
-  { label: 'Terracotta', bg: '#c2410c', text: '#ffffff' },
-  { label: 'Crème / Brun', bg: '#f5f1e8', text: '#5b3a1a' },
-]
-
-type Frame = 'none' | 'wood'
-const THEMES: { label: string; bg: string; text: string; frame: Frame; chalk: boolean }[] = [
-  { label: 'Libre', bg: '#ffffff', text: '#111111', frame: 'none', chalk: false },
-  { label: 'Ardoise', bg: '#24221f', text: '#f1ede4', frame: 'none', chalk: true },
-  { label: 'Ardoise + cadre bois', bg: '#24221f', text: '#f1ede4', frame: 'wood', chalk: true },
-  { label: 'Bois (cadre)', bg: '#f4ead7', text: '#4a2f15', frame: 'wood', chalk: false },
-  { label: 'Kraft', bg: '#cdb48c', text: '#3a2913', frame: 'none', chalk: false },
-]
-const CHALK_CSS = '"Permanent Marker", "Bricolage Grotesque", cursive'
-/** Un badge de l'étiquette : texte coloré OU image (médaille). */
-interface Badge {
-  id: string
-  text?: string
-  img?: string
-  color?: string
-}
-// Badges prêts à l'emploi, avec une couleur par défaut adaptée au label.
-const BADGE_PRESETS: { label: string; color: string }[] = [
-  { label: 'Kasher', color: '#7b1fa2' },
-  { label: 'Halal', color: '#7b1fa2' },
-  { label: 'Vegan', color: '#2e7d32' },
-  { label: 'Bio', color: '#66bb6a' },
-  { label: 'Sans gluten', color: '#8d6e63' },
-  { label: 'Fait maison', color: '#5d4037' },
-]
-
 const eur = (v: number | null): string | null =>
   v == null ? null : v.toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' })
-
-/** Étiquette saisie à la main (sans produit du catalogue). */
-interface FreeLabel {
-  id: string
-  name: string
-  price: string | null
-  qty: number
-}
 
 /** Met en forme un prix saisi librement : « 1,80 » → « 1,80 € », « Promo » → tel quel. */
 const fmtFreePrice = (s: string): string | null => {
@@ -89,72 +42,29 @@ const fmtFreePrice = (s: string): string | null => {
   return /^\d/.test(t) && Number.isFinite(num) ? (eur(num) ?? t) : t
 }
 
-/** Modèle d'étiquette enregistré (mise en forme réutilisable, hors sélection de produits). */
-interface LabelTemplate {
+/** Étiquette saisie à la main (sans produit du catalogue). */
+interface FreeLabel {
   id: string
   name: string
-  brand: string
-  bgColor: string
-  textColor: string
-  widthCm: string
-  heightCm: string
-  fontScale: number
-  showPrice: boolean
-  extraText?: string
-  useDescription?: boolean
-  frame?: Frame
-  chalk?: boolean
-  borderColor?: string
-  fillSheet?: boolean
-  badgePos?: 'tr' | 'tl' | 'footer'
-  badgeScale?: number
+  price: string | null
+  qty: number
 }
 
-const TPL_KEY = 'argeneo.labelTemplates'
-const loadTemplates = (): LabelTemplate[] => {
-  try {
-    const v = JSON.parse(localStorage.getItem(TPL_KEY) ?? '[]')
-    return Array.isArray(v) ? (v as LabelTemplate[]) : []
-  } catch {
-    return []
-  }
-}
-const persistTemplates = (t: LabelTemplate[]) => localStorage.setItem(TPL_KEY, JSON.stringify(t))
-
-/** Générateur d'étiquettes : sélection de produits + modèle (couleurs, logo) → planche A4 à découper. */
+/**
+ * Impression d'étiquettes : on choisit un modèle (style + badges), les produits qui le portent
+ * héritent de sa mise en forme, et on génère une planche A4 à découper. Les modèles se créent
+ * dans « Modèles d'étiquette ».
+ */
 export function LabelsPage() {
   const [articles, setArticles] = useState<Article[]>([])
+  const [templates, setTemplates] = useState<LabelTemplate[]>([])
+  const [templateId, setTemplateId] = useState<number | ''>('')
   const [search, setSearch] = useState('')
-  // id article → quantité (présence dans l'objet = sélectionné).
+  const [onlyThisModel, setOnlyThisModel] = useState(true)
+  // id article → quantité (présence = sélectionné).
   const [sel, setSel] = useState<Record<number, number>>({})
-  const [brand, setBrand] = useState('')
-  const [widthCm, setWidthCm] = useState('10')
-  const [heightCm, setHeightCm] = useState('6')
-  const [bgColor, setBgColor] = useState('#ffffff')
-  const [textColor, setTextColor] = useState('#111111')
-  const [borderColor, setBorderColor] = useState('#111111')
-  const [frame, setFrame] = useState<Frame>('none')
-  const [chalk, setChalk] = useState(false)
-  const [fontScale, setFontScale] = useState(1)
-  const [showPrice, setShowPrice] = useState(true)
-  // Agrandir les étiquettes pour remplir l'A4 (moins de blanc/perte).
-  const [fillSheet, setFillSheet] = useState(false)
-  // Badges PAR étiquette : clé `a<articleId>` ou `f<freeId>` → liste de badges (texte+couleur ou image).
-  const [itemBadges, setItemBadges] = useState<Record<string, Badge[]>>({})
-  // Étiquette ciblée par l'éditeur de badges.
-  const [badgeTarget, setBadgeTarget] = useState('')
-  const [badgeInput, setBadgeInput] = useState('')
-  const [badgeInputColor, setBadgeInputColor] = useState('#37474f')
-  const [badgePos, setBadgePos] = useState<'tr' | 'tl' | 'footer'>('tr')
-  // Multiplicateur de taille des images de badge (médaille).
-  const [badgeScale, setBadgeScale] = useState(1)
-  // Texte libre (allergènes, promo…) commun à toutes les étiquettes.
-  const [extraText, setExtraText] = useState('')
-  // Reprend la description du produit (ingrédients) sur chaque étiquette.
-  const [useDescription, setUseDescription] = useState(false)
   const [logoSrc, setLogoSrc] = useState<string | null>(null)
-  // Couleurs de marque définies sur le profil de facturation (réutilisées pour le style « Enseigne »).
-  const [brandColors, setBrandColors] = useState<{ c1: string; c2: string }>({ c1: '#c2410c', c2: '#c2410c' })
+  const [etabName, setEtabName] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
 
@@ -163,11 +73,8 @@ export function LabelsPage() {
   const [fName, setFName] = useState('')
   const [fPrice, setFPrice] = useState('')
   const [fQty, setFQty] = useState('1')
-  // Étiquette libre en cours d'édition (clic sur une puce) ; null = ajout.
   const [editId, setEditId] = useState<string | null>(null)
 
-  const [templates, setTemplates] = useState<LabelTemplate[]>(() => loadTemplates())
-  const [tplName, setTplName] = useState('')
   const [busy, setBusy] = useState(false)
   const [pdf, setPdf] = useState<Blob | null>(null)
 
@@ -175,86 +82,59 @@ export function LabelsPage() {
     listArticles()
       .then((list) => setArticles(list.filter((a) => a.active)))
       .catch((e) => setError(errorMessage(e)))
+    listLabelTemplates()
+      .then((list) => {
+        setTemplates(list)
+        if (list.length > 0) setTemplateId((id) => (id === '' ? list[0].id : id))
+      })
+      .catch((e) => setError(errorMessage(e)))
     listMyEtablissements()
       .then((list) => {
-        if (list.length > 0) setBrand((b) => b || list[0].name)
+        if (list.length > 0) setEtabName(list[0].name)
       })
       .catch(() => undefined)
     getProfile()
       .then((p) => setLogoSrc(p.logoFile ? logoUrl(p.logoFile) : null))
       .catch(() => undefined)
-    getSettings()
-      .then((s) =>
-        setBrandColors({ c1: s.brandColor1 || '#c2410c', c2: s.brandColor2 || s.brandColor1 || '#111111' }),
-      )
-      .catch(() => undefined)
   }, [])
 
-  const saveTemplate = () => {
-    const name = tplName.trim()
-    if (!name) return
-    const tpl: LabelTemplate = {
-      id: `${Date.now()}`,
-      name,
-      brand,
-      bgColor,
-      textColor,
-      widthCm,
-      heightCm,
-      fontScale,
-      showPrice,
-      extraText,
-      useDescription,
-      frame,
-      chalk,
-      borderColor,
-      fillSheet,
-      badgePos,
-      badgeScale,
-    }
-    // Remplace un modèle de même nom, sinon ajoute.
-    const next = [...templates.filter((t) => t.name !== name), tpl]
-    setTemplates(next)
-    persistTemplates(next)
-    setTplName('')
-  }
-
-  const applyTemplate = (t: LabelTemplate) => {
-    setBrand(t.brand)
-    setBgColor(t.bgColor)
-    setTextColor(t.textColor)
-    setWidthCm(t.widthCm)
-    setHeightCm(t.heightCm)
-    setFontScale(t.fontScale ?? 1)
-    setShowPrice(t.showPrice)
-    setExtraText(t.extraText ?? '')
-    setUseDescription(t.useDescription ?? false)
-    setFrame(t.frame ?? 'none')
-    setChalk(t.chalk ?? false)
-    setBorderColor(t.borderColor ?? t.textColor)
-    setFillSheet(t.fillSheet ?? false)
-    setBadgePos(t.badgePos ?? 'tr')
-    setBadgeScale(t.badgeScale ?? 1)
-  }
-
-  const deleteTemplate = (id: string) => {
-    const next = templates.filter((t) => t.id !== id)
-    setTemplates(next)
-    persistTemplates(next)
-  }
+  const template = useMemo(() => templates.find((t) => t.id === templateId) ?? null, [templates, templateId])
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
-    if (!q) return articles
-    return articles.filter((a) => a.name.toLowerCase().includes(q) || a.code.toLowerCase().includes(q))
-  }, [articles, search])
+    return articles.filter((a) => {
+      if (onlyThisModel && templateId !== '' && a.labelTemplateId !== templateId) return false
+      if (!q) return true
+      return a.name.toLowerCase().includes(q) || a.code.toLowerCase().includes(q)
+    })
+  }, [articles, search, onlyThisModel, templateId])
 
   const total = useMemo(
     () => Object.values(sel).reduce((s, n) => s + n, 0) + freeLabels.reduce((s, f) => s + f.qty, 0),
     [sel, freeLabels],
   )
 
-  // Ajoute (ou met à jour si on édite) une étiquette libre, puis réinitialise le formulaire.
+  const toggle = (id: number) =>
+    setSel((prev) => {
+      const next = { ...prev }
+      if (id in next) delete next[id]
+      else next[id] = 1
+      return next
+    })
+  const setQty = (id: number, n: number) =>
+    setSel((prev) => ({ ...prev, [id]: Math.max(1, Math.min(999, Math.round(n) || 1)) }))
+
+  // Sélectionne d'un coup tous les articles du modèle courant (qté 1).
+  const selectAllOfModel = () =>
+    setSel((prev) => {
+      const next = { ...prev }
+      filtered.forEach((a) => {
+        if (!(a.id in next)) next[a.id] = 1
+      })
+      return next
+    })
+
+  // --- Étiquettes libres ---
   const submitFree = () => {
     const name = fName.trim()
     if (!name) return
@@ -270,7 +150,6 @@ export function LabelsPage() {
     setFQty('1')
     setEditId(null)
   }
-  // Charge une étiquette libre dans le formulaire pour l'éditer (et la prévisualiser).
   const startEditFree = (f: FreeLabel) => {
     setEditId(f.id)
     setFName(f.name)
@@ -288,132 +167,68 @@ export function LabelsPage() {
     if (editId === id) cancelEditFree()
   }
 
-  // --- Badges PAR étiquette ---
-  const selectedItems = useMemo(() => {
-    const arts = articles.filter((a) => a.id in sel).map((a) => ({ key: `a${a.id}`, name: a.name }))
-    const frees = freeLabels.map((f) => ({ key: `f${f.id}`, name: f.name }))
-    return [...arts, ...frees]
-  }, [articles, sel, freeLabels])
-  // Cible effective : la cible choisie si encore sélectionnée, sinon la 1re.
-  const target = selectedItems.some((i) => i.key === badgeTarget) ? badgeTarget : selectedItems[0]?.key ?? ''
-  const targetBadges = itemBadges[target] ?? []
-  const targetName = selectedItems.find((i) => i.key === target)?.name ?? ''
-  const anyBadge = Object.values(itemBadges).some((list) => list.length > 0)
-
-  const updateTarget = (fn: (list: Badge[]) => Badge[]) => {
-    if (!target) return
-    setItemBadges((prev) => ({ ...prev, [target]: fn(prev[target] ?? []) }))
-  }
-  const togglePreset = (p: { label: string; color: string }) =>
-    updateTarget((list) =>
-      list.some((b) => b.text === p.label)
-        ? list.filter((b) => b.text !== p.label)
-        : [...list, { id: `${Date.now()}-${p.label}`, text: p.label, color: p.color }],
-    )
-  const addCustomBadge = () => {
-    const t = badgeInput.trim()
-    if (!t) return
-    updateTarget((list) => [...list, { id: `${Date.now()}`, text: t, color: badgeInputColor }])
-    setBadgeInput('')
-  }
-  const addImageBadge = (img: string) => updateTarget((list) => [...list, { id: `${Date.now()}`, img }])
-  const removeBadge = (id: string) => updateTarget((list) => list.filter((b) => b.id !== id))
-  // Recopie les badges de la cible sur TOUTES les étiquettes sélectionnées.
-  const applyBadgesToAll = () =>
-    setItemBadges((prev) => {
-      const list = prev[target] ?? []
-      const next = { ...prev }
-      selectedItems.forEach((i) => {
-        next[i.key] = list.map((b) => ({ ...b, id: `${i.key}-${b.id}` }))
-      })
-      return next
-    })
-
-  // Nom d'aperçu : saisie libre en cours, sinon l'étiquette ciblée par les badges, sinon exemple.
-  const previewName = useMemo(() => {
-    if (fName.trim()) return fName.trim()
-    if (targetName) return targetName
-    const firstId = articles.find((a) => a.id in sel)?.id
-    return (firstId != null && articles.find((a) => a.id === firstId)?.name) || 'Croissant choco noisette'
-  }, [fName, targetName, articles, sel])
-
-  // Prix d'aperçu : reflète la saisie libre en cours, sinon un prix d'exemple.
-  const previewPrice = useMemo(
-    () => (fName.trim() ? fmtFreePrice(fPrice) || null : '1,80 €'),
-    [fName, fPrice],
-  )
+  // Article d'exemple pour l'aperçu (le 1er sélectionné, sinon le 1er de la liste).
+  const sampleArticle = useMemo(() => {
+    const firstSel = articles.find((a) => a.id in sel)
+    return firstSel ?? filtered[0] ?? null
+  }, [articles, sel, filtered])
 
   const previewNote = useMemo(() => {
+    if (!template) return null
     const parts: string[] = []
-    if (useDescription) {
-      const first = articles.find((a) => a.id in sel)
-      parts.push(first?.description || 'Ingrédients du produit…')
-    }
-    if (extraText.trim()) parts.push(extraText.trim())
+    if (template.useDescription) parts.push(sampleArticle?.description || 'Ingrédients du produit…')
+    if (template.extraText?.trim()) parts.push(template.extraText.trim())
     return parts.length ? parts.join(' · ') : null
-  }, [useDescription, extraText, articles, sel])
-
-  const toggle = (id: number) =>
-    setSel((prev) => {
-      const next = { ...prev }
-      if (id in next) delete next[id]
-      else next[id] = 1
-      return next
-    })
-
-  const setQty = (id: number, n: number) =>
-    setSel((prev) => ({ ...prev, [id]: Math.max(1, Math.min(999, Math.round(n) || 1)) }))
+  }, [template, sampleArticle])
 
   const generate = async () => {
     setError(null)
     setNotice(null)
+    if (!template) {
+      setError('Choisis un modèle d’étiquette.')
+      return
+    }
     setBusy(true)
     try {
       const items: LabelItem[] = []
-      const extra = extraText.trim()
-      // Étiquettes issues des produits du catalogue.
+      const extra = template.extraText?.trim() || ''
+      const badges = template.badges
       for (const a of articles) {
         const qty = sel[a.id]
         if (!qty) continue
-        const price = showPrice ? eur(a.salePriceTtc) : null
+        const price = template.showPrice ? eur(a.salePriceTtc) : null
         const noteParts: string[] = []
-        if (useDescription && a.description) noteParts.push(a.description)
+        if (template.useDescription && a.description) noteParts.push(a.description)
         if (extra) noteParts.push(extra)
         const note = noteParts.length ? noteParts.join(' · ') : null
-        const aBadges = itemBadges[`a${a.id}`] ?? []
-        for (let i = 0; i < qty; i++) items.push({ name: a.name, price, note, badges: aBadges })
+        for (let i = 0; i < qty; i++) items.push({ name: a.name, price, note, badges })
       }
-      // Étiquettes libres (saisies à la main, sans produit).
       for (const f of freeLabels) {
-        const fBadges = itemBadges[`f${f.id}`] ?? []
         for (let i = 0; i < f.qty; i++)
-          items.push({ name: f.name, price: f.price || null, note: extra || null, badges: fBadges })
+          items.push({ name: f.name, price: f.price || null, note: extra || null, badges })
       }
       if (items.length === 0) {
         setError('Sélectionne au moins un produit ou ajoute une étiquette libre.')
         return
       }
-      const w = Math.max(2, Math.min(20, Number(widthCm) || 10))
-      const h = Math.max(2, Math.min(28, Number(heightCm) || 6))
       const base = {
         items,
-        widthMm: w * 10,
-        heightMm: h * 10,
-        brand,
-        bgColor,
-        textColor,
-        borderColor,
-        fill: fillSheet,
-        fontScale,
-        frame,
-        badgePos,
-        badgeScale,
+        widthMm: template.widthCm * 10,
+        heightMm: template.heightCm * 10,
+        brand: template.brand || etabName || 'Marque',
+        bgColor: template.bgColor,
+        textColor: template.textColor,
+        borderColor: template.borderColor,
+        fill: template.fillSheet,
+        fontScale: template.fontScale,
+        frame: template.frame,
+        badgePos: template.badgePos,
+        badgeScale: template.badgeScale,
       }
       try {
-        setPdf(await buildLabelsPdfBlob({ ...base, chalk }))
+        setPdf(await buildLabelsPdfBlob({ ...base, chalk: template.chalk }))
       } catch (e) {
-        // La police « craie » est servie en local (public/fonts) : si le rendu échoue malgré tout, on régénère sans.
-        if (chalk) {
+        if (template.chalk) {
           setPdf(await buildLabelsPdfBlob({ ...base, chalk: false }))
           setNotice('La police « craie » n’a pas pu se charger : étiquettes générées avec une police standard.')
         } else {
@@ -427,52 +242,17 @@ export function LabelsPage() {
     }
   }
 
-  const wNum = Math.max(2, Math.min(20, Number(widthCm) || 10))
-  const hNum = Math.max(2, Math.min(28, Number(heightCm) || 6))
-
-  // Rendu d'un badge dans l'aperçu (pastille pleine ou image), fidèle au PDF.
-  const previewBadge = (b: Badge, footer: boolean) =>
-    b.img ? (
-      <Box
-        key={b.id}
-        component="img"
-        src={b.img}
-        alt=""
-        style={
-          footer
-            ? { height: `${(12 * badgeScale).toFixed(1)}cqw`, objectFit: 'contain' }
-            : { width: `${(22 * badgeScale).toFixed(1)}cqw`, objectFit: 'contain' }
-        }
-      />
-    ) : (
-      <Box
-        key={b.id}
-        sx={{
-          bgcolor: b.color,
-          color: '#fff',
-          borderRadius: 0.5,
-          px: 0.5,
-          fontWeight: 700,
-          textAlign: 'center',
-          textTransform: 'uppercase',
-          whiteSpace: 'nowrap',
-          lineHeight: 1.3,
-        }}
-        style={{ fontSize: `${((footer ? 2.2 : 2.4) * badgeScale).toFixed(1)}cqw` }}
-      >
-        {b.text}
-      </Box>
-    )
+  const templateName = (id: number | null) => templates.find((t) => t.id === id)?.name ?? null
 
   return (
     <>
       <PageHeader
         title="Étiquettes"
-        subtitle="Compose ton modèle (couleurs, logo), choisis des produits, et génère une planche A4 à imprimer et découper."
+        subtitle="Choisis un modèle, sélectionne les produits qui le portent, et génère une planche A4 à imprimer et découper."
       />
 
       {error && (
-        <Alert severity="error" sx={{ mb: 2 }}>
+        <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>
           {error}
         </Alert>
       )}
@@ -482,503 +262,80 @@ export function LabelsPage() {
         </Alert>
       )}
 
+      {templates.length === 0 && (
+        <Alert
+          severity="info"
+          sx={{ mb: 2 }}
+          action={
+            <Button component={RouterLink} to="/etiquettes/modeles" size="small" startIcon={<StyleIcon />}>
+              Créer un modèle
+            </Button>
+          }
+        >
+          Aucun modèle d’étiquette. Crée d’abord un modèle (style + badges) pour imprimer.
+        </Alert>
+      )}
+
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 2 }}>
         {/* Modèle + aperçu */}
         <Card>
           <CardContent>
-            <Typography variant="h2" gutterBottom>
-              Modèle
-            </Typography>
-
-            {/* Modèles enregistrés */}
-            <Stack direction="row" sx={{ gap: 1, flexWrap: 'wrap', alignItems: 'center', mb: 2 }}>
-              {templates.length === 0 ? (
-                <Typography variant="caption" color="text.secondary">
-                  Aucun modèle enregistré.
-                </Typography>
-              ) : (
-                templates.map((t) => (
-                  <Chip
-                    key={t.id}
-                    label={t.name}
-                    size="small"
-                    onClick={() => applyTemplate(t)}
-                    onDelete={() => deleteTemplate(t.id)}
-                  />
-                ))
-              )}
-            </Stack>
-            <Stack direction="row" sx={{ gap: 1, alignItems: 'center', mb: 2 }}>
-              <TextField
-                size="small"
-                label="Nom du modèle"
-                value={tplName}
-                onChange={(e) => setTplName(e.target.value)}
-                sx={{ flex: 1 }}
-              />
-              <Button
-                variant="outlined"
-                startIcon={<SaveIcon />}
-                onClick={saveTemplate}
-                disabled={!tplName.trim()}
-              >
-                Enregistrer
+            <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+              <Typography variant="h2">Modèle</Typography>
+              <Button component={RouterLink} to="/etiquettes/modeles" size="small" startIcon={<StyleIcon />}>
+                Gérer les modèles
               </Button>
             </Stack>
-            <Divider sx={{ mb: 2 }} />
 
-            {/* Aperçu live de l'étiquette — fidèle au PDF : conteneur CSS + tailles en cqw
-                (mêmes ratios que LabelsPdf), et overflow masqué comme le PDF (hauteur fixe). */}
-            <Box
-              sx={{
-                aspectRatio: `${wNum} / ${hNum}`,
-                containerType: 'inline-size',
-                overflow: 'hidden',
-                position: 'relative',
-                bgcolor: bgColor,
-                color: textColor,
-                border: '1px dashed',
-                borderColor: borderColor,
-                borderRadius: 1,
-                p: 0.5,
-                mb: 2,
-                maxWidth: 360,
-                mx: 'auto',
-              }}
+            <TextField
+              select
+              fullWidth
+              size="small"
+              label="Modèle d'étiquette"
+              value={templateId === '' ? '' : String(templateId)}
+              onChange={(e) => setTemplateId(e.target.value === '' ? '' : Number(e.target.value))}
+              sx={{ mb: 2 }}
+              disabled={templates.length === 0}
             >
-              {targetBadges.length > 0 && badgePos !== 'footer' && (
-                <Box
-                  sx={{
-                    position: 'absolute',
-                    // Marge proportionnelle (comme le PDF : ~4 mm, plus avec cadre bois).
-                    top: frame === 'wood' ? `${(70 / wNum).toFixed(1)}cqw` : `${(40 / wNum).toFixed(1)}cqw`,
-                    ...(badgePos === 'tl'
-                      ? { left: frame === 'wood' ? `${(70 / wNum).toFixed(1)}cqw` : `${(40 / wNum).toFixed(1)}cqw` }
-                      : { right: frame === 'wood' ? `${(70 / wNum).toFixed(1)}cqw` : `${(40 / wNum).toFixed(1)}cqw` }),
-                    zIndex: 1,
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: 0.5,
-                    alignItems: badgePos === 'tl' ? 'flex-start' : 'flex-end',
-                  }}
-                >
-                  {targetBadges.map((b) => previewBadge(b, false))}
-                </Box>
-              )}
-              <Box
-                sx={{
-                  height: '100%',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  p: frame === 'wood' ? 1.25 : 1,
-                  border: frame === 'wood' ? '5px solid #6b4423' : 'none',
-                  outline: frame === 'wood' ? '1px solid #caa06a' : 'none',
-                  outlineOffset: frame === 'wood' ? '-6px' : 0,
+              {templates.map((t) => (
+                <MenuItem key={t.id} value={String(t.id)}>
+                  {t.name} — {t.widthCm}×{t.heightCm} cm
+                  {t.badges.length > 0 ? ` · ${t.badges.length} badge${t.badges.length > 1 ? 's' : ''}` : ''}
+                </MenuItem>
+              ))}
+            </TextField>
+
+            {template ? (
+              <LabelPreview
+                style={{
+                  brand: template.brand || etabName || 'Marque',
+                  bgColor: template.bgColor,
+                  textColor: template.textColor,
+                  borderColor: template.borderColor,
+                  widthCm: template.widthCm,
+                  heightCm: template.heightCm,
+                  fontScale: template.fontScale,
+                  showPrice: template.showPrice,
+                  frame: template.frame,
+                  chalk: template.chalk,
+                  badgePos: template.badgePos,
+                  badgeScale: template.badgeScale,
                 }}
-              >
-                <Box sx={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 0 }}>
-                  <Box sx={{ textAlign: 'center', minWidth: 0 }}>
-                    <Typography
-                      sx={{
-                        fontFamily: chalk ? CHALK_CSS : undefined,
-                        fontWeight: chalk ? 400 : 800,
-                        textTransform: 'uppercase',
-                        lineHeight: 1.15,
-                        whiteSpace: 'pre-line',
-                      }}
-                      style={{ fontSize: `${(7.06 * fontScale).toFixed(2)}cqw` }}
-                    >
-                      {previewName}
-                    </Typography>
-                    {previewNote && (
-                      <Typography
-                        sx={{ fontFamily: chalk ? CHALK_CSS : undefined, mt: 0.5, opacity: 0.85 }}
-                        style={{ fontSize: `${(2.96 * fontScale).toFixed(2)}cqw` }}
-                      >
-                        {previewNote}
-                      </Typography>
-                    )}
-                  </Box>
-                </Box>
-                <Box sx={{ borderTop: '1px solid', borderColor: textColor, opacity: 0.25, my: 0.75 }} />
-                <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'center' }}>
-                  <Stack direction="row" sx={{ alignItems: 'center', gap: 0.75, minWidth: 0 }}>
-                    {logoSrc && (
-                      <Box component="img" src={logoSrc} alt="" sx={{ height: 16, maxWidth: 56, objectFit: 'contain' }} />
-                    )}
-                    <Typography
-                      sx={{
-                        fontFamily: chalk ? CHALK_CSS : undefined,
-                        letterSpacing: 1,
-                        textTransform: 'uppercase',
-                        fontWeight: 700,
-                        opacity: 0.7,
-                      }}
-                      style={{ fontSize: `${(28.23 / wNum).toFixed(2)}cqw` }}
-                      noWrap
-                    >
-                      {brand || 'Marque'}
-                    </Typography>
-                  </Stack>
-                  {targetBadges.length > 0 && badgePos === 'footer' && (
-                    <Stack direction="row" sx={{ gap: 0.5, alignItems: 'center', mx: 0.5 }}>
-                      {targetBadges.map((b) => previewBadge(b, true))}
-                    </Stack>
-                  )}
-                  {showPrice && previewPrice && (
-                    <Typography
-                      sx={{ fontFamily: chalk ? CHALK_CSS : undefined, fontWeight: chalk ? 400 : 700 }}
-                      style={{ fontSize: `${(5.64 * fontScale).toFixed(2)}cqw` }}
-                    >
-                      {previewPrice}
-                    </Typography>
-                  )}
-                </Stack>
-              </Box>
-            </Box>
-
-            <Stack spacing={2}>
-              <TextField
-                label="Nom affiché (marque)"
-                value={brand}
-                onChange={(e) => setBrand(e.target.value)}
-                placeholder="Ex. Maison Alexandre"
+                badges={template.badges}
+                name={sampleArticle?.name ?? 'Croissant choco noisette'}
+                price={template.showPrice ? (eur(sampleArticle?.salePriceTtc ?? null) ?? '1,80 €') : null}
+                note={previewNote}
+                logoSrc={logoSrc}
               />
-
-              <Box>
-                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
-                  Style de fond
-                </Typography>
-                <Stack direction="row" sx={{ flexWrap: 'wrap', gap: 1 }}>
-                  {THEMES.map((t) => (
-                    <Chip
-                      key={t.label}
-                      label={t.label}
-                      size="small"
-                      variant="outlined"
-                      onClick={() => {
-                        setBgColor(t.bg)
-                        setTextColor(t.text)
-                        setFrame(t.frame)
-                        setChalk(t.chalk)
-                      }}
-                    />
-                  ))}
-                </Stack>
-                <Stack direction="row" sx={{ mt: 0.5, gap: 2, flexWrap: 'wrap' }}>
-                  <FormControlLabel
-                    control={
-                      <Switch
-                        size="small"
-                        checked={frame === 'wood'}
-                        onChange={(e) => setFrame(e.target.checked ? 'wood' : 'none')}
-                      />
-                    }
-                    label="Cadre bois"
-                  />
-                  <FormControlLabel
-                    control={<Switch size="small" checked={chalk} onChange={(e) => setChalk(e.target.checked)} />}
-                    label="Police craie"
-                  />
-                  <FormControlLabel
-                    control={
-                      <Switch size="small" checked={fillSheet} onChange={(e) => setFillSheet(e.target.checked)} />
-                    }
-                    label="Remplir l'A4 (moins de perte)"
-                  />
-                </Stack>
-              </Box>
-
-              <Box>
-                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
-                  Couleurs
-                </Typography>
-                <Stack direction="row" spacing={2} sx={{ alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
-                  <TextField
-                    type="color"
-                    size="small"
-                    label="Fond"
-                    value={bgColor}
-                    onChange={(e) => setBgColor(e.target.value)}
-                    slotProps={{ inputLabel: { shrink: true } }}
-                    sx={{ width: 90 }}
-                  />
-                  <TextField
-                    type="color"
-                    size="small"
-                    label="Texte"
-                    value={textColor}
-                    onChange={(e) => setTextColor(e.target.value)}
-                    slotProps={{ inputLabel: { shrink: true } }}
-                    sx={{ width: 90 }}
-                  />
-                  <TextField
-                    type="color"
-                    size="small"
-                    label="Bordure"
-                    value={borderColor}
-                    onChange={(e) => setBorderColor(e.target.value)}
-                    slotProps={{ inputLabel: { shrink: true } }}
-                    sx={{ width: 90 }}
-                  />
-                </Stack>
-                <Stack direction="row" sx={{ mt: 1, flexWrap: 'wrap', gap: 1 }}>
-                  {COLOR_PRESETS.map((c) => (
-                    <Chip
-                      key={c.label}
-                      label={c.label}
-                      size="small"
-                      variant="outlined"
-                      onClick={() => {
-                        setBgColor(c.bg)
-                        setTextColor(c.text)
-                        setBorderColor(c.text)
-                      }}
-                    />
-                  ))}
-                  <Chip
-                    label="Enseigne"
-                    size="small"
-                    variant="outlined"
-                    sx={{ borderColor: brandColors.c1, color: brandColors.c1, fontWeight: 600 }}
-                    onClick={() => {
-                      setBgColor('#ffffff')
-                      setTextColor(brandColors.c1)
-                      setBorderColor(brandColors.c2)
-                    }}
-                  />
-                </Stack>
-              </Box>
-
-              <Box>
-                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
-                  Badges par étiquette — chaque produit a les siens (Kasher, Halal, Vegan…)
-                </Typography>
-                {selectedItems.length === 0 ? (
-                  <Typography variant="body2" color="text.secondary">
-                    Sélectionne un article (ou ajoute une étiquette libre) pour lui attribuer des badges.
-                  </Typography>
-                ) : (
-                  <>
-                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
-                  Étiquette à badger (clique pour choisir) :
-                </Typography>
-                <Stack direction="row" sx={{ gap: 1, alignItems: 'center', flexWrap: 'wrap', mb: 1 }}>
-                  {selectedItems.map((it) => {
-                    const n = itemBadges[it.key]?.length ?? 0
-                    const active = it.key === target
-                    return (
-                      <Chip
-                        key={it.key}
-                        label={`${it.name}${n ? ` • ${n}` : ''}`}
-                        size="small"
-                        color={active ? 'primary' : 'default'}
-                        variant={active ? 'filled' : 'outlined'}
-                        onClick={() => setBadgeTarget(it.key)}
-                      />
-                    )
-                  })}
-                  {selectedItems.length > 1 && (
-                    <Button size="small" onClick={applyBadgesToAll} disabled={targetBadges.length === 0}>
-                      Appliquer à tous
-                    </Button>
-                  )}
-                </Stack>
-                <Stack direction="row" sx={{ flexWrap: 'wrap', gap: 1, mb: 1 }}>
-                  {BADGE_PRESETS.map((p) => {
-                    const on = targetBadges.some((b) => b.text === p.label)
-                    return (
-                      <Chip
-                        key={p.label}
-                        label={p.label}
-                        size="small"
-                        onClick={() => togglePreset(p)}
-                        sx={{
-                          border: '1px solid',
-                          borderColor: p.color,
-                          bgcolor: on ? p.color : 'transparent',
-                          color: on ? '#fff' : p.color,
-                          fontWeight: 600,
-                          '&:hover': { bgcolor: on ? p.color : 'transparent' },
-                        }}
-                      />
-                    )
-                  })}
-                </Stack>
-                <Stack direction="row" sx={{ gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>
-                  <TextField
-                    size="small"
-                    label="Badge perso"
-                    value={badgeInput}
-                    onChange={(e) => setBadgeInput(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') addCustomBadge()
-                    }}
-                    placeholder="ex. Médaille d'or"
-                    sx={{ flex: 1, minWidth: 120 }}
-                  />
-                  <TextField
-                    type="color"
-                    size="small"
-                    label="Couleur"
-                    value={badgeInputColor}
-                    onChange={(e) => setBadgeInputColor(e.target.value)}
-                    slotProps={{ inputLabel: { shrink: true } }}
-                    sx={{ width: 80 }}
-                  />
-                  <Button variant="outlined" size="small" onClick={addCustomBadge} disabled={!badgeInput.trim()}>
-                    Ajouter
-                  </Button>
-                  <Button component="label" variant="outlined" size="small" sx={{ whiteSpace: 'nowrap' }}>
-                    Image / médaille…
-                    <input
-                      type="file"
-                      accept="image/*"
-                      hidden
-                      onChange={(e) => {
-                        const f = e.target.files?.[0]
-                        e.target.value = ''
-                        if (!f) return
-                        const r = new FileReader()
-                        r.onloadend = () => addImageBadge(r.result as string)
-                        r.readAsDataURL(f)
-                      }}
-                    />
-                  </Button>
-                </Stack>
-                {targetBadges.length > 0 && (
-                  <Stack direction="row" sx={{ flexWrap: 'wrap', gap: 1, mt: 1.5 }}>
-                    {targetBadges.map((b) => (
-                      <Chip
-                        key={b.id}
-                        label={b.img ? 'Image' : b.text}
-                        size="small"
-                        onDelete={() => removeBadge(b.id)}
-                        sx={
-                          b.img
-                            ? undefined
-                            : {
-                                bgcolor: b.color,
-                                color: '#fff',
-                                fontWeight: 600,
-                                '& .MuiChip-deleteIcon': { color: 'rgba(255,255,255,0.85)' },
-                              }
-                        }
-                      />
-                    ))}
-                  </Stack>
-                )}
-                {anyBadge && (
-                  <ToggleButtonGroup
-                    size="small"
-                    exclusive
-                    value={badgePos}
-                    onChange={(_: unknown, v: 'tr' | 'tl' | 'footer' | null) => v && setBadgePos(v)}
-                    sx={{ mt: 1.5 }}
-                  >
-                    <ToggleButton value="tl">Haut gauche</ToggleButton>
-                    <ToggleButton value="tr">Haut droite</ToggleButton>
-                    <ToggleButton value="footer">Près du prix</ToggleButton>
-                  </ToggleButtonGroup>
-                )}
-                {anyBadge && (
-                  <Box sx={{ mt: 1 }}>
-                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
-                      Taille des badges, texte &amp; image (× {badgeScale.toFixed(2)})
-                    </Typography>
-                    <Slider
-                      value={badgeScale}
-                      onChange={(_, v) => setBadgeScale(Array.isArray(v) ? v[0] : v)}
-                      min={0.4}
-                      max={2.5}
-                      step={0.1}
-                      valueLabelDisplay="auto"
-                      size="small"
-                      sx={{ maxWidth: 280 }}
-                    />
-                  </Box>
-                )}
-                  </>
-                )}
-              </Box>
-
-              <Box>
-                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
-                  Taille de l'étiquette (cm)
-                </Typography>
-                <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
-                  <TextField
-                    type="number"
-                    size="small"
-                    label="Largeur"
-                    value={widthCm}
-                    onChange={(e) => setWidthCm(e.target.value)}
-                    sx={{ width: 110 }}
-                  />
-                  <Typography color="text.secondary">×</Typography>
-                  <TextField
-                    type="number"
-                    size="small"
-                    label="Hauteur"
-                    value={heightCm}
-                    onChange={(e) => setHeightCm(e.target.value)}
-                    sx={{ width: 110 }}
-                  />
-                </Stack>
-                <Stack direction="row" sx={{ mt: 1, flexWrap: 'wrap', gap: 1 }}>
-                  {SIZE_PRESETS.map((p) => (
-                    <Chip
-                      key={p.label}
-                      label={p.label}
-                      size="small"
-                      variant="outlined"
-                      onClick={() => {
-                        setWidthCm(String(p.w))
-                        setHeightCm(String(p.h))
-                      }}
-                    />
-                  ))}
-                </Stack>
-              </Box>
-
-              <Box>
-                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
-                  Taille du texte (× {fontScale.toFixed(2)})
-                </Typography>
-                <Slider
-                  value={fontScale}
-                  onChange={(_, v) => setFontScale(Array.isArray(v) ? v[0] : v)}
-                  min={0.5}
-                  max={2}
-                  step={0.05}
-                  valueLabelDisplay="auto"
-                  size="small"
-                  sx={{ maxWidth: 280 }}
-                />
-              </Box>
-
-              <TextField
-                label="Texte libre (allergènes, promo…)"
-                value={extraText}
-                onChange={(e) => setExtraText(e.target.value)}
-                placeholder="Ex. Contient : gluten, fruits à coque"
-                multiline
-                minRows={1}
-                maxRows={4}
-              />
-              <FormControlLabel
-                control={<Switch checked={useDescription} onChange={(e) => setUseDescription(e.target.checked)} />}
-                label="Reprendre la description du produit (ingrédients)"
-              />
-
-              <FormControlLabel
-                control={<Switch checked={showPrice} onChange={(e) => setShowPrice(e.target.checked)} />}
-                label="Afficher le prix"
-              />
-              <Typography variant="caption" color="text.secondary">
-                Le logo (en bas) provient des réglages de facturation. Fond blanc = impression A4 standard.
+            ) : (
+              <Typography variant="body2" color="text.secondary">
+                Sélectionne un modèle pour voir l’aperçu.
               </Typography>
-            </Stack>
+            )}
+
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
+              Le style, les badges et la taille proviennent du modèle. Pour les modifier, va dans « Modèles d’étiquette ».
+            </Typography>
           </CardContent>
         </Card>
 
@@ -992,21 +349,44 @@ export function LabelsPage() {
                 {Object.keys(sel).length > 1 ? 's' : ''}
               </Typography>
             </Stack>
-            <TextField
-              size="small"
-              placeholder="Rechercher un produit…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              sx={{ my: 1.5 }}
-            />
-            <Box sx={{ maxHeight: 420, overflow: 'auto', border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
+
+            <Stack direction="row" sx={{ alignItems: 'center', gap: 1, flexWrap: 'wrap', mt: 1 }}>
+              <TextField
+                size="small"
+                placeholder="Rechercher un produit…"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                sx={{ flex: 1, minWidth: 160 }}
+              />
+              <FormControlLabel
+                control={
+                  <Switch
+                    size="small"
+                    checked={onlyThisModel}
+                    onChange={(e) => setOnlyThisModel(e.target.checked)}
+                  />
+                }
+                label="Seulement ce modèle"
+              />
+            </Stack>
+            {filtered.length > 0 && (
+              <Button size="small" onClick={selectAllOfModel} sx={{ mt: 0.5 }}>
+                Tout sélectionner ({filtered.length})
+              </Button>
+            )}
+
+            <Box sx={{ maxHeight: 420, overflow: 'auto', border: '1px solid', borderColor: 'divider', borderRadius: 1, mt: 1 }}>
               {filtered.length === 0 ? (
                 <Typography color="text.secondary" sx={{ p: 2 }}>
-                  Aucun produit.
+                  {onlyThisModel
+                    ? 'Aucun produit ne porte ce modèle. Affecte-le depuis la fiche article, ou décoche « Seulement ce modèle ».'
+                    : 'Aucun produit.'}
                 </Typography>
               ) : (
                 filtered.map((a) => {
                   const selected = a.id in sel
+                  const own = templateName(a.labelTemplateId)
+                  const mismatch = templateId !== '' && a.labelTemplateId !== templateId
                   return (
                     <Stack
                       key={a.id}
@@ -1022,6 +402,14 @@ export function LabelsPage() {
                           {a.code}
                           {a.salePriceTtc != null ? ` · ${eur(a.salePriceTtc)}` : ''}
                         </Typography>
+                        {!onlyThisModel && mismatch && (
+                          <Chip
+                            label={own ? `Modèle : ${own}` : 'Sans modèle'}
+                            size="small"
+                            variant="outlined"
+                            sx={{ ml: 0.5, height: 18, fontSize: '0.65rem' }}
+                          />
+                        )}
                       </Box>
                       {selected && (
                         <TextField
@@ -1039,7 +427,7 @@ export function LabelsPage() {
               )}
             </Box>
 
-            {/* Étiquettes libres : saisie manuelle, sans produit du catalogue. */}
+            {/* Étiquettes libres */}
             <Divider sx={{ my: 2 }} />
             <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1 }}>
               Étiquette libre (sans produit)
@@ -1081,24 +469,19 @@ export function LabelsPage() {
               )}
             </Stack>
             {freeLabels.length > 0 && (
-              <>
-                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1.5 }}>
-                  Clique sur une étiquette pour la prévisualiser et la modifier.
-                </Typography>
-                <Stack direction="row" sx={{ gap: 1, flexWrap: 'wrap', mt: 0.5 }}>
-                  {freeLabels.map((f) => (
-                    <Chip
-                      key={f.id}
-                      label={`${f.name}${f.price ? ` · ${f.price}` : ''} ×${f.qty}`}
-                      size="small"
-                      color={editId === f.id ? 'primary' : 'default'}
-                      variant={editId === f.id ? 'filled' : 'outlined'}
-                      onClick={() => startEditFree(f)}
-                      onDelete={() => removeFreeLabel(f.id)}
-                    />
-                  ))}
-                </Stack>
-              </>
+              <Stack direction="row" sx={{ gap: 1, flexWrap: 'wrap', mt: 1 }}>
+                {freeLabels.map((f) => (
+                  <Chip
+                    key={f.id}
+                    label={`${f.name}${f.price ? ` · ${f.price}` : ''} ×${f.qty}`}
+                    size="small"
+                    color={editId === f.id ? 'primary' : 'default'}
+                    variant={editId === f.id ? 'filled' : 'outlined'}
+                    onClick={() => startEditFree(f)}
+                    onDelete={() => removeFreeLabel(f.id)}
+                  />
+                ))}
+              </Stack>
             )}
           </CardContent>
         </Card>
@@ -1110,7 +493,7 @@ export function LabelsPage() {
         variant="contained"
         size="large"
         startIcon={busy ? <CircularProgress size={18} color="inherit" /> : <PictureAsPdfIcon />}
-        disabled={busy || total === 0 || !brand.trim()}
+        disabled={busy || total === 0 || !template}
         onClick={() => void generate()}
       >
         Générer le PDF ({total} étiquette{total > 1 ? 's' : ''})

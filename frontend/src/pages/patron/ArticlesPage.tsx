@@ -36,6 +36,7 @@ import {
   updateArticle,
   uploadArticlePhoto,
 } from '../../api/costing'
+import { listLabelTemplates, type LabelTemplate } from '../../api/labels'
 import type { Article, ArticleType, Famille, MeasureUnit, UnitInfo } from '../../api/types'
 import { FamilleManager } from '../../components/FamilleManager'
 import { FamilleSelect } from '../../components/FamilleSelect'
@@ -75,6 +76,7 @@ export function ArticlesPage() {
   const [costs, setCosts] = useState<Record<number, CostInfo>>({})
   const [units, setUnits] = useState<UnitInfo[]>([])
   const [familles, setFamilles] = useState<Famille[]>([])
+  const [labelTemplates, setLabelTemplates] = useState<LabelTemplate[]>([])
   const [listError, setListError] = useState<string | null>(null)
 
   // Mobile : liste de cartes (fiches) au lieu du tableau, avec un tri dédié.
@@ -97,6 +99,7 @@ export function ArticlesPage() {
   const [description, setDescription] = useState('')
   const [cFamilleId, setCFamilleId] = useState<number | null>(null)
   const [cSousFamilleId, setCSousFamilleId] = useState<number | null>(null)
+  const [cLabelTemplateId, setCLabelTemplateId] = useState<number | null>(null)
   // Photo prise/importée à la création : conservée puis uploadée dès que l'article a un id.
   const [cPhotoFile, setCPhotoFile] = useState<File | null>(null)
   const [cPhotoPreview, setCPhotoPreview] = useState<string | null>(null)
@@ -115,6 +118,7 @@ export function ArticlesPage() {
   const [editDescription, setEditDescription] = useState('')
   const [editFamilleId, setEditFamilleId] = useState<number | null>(null)
   const [editSousFamilleId, setEditSousFamilleId] = useState<number | null>(null)
+  const [editLabelTemplateId, setEditLabelTemplateId] = useState<number | null>(null)
   const [editPhotoFile, setEditPhotoFile] = useState<string | null>(null)
   const [editError, setEditError] = useState<string | null>(null)
   const [editBusy, setEditBusy] = useState(false)
@@ -145,6 +149,7 @@ export function ArticlesPage() {
     refresh()
     refreshFamilles()
     listUnits().then(setUnits).catch(() => undefined)
+    listLabelTemplates().then(setLabelTemplates).catch(() => undefined)
   }, [])
 
   const filterSousFamilles = familles.find((f) => f.id === filterFamille)?.children ?? []
@@ -194,6 +199,7 @@ export function ArticlesPage() {
         description: description.trim() || null,
         familleId: cFamilleId,
         sousFamilleId: cSousFamilleId,
+        labelTemplateId: cLabelTemplateId,
       })
       // La photo ne peut s'attacher qu'à un article existant : on l'envoie après création.
       if (cPhotoFile) {
@@ -209,6 +215,7 @@ export function ArticlesPage() {
       setDescription('')
       setCFamilleId(null)
       setCSousFamilleId(null)
+      setCLabelTemplateId(null)
       clearCreatePhoto()
       setOpen(false)
       refresh()
@@ -231,6 +238,7 @@ export function ArticlesPage() {
     setEditDescription(a.description ?? '')
     setEditFamilleId(a.familleId)
     setEditSousFamilleId(a.sousFamilleId)
+    setEditLabelTemplateId(a.labelTemplateId)
     setEditPhotoFile(a.photoFile)
     setEditError(null)
   }
@@ -298,6 +306,7 @@ export function ArticlesPage() {
         description: editDescription.trim() || null,
         familleId: editFamilleId,
         sousFamilleId: editSousFamilleId,
+        labelTemplateId: editLabelTemplateId,
       })
       setEditArticle(null)
       refresh()
@@ -669,6 +678,24 @@ export function ArticlesPage() {
                 }}
               />
             )}
+            {labelTemplates.length > 0 && (
+              <TextField
+                select
+                label="Modèle d'étiquette (optionnel)"
+                value={cLabelTemplateId == null ? '' : String(cLabelTemplateId)}
+                onChange={(e) => setCLabelTemplateId(e.target.value === '' ? null : Number(e.target.value))}
+                helperText="Le modèle règle l'étiquette (style + badges) à l'impression."
+              >
+                <MenuItem value="">
+                  <em>— Aucun</em>
+                </MenuItem>
+                {labelTemplates.map((t) => (
+                  <MenuItem key={t.id} value={String(t.id)}>
+                    {t.name}
+                  </MenuItem>
+                ))}
+              </TextField>
+            )}
             {error && <Alert severity="error">{error}</Alert>}
             <Button type="submit" variant="contained" disabled={busy}>
               {busy ? 'Création…' : 'Créer l\'article'}
@@ -825,6 +852,26 @@ export function ArticlesPage() {
                   }}
                 />
               )}
+              <TextField
+                select
+                label="Modèle d'étiquette (optionnel)"
+                value={editLabelTemplateId == null ? '' : String(editLabelTemplateId)}
+                onChange={(e) => setEditLabelTemplateId(e.target.value === '' ? null : Number(e.target.value))}
+                helperText={
+                  labelTemplates.length === 0
+                    ? 'Aucun modèle : crée-en dans « Modèles d’étiquette ».'
+                    : "Règle l'étiquette (style + badges) à l'impression."
+                }
+              >
+                <MenuItem value="">
+                  <em>— Aucun</em>
+                </MenuItem>
+                {labelTemplates.map((t) => (
+                  <MenuItem key={t.id} value={String(t.id)}>
+                    {t.name}
+                  </MenuItem>
+                ))}
+              </TextField>
               {editError && <Alert severity="error">{editError}</Alert>}
               <Button type="submit" variant="contained" disabled={editBusy}>
                 {editBusy ? 'Enregistrement…' : 'Enregistrer'}

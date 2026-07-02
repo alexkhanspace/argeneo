@@ -101,6 +101,7 @@ function navGroupsFor(me: Me): NavGroup[] {
           { to: '/articles', label: 'Articles', icon: 'fa-solid fa-box' },
           { to: '/materials', label: 'Matières', icon: 'fa-solid fa-wheat-awn' },
           { to: '/etiquettes', label: 'Étiquettes', icon: 'fa-solid fa-tags' },
+          { to: '/etiquettes/modeles', label: 'Modèles d’étiquette', icon: 'fa-solid fa-swatchbook' },
           { to: '/factures', label: 'Scan fournisseur', icon: 'fa-solid fa-file-invoice' },
         ],
       },

@@ -20,6 +20,7 @@ import { ArticlesPage } from './pages/patron/ArticlesPage'
 import { CommunicationPage } from './pages/patron/CommunicationPage'
 import { InvoicesPage } from './pages/patron/InvoicesPage'
 import { LabelsPage } from './pages/patron/LabelsPage'
+import { LabelTemplatesPage } from './pages/patron/LabelTemplatesPage'
 import { EtablissementsPage } from './pages/patron/EtablissementsPage'
 import { EmployeePermissionsPage } from './pages/patron/EmployeePermissionsPage'
 import { EmployeesPage } from './pages/patron/EmployeesPage'
@@ -164,6 +165,14 @@ export default function App() {
           element={
             <ProtectedRoute allow={isPatron}>
               <LabelsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/etiquettes/modeles"
+          element={
+            <ProtectedRoute allow={isPatron}>
+              <LabelTemplatesPage />
             </ProtectedRoute>
           }
         />
