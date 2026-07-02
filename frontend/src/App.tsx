@@ -18,6 +18,7 @@ import { DocumentEditorPage } from './pages/billing/DocumentEditorPage'
 import { AnalyticsPage } from './pages/patron/AnalyticsPage'
 import { ArticlesPage } from './pages/patron/ArticlesPage'
 import { CommunicationPage } from './pages/patron/CommunicationPage'
+import { AffichettePage } from './pages/patron/AffichettePage'
 import { InvoicesPage } from './pages/patron/InvoicesPage'
 import { LabelsPage } from './pages/patron/LabelsPage'
 import { LabelTemplatesPage } from './pages/patron/LabelTemplatesPage'
@@ -181,6 +182,14 @@ export default function App() {
           element={
             <ProtectedRoute allow={isPatron}>
               <CommunicationPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/communication/affiche"
+          element={
+            <ProtectedRoute allow={isPatron}>
+              <AffichettePage />
             </ProtectedRoute>
           }
         />

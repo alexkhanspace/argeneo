@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { Link as RouterLink, useSearchParams } from 'react-router-dom'
 import {
   Alert,
   Box,
@@ -616,6 +616,17 @@ export function CommunicationPage() {
   return (
     <>
       <PageHeader title="Communication" />
+
+      <Button
+        component={RouterLink}
+        to="/communication/affiche"
+        variant="outlined"
+        size="small"
+        startIcon={<PictureAsPdfIcon />}
+        sx={{ mb: 2 }}
+      >
+        Créer une affichette A4/A5 (éditeur libre)
+      </Button>
 
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
 
