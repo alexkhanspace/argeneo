@@ -23,7 +23,7 @@ export interface LabelItem {
   /** Texte libre sous le nom (allergènes, ingrédients, promo…), ou null. */
   note?: string | null
   /** Badges propres à CETTE étiquette (Kasher, Vegan, médaille…). */
-  badges?: { text?: string | null; img?: string | null; color?: string }[]
+  badges?: { text?: string | null; img?: string | null; color?: string | null }[]
 }
 
 export interface LabelsPdfData {
@@ -172,7 +172,7 @@ export function LabelsPdf({ data }: { data: LabelsPdfData }) {
   })
 
   // Pastille pleine : fond = couleur du badge, police blanche.
-  const renderBadge = (b: { text?: string | null; img?: string | null; color?: string }, i: number, footer: boolean) =>
+  const renderBadge = (b: { text?: string | null; img?: string | null; color?: string | null }, i: number, footer: boolean) =>
     b.img ? (
       <Image key={i} src={b.img} style={footer ? styles.badgeImgFooter : styles.badgeImg} />
     ) : (
