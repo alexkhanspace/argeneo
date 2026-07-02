@@ -61,9 +61,17 @@ export async function generateSocialPost(input: {
   return data
 }
 
-/** Génère un visuel (texte→image) à partir d'un brief. Renvoie le PNG (blob). */
-export async function generateImageFromPrompt(prompt: string): Promise<Blob> {
-  const { data } = await api.post('/ai/generate-image', { prompt }, { responseType: 'blob' })
+/**
+ * Génère un visuel (texte→image) à partir d'un brief. Renvoie le PNG (blob).
+ * `aspectRatio` (ex. « 1:1 », « 3:4 », « 9:16 ») est transmis à l'IA pour que le visuel épouse le
+ * format de sortie choisi — sinon un rendu carré est rogné une fois placé dans une affichette A5.
+ */
+export async function generateImageFromPrompt(prompt: string, aspectRatio?: string): Promise<Blob> {
+  const { data } = await api.post(
+    '/ai/generate-image',
+    { prompt, aspectRatio },
+    { responseType: 'blob' },
+  )
   return data as Blob
 }
 

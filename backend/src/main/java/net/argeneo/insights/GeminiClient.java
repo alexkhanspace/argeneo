@@ -148,8 +148,12 @@ public class GeminiClient {
     /**
      * Génère une image à partir d'un texte via le modèle Gemini image (et non Imagen) : il suit
      * bien mieux la consigne « aucun texte », d'où des visuels sans charabia écrit.
+     *
+     * @param aspectRatio ratio souhaité (ex. « 1:1 », « 3:4 », « 9:16 ») transmis à l'IA pour que
+     *                    le visuel épouse le format de sortie (sinon un rendu carré est rogné en A5).
+     *                    {@code null}/vide => laisse le modèle choisir (rétro-compatible).
      */
-    public byte[] generateFromText(String prompt) {
+    public byte[] generateFromText(String prompt, String aspectRatio) {
         try {
             String token = accessToken();
             String model = (cfg.imageEditModel() == null || cfg.imageEditModel().isBlank())
@@ -158,11 +162,16 @@ public class GeminiClient {
                     + cfg.project() + "/locations/" + cfg.location()
                     + "/publishers/google/models/" + model + ":generateContent";
 
+            Map<String, Object> generationConfig = new java.util.LinkedHashMap<>();
+            generationConfig.put("responseModalities", List.of("TEXT", "IMAGE"));
+            if (aspectRatio != null && !aspectRatio.isBlank()) {
+                generationConfig.put("imageConfig", Map.of("aspectRatio", aspectRatio));
+            }
             Map<String, Object> body = Map.of(
                     "contents", List.of(Map.of(
                             "role", "user",
                             "parts", List.of(Map.of("text", prompt)))),
-                    "generationConfig", Map.of("responseModalities", List.of("TEXT", "IMAGE")));
+                    "generationConfig", generationConfig);
 
             InlineResponse resp = http.post()
                     .uri(url)

@@ -49,11 +49,13 @@ import { PageHeader } from '../../components/PageHeader'
 
 type Fmt = 'square' | 'story' | 'a4' | 'a5'
 // Formats print (A4/A5) en 150 dpi ≈ 1240×1754 / 874×1240 px (ratio √2 respecté).
-const FORMATS: Record<Fmt, { w: number; h: number; label: string; print?: boolean }> = {
-  square: { w: 1080, h: 1080, label: 'Carré' },
-  story: { w: 1080, h: 1920, label: 'Story' },
-  a4: { w: 1240, h: 1754, label: 'Affiche A4', print: true },
-  a5: { w: 874, h: 1240, label: 'Affichette A5', print: true },
+// `ar` = ratio le plus proche accepté par l'IA (les A4/A5 en √2 ≈ 3:4), donné au générateur d'image
+// pour que le visuel épouse le format choisi et ne soit pas rogné.
+const FORMATS: Record<Fmt, { w: number; h: number; label: string; ar: string; print?: boolean }> = {
+  square: { w: 1080, h: 1080, label: 'Carré', ar: '1:1' },
+  story: { w: 1080, h: 1920, label: 'Story', ar: '9:16' },
+  a4: { w: 1240, h: 1754, label: 'Affiche A4', ar: '3:4', print: true },
+  a5: { w: 874, h: 1240, label: 'Affichette A5', ar: '3:4', print: true },
 }
 
 const PLATFORMS = ['Instagram', 'Facebook']
@@ -453,7 +455,7 @@ export function CommunicationPage() {
     setError(null)
     setGenImg(true)
     try {
-      const blob = await generateImageFromPrompt(prompt)
+      const blob = await generateImageFromPrompt(prompt, FORMATS[format].ar)
       setSourceFile(null)
       setPhotoImg(await imgFromBlob(blob))
     } catch (err) {

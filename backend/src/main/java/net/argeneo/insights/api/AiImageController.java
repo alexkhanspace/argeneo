@@ -95,7 +95,12 @@ public class AiImageController {
         return p.toString();
     }
 
-    public record GenerateImageRequest(String prompt) {
+    // Ratios acceptés par le modèle Gemini image : on ne transmet qu'une valeur de cette liste
+    // (une valeur inconnue ferait échouer l'appel Vertex), sinon on laisse le modèle décider.
+    private static final java.util.Set<String> ASPECT_RATIOS = java.util.Set.of(
+            "1:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "21:9");
+
+    public record GenerateImageRequest(String prompt, String aspectRatio) {
     }
 
     /** Génère un visuel à partir d'un brief libre (texte→image), pour la page Communication. */
@@ -107,11 +112,15 @@ public class AiImageController {
         if (req == null || req.prompt() == null || req.prompt().isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Brief vide");
         }
+        // Format demandé (carré, A5…) : on le donne à l'IA pour qu'elle cadre le visuel en conséquence,
+        // faute de quoi un rendu carré se retrouve rogné une fois placé dans une affichette A5.
+        String aspectRatio = req.aspectRatio() != null && ASPECT_RATIOS.contains(req.aspectRatio())
+                ? req.aspectRatio() : null;
         String prompt = "Crée un visuel publicitaire soigné et appétissant pour un commerce de bouche artisanal "
                 + "française artisanale : style photo professionnelle, haute qualité, lumière naturelle douce, "
                 + "fond épuré. Ne fais apparaître AUCUN texte ni logo sur l'image (aucune lettre, aucun mot, "
                 + "aucune pancarte, aucune étiquette, aucun emballage imprimé). Sujet : " + req.prompt().trim() + ".";
-        byte[] out = gemini.generateFromText(prompt);
+        byte[] out = gemini.generateFromText(prompt, aspectRatio);
         return ResponseEntity.ok().contentType(MediaType.IMAGE_PNG).body(out);
     }
 

@@ -41,9 +41,11 @@ import { PageHeader } from '../../components/PageHeader'
 import { buildPosterPdfBlob } from '../../pdf/buildPosterPdf'
 
 type Fmt = 'a4' | 'a5'
-const FORMATS: Record<Fmt, { w: number; h: number; label: string; size: 'A4' | 'A5' }> = {
-  a4: { w: 1240, h: 1754, label: 'A4', size: 'A4' },
-  a5: { w: 874, h: 1240, label: 'A5', size: 'A5' },
+// `ar` = ratio donné au générateur d'image IA (A4/A5 en √2 ≈ 3:4) pour que le fond épouse le format
+// et ne soit pas rogné une fois placé dans l'affichette.
+const FORMATS: Record<Fmt, { w: number; h: number; label: string; size: 'A4' | 'A5'; ar: string }> = {
+  a4: { w: 1240, h: 1754, label: 'A4', size: 'A4', ar: '3:4' },
+  a5: { w: 874, h: 1240, label: 'A5', size: 'A5', ar: '3:4' },
 }
 type BgMode = 'photo' | 'brand' | 'solid'
 type Align = 'left' | 'center' | 'right'
@@ -393,7 +395,7 @@ export function AffichettePage() {
     setError(null)
     setAiBusy('generate')
     try {
-      const blob = await generateImageFromPrompt(aiPrompt.trim())
+      const blob = await generateImageFromPrompt(aiPrompt.trim(), fmt.ar)
       setBgImg(await imgFromBlob(blob))
       setBgMode('photo')
       setSourceFile(null)
