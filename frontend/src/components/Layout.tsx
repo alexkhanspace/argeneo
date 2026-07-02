@@ -112,6 +112,7 @@ function navGroupsFor(me: Me): NavGroup[] {
           { to: '/clients', label: 'Clients', icon: 'fa-solid fa-users' },
           { to: '/billing', label: 'Facturation', icon: 'fa-solid fa-file-invoice-dollar' },
           { to: '/communication', label: 'Communication', icon: 'fa-solid fa-bullhorn' },
+          { to: '/communication/affiche', label: 'Affichette', icon: 'fa-solid fa-image' },
         ],
       },
       {
