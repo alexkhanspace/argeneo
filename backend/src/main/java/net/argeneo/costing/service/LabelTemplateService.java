@@ -7,7 +7,9 @@ import net.argeneo.common.error.ResourceNotFoundException;
 import net.argeneo.costing.api.dto.LabelTemplateDtos.Badge;
 import net.argeneo.costing.api.dto.LabelTemplateDtos.LabelTemplateRequest;
 import net.argeneo.costing.api.dto.LabelTemplateDtos.LabelTemplateResponse;
+import net.argeneo.costing.entity.Article;
 import net.argeneo.costing.entity.LabelTemplate;
+import net.argeneo.costing.repository.ArticleRepository;
 import net.argeneo.costing.repository.LabelTemplateRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -23,9 +25,11 @@ public class LabelTemplateService {
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
     private final LabelTemplateRepository repository;
+    private final ArticleRepository articleRepository;
 
-    public LabelTemplateService(LabelTemplateRepository repository) {
+    public LabelTemplateService(LabelTemplateRepository repository, ArticleRepository articleRepository) {
         this.repository = repository;
+        this.articleRepository = articleRepository;
     }
 
     @Transactional(readOnly = true)
@@ -54,6 +58,52 @@ public class LabelTemplateService {
                 .orElseThrow(() -> new ResourceNotFoundException("Modèle d'étiquette introuvable : " + id));
         // Les articles qui référencent ce modèle sont détachés par la FK (ON DELETE SET NULL).
         repository.delete(t);
+    }
+
+    /**
+     * Bascule le « modèle par défaut de l'enseigne ». On clique sur le modèle déjà par défaut =>
+     * on l'enlève (plus de défaut) ; sinon on le désigne et on retire le défaut des autres
+     * (au plus un par tenant, garanti aussi par l'index unique partiel côté BDD).
+     */
+    @Transactional
+    public List<LabelTemplateResponse> toggleDefault(Long id) {
+        LabelTemplate target = repository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Modèle d'étiquette introuvable : " + id));
+        boolean makeDefault = !target.isEnseigneDefault();
+        // On retire d'abord le défaut partout, PUIS on le flush avant de le poser sur la cible :
+        // l'index unique partiel (WHERE is_default) est vérifié à chaque UPDATE, donc la BDD ne
+        // doit jamais avoir deux défauts en même temps, même transitoirement.
+        for (LabelTemplate t : repository.findAllByOrderByNameAsc()) {
+            if (t.isEnseigneDefault()) {
+                t.setEnseigneDefault(false);
+                repository.save(t);
+            }
+        }
+        repository.flush();
+        if (makeDefault) {
+            target.setEnseigneDefault(true);
+            repository.save(target);
+            repository.flush();
+        }
+        return list();
+    }
+
+    /**
+     * Affecte en masse des produits à ce modèle (depuis la page Modèles) : équivaut à régler le
+     * « modèle par défaut » sur la fiche de chacun des articles fournis.
+     */
+    @Transactional
+    public void assignArticles(Long templateId, List<Long> articleIds) {
+        repository.findById(templateId)
+                .orElseThrow(() -> new ResourceNotFoundException("Modèle d'étiquette introuvable : " + templateId));
+        if (articleIds == null || articleIds.isEmpty()) {
+            return;
+        }
+        List<Article> articles = articleRepository.findAllById(articleIds);
+        for (Article a : articles) {
+            a.setLabelTemplateId(templateId);
+        }
+        articleRepository.saveAll(articles);
     }
 
     private void apply(LabelTemplate t, LabelTemplateRequest r) {

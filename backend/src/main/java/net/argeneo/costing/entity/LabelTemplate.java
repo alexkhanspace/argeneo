@@ -92,6 +92,13 @@ public class LabelTemplate {
     @Column(columnDefinition = "text")
     private String badges;
 
+    /**
+     * Modèle par défaut de l'enseigne : appliqué aux produits sans modèle propre lors de
+     * l'impression. Au plus un par tenant (index unique partiel côté BDD).
+     */
+    @Column(name = "is_default", nullable = false)
+    private boolean enseigneDefault = false;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 

@@ -2,6 +2,7 @@ package net.argeneo.costing.api;
 
 import jakarta.validation.Valid;
 import java.util.List;
+import net.argeneo.costing.api.dto.LabelTemplateDtos.AssignArticlesRequest;
 import net.argeneo.costing.api.dto.LabelTemplateDtos.LabelTemplateRequest;
 import net.argeneo.costing.api.dto.LabelTemplateDtos.LabelTemplateResponse;
 import net.argeneo.costing.service.LabelTemplateService;
@@ -50,5 +51,18 @@ public class LabelTemplateController {
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void delete(@PathVariable Long id) {
         service.delete(id);
+    }
+
+    /** Bascule le « modèle par défaut de l'enseigne » et renvoie la liste à jour. */
+    @PutMapping("/{id}/default")
+    public List<LabelTemplateResponse> toggleDefault(@PathVariable Long id) {
+        return service.toggleDefault(id);
+    }
+
+    /** Affecte en masse des produits à ce modèle (le règle comme modèle par défaut de chacun). */
+    @PostMapping("/{id}/articles")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void assignArticles(@PathVariable Long id, @RequestBody AssignArticlesRequest request) {
+        service.assignArticles(id, request.articleIds());
     }
 }

@@ -27,9 +27,12 @@ export interface LabelTemplate {
   extraText: string | null
   useDescription: boolean
   badges: LabelBadge[]
+  /** Modèle appliqué aux produits sans modèle propre à l'impression (au plus un par enseigne). */
+  enseigneDefault: boolean
 }
 
-export type LabelTemplateInput = Omit<LabelTemplate, 'id'>
+// `enseigneDefault` est piloté par un endpoint dédié (toggle), pas par create/update.
+export type LabelTemplateInput = Omit<LabelTemplate, 'id' | 'enseigneDefault'>
 
 export async function listLabelTemplates(): Promise<LabelTemplate[]> {
   const { data } = await api.get<LabelTemplate[]>('/label-templates')
@@ -51,4 +54,15 @@ export async function updateLabelTemplate(
 
 export async function deleteLabelTemplate(id: number): Promise<void> {
   await api.delete(`/label-templates/${id}`)
+}
+
+/** Bascule le « modèle par défaut de l'enseigne » ; renvoie la liste des modèles à jour. */
+export async function toggleDefaultLabelTemplate(id: number): Promise<LabelTemplate[]> {
+  const { data } = await api.put<LabelTemplate[]>(`/label-templates/${id}/default`)
+  return data
+}
+
+/** Affecte en masse des produits à un modèle (règle leur modèle par défaut). */
+export async function assignArticlesToTemplate(id: number, articleIds: number[]): Promise<void> {
+  await api.post(`/label-templates/${id}/articles`, { articleIds })
 }

@@ -26,12 +26,11 @@ export interface LabelItem {
   badges?: { text?: string | null; img?: string | null; color?: string | null }[]
 }
 
-export interface LabelsPdfData {
-  items: LabelItem[]
+/** Mise en forme d'un modèle d'étiquette (taille, couleurs, cadre…). */
+export interface LabelStyle {
   widthMm: number
   heightMm: number
   brand: string
-  /** Couleurs du modèle (libres). */
   bgColor: string
   textColor: string
   /** Couleur de la bordure (pointillés de découpe). */
@@ -44,20 +43,29 @@ export interface LabelsPdfData {
   frame: 'none' | 'wood'
   /** Police manuscrite type craie (pour le rendu ardoise). */
   chalk: boolean
-  /** Logo de l'entreprise (data URL), affiché en petit en bas — ou null. */
-  logoUrl: string | null
   /** Position des badges : haut-droite, haut-gauche, ou dans le pied (entre marque et prix). */
   badgePos?: 'tr' | 'tl' | 'footer'
   /** Multiplicateur de taille de l'image du badge (médaille). */
   badgeScale?: number
 }
 
-/** Planche A4 d'étiquettes à découper (grille calculée selon la taille demandée). */
-export function LabelsPdf({ data }: { data: LabelsPdfData }) {
-  const { items, widthMm, heightMm, brand, bgColor, textColor, borderColor, fill, fontScale, frame, chalk, logoUrl } =
-    data
-  const badgePos = data.badgePos ?? 'tr'
-  const badgeScale = data.badgeScale ?? 1
+/** Un groupe = un modèle d'étiquette + les étiquettes qui le portent (ses propres planches A4). */
+export interface LabelGroup extends LabelStyle {
+  items: LabelItem[]
+}
+
+export interface LabelsPdfData {
+  /** Un groupe par modèle : chaque modèle démarre sur ses propres pages (grille à sa taille). */
+  groups: LabelGroup[]
+  /** Logo de l'entreprise (data URL), affiché en petit en bas — ou null. */
+  logoUrl: string | null
+}
+
+/** Rend les pages A4 d'UN groupe (un modèle) : grille calculée selon sa taille d'étiquette. */
+function groupPages(group: LabelGroup, logoUrl: string | null, keyPrefix: string) {
+  const { items, widthMm, heightMm, brand, bgColor, textColor, borderColor, fill, fontScale, frame, chalk } = group
+  const badgePos = group.badgePos ?? 'tr'
+  const badgeScale = group.badgeScale ?? 1
 
   // Combien d'étiquettes par page A4, puis agrandissement éventuel pour remplir la feuille.
   const usableW = A4_W - 2 * MARGIN
@@ -195,7 +203,7 @@ export function LabelsPdf({ data }: { data: LabelsPdfData }) {
     ) : null
   }
 
-  // Pagination déterministe : autant d'étiquettes que la grille cols×rois calculée plus haut.
+  // Pagination déterministe : autant d'étiquettes que la grille cols×rows calculée plus haut.
   const perPage = cols * rows
   const pages: LabelItem[][] = []
   for (let i = 0; i < items.length; i += perPage) pages.push(items.slice(i, i + perPage))
@@ -221,26 +229,48 @@ export function LabelsPdf({ data }: { data: LabelsPdfData }) {
     </View>
   )
 
+  return pages.map((pageItems, p) => (
+    <Page key={`${keyPrefix}-${p}`} size="A4" style={styles.page}>
+      <View style={styles.grid}>
+        {pageItems.map((it, i) => (
+          <View key={i} style={styles.label} wrap={false}>
+            {frame === 'wood' ? (
+              <View style={styles.woodOuter}>
+                <View style={styles.woodInner}>{body(it)}</View>
+              </View>
+            ) : (
+              body(it)
+            )}
+            {cornerBadgeFor(it)}
+          </View>
+        ))}
+      </View>
+    </Page>
+  ))
+}
+
+// Style neutre pour le cas « aucune étiquette » (une page A4 vide plutôt qu'un PDF invalide).
+const EMPTY_STYLE: LabelStyle = {
+  widthMm: 100,
+  heightMm: 60,
+  brand: '',
+  bgColor: '#ffffff',
+  textColor: '#111111',
+  borderColor: '#111111',
+  fill: false,
+  fontScale: 1,
+  frame: 'none',
+  chalk: false,
+}
+
+/** Planches A4 d'étiquettes à découper — un groupe de pages par modèle sélectionné. */
+export function LabelsPdf({ data }: { data: LabelsPdfData }) {
+  const groups = data.groups.filter((g) => g.items.length > 0)
   return (
     <Document>
-      {pages.map((pageItems, p) => (
-        <Page key={p} size="A4" style={styles.page}>
-          <View style={styles.grid}>
-            {pageItems.map((it, i) => (
-              <View key={i} style={styles.label} wrap={false}>
-                {frame === 'wood' ? (
-                  <View style={styles.woodOuter}>
-                    <View style={styles.woodInner}>{body(it)}</View>
-                  </View>
-                ) : (
-                  body(it)
-                )}
-                {cornerBadgeFor(it)}
-              </View>
-            ))}
-          </View>
-        </Page>
-      ))}
+      {groups.length === 0
+        ? groupPages({ ...EMPTY_STYLE, items: [] }, data.logoUrl, 'empty')
+        : groups.flatMap((g, gi) => groupPages(g, data.logoUrl, `g${gi}`))}
     </Document>
   )
 }

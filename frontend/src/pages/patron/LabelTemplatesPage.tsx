@@ -5,26 +5,36 @@ import {
   Button,
   Card,
   CardContent,
+  Checkbox,
   Chip,
+  CircularProgress,
   Divider,
   FormControlLabel,
+  IconButton,
   Slider,
   Stack,
   Switch,
   TextField,
   ToggleButton,
   ToggleButtonGroup,
+  Tooltip,
   Typography,
 } from '@mui/material'
 import SaveIcon from '@mui/icons-material/Save'
 import AddIcon from '@mui/icons-material/Add'
+import StarIcon from '@mui/icons-material/Star'
+import StarBorderIcon from '@mui/icons-material/StarBorder'
 import { errorMessage } from '../../api/client'
 import { getProfile, getSettings, logoUrl } from '../../api/billing'
 import { listMyEtablissements } from '../../api/daily'
+import { listArticles } from '../../api/costing'
+import type { Article } from '../../api/types'
 import {
+  assignArticlesToTemplate,
   createLabelTemplate,
   deleteLabelTemplate,
   listLabelTemplates,
+  toggleDefaultLabelTemplate,
   updateLabelTemplate,
   type LabelBadge,
   type LabelTemplate,
@@ -120,14 +130,26 @@ export function LabelTemplatesPage() {
   const [notice, setNotice] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
+  // Affectation de produits au modèle en cours d'édition.
+  const [articles, setArticles] = useState<Article[]>([])
+  const [assignSearch, setAssignSearch] = useState('')
+  const [assignBusy, setAssignBusy] = useState(false)
+  const [assignSel, setAssignSel] = useState<Set<number>>(new Set())
+
   const refresh = () => {
     listLabelTemplates()
       .then(setTemplates)
       .catch((e) => setError(errorMessage(e)))
   }
+  const refreshArticles = () => {
+    listArticles()
+      .then((list) => setArticles(list.filter((a) => a.active)))
+      .catch(() => undefined)
+  }
 
   useEffect(() => {
     refresh()
+    refreshArticles()
     listMyEtablissements()
       .then((list) => {
         if (list.length > 0) setBrand((b) => b || list[0].name)
@@ -162,10 +184,12 @@ export function LabelTemplatesPage() {
     setUseDescription(DEFAULTS.useDescription)
     setBadges([])
     setNotice(null)
+    setAssignSel(new Set())
   }
 
   const loadTemplate = (t: LabelTemplate) => {
     setEditingId(t.id)
+    setAssignSel(new Set())
     setName(t.name)
     setBrand(t.brand ?? '')
     setBgColor(t.bgColor)
@@ -230,8 +254,49 @@ export function LabelTemplatesPage() {
       await deleteLabelTemplate(t.id)
       if (editingId === t.id) resetForm()
       refresh()
+      refreshArticles()
     } catch (e) {
       setError(errorMessage(e))
+    }
+  }
+
+  // Bascule le « modèle par défaut de l'enseigne » (au plus un).
+  const toggleDefault = async (t: LabelTemplate) => {
+    setError(null)
+    try {
+      setTemplates(await toggleDefaultLabelTemplate(t.id))
+    } catch (e) {
+      setError(errorMessage(e))
+    }
+  }
+
+  // --- Affectation de produits au modèle en cours d'édition ---
+  const toggleAssign = (id: number) =>
+    setAssignSel((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  const assignFiltered = useMemo(() => {
+    const q = assignSearch.trim().toLowerCase()
+    if (!q) return articles
+    return articles.filter((a) => a.name.toLowerCase().includes(q) || a.code.toLowerCase().includes(q))
+  }, [articles, assignSearch])
+
+  const applyAssign = async () => {
+    if (editingId == null || assignSel.size === 0) return
+    setAssignBusy(true)
+    setError(null)
+    try {
+      await assignArticlesToTemplate(editingId, [...assignSel])
+      setNotice(`${assignSel.size} produit${assignSel.size > 1 ? 's' : ''} affecté${assignSel.size > 1 ? 's' : ''} à ce modèle.`)
+      setAssignSel(new Set())
+      refreshArticles()
+    } catch (e) {
+      setError(errorMessage(e))
+    } finally {
+      setAssignBusy(false)
     }
   }
 
@@ -639,52 +704,137 @@ export function LabelTemplatesPage() {
           </CardContent>
         </Card>
 
-        {/* Modèles enregistrés */}
-        <Card>
-          <CardContent>
-            <Typography variant="h2" gutterBottom>
-              Mes modèles
-            </Typography>
-            {templates.length === 0 ? (
-              <Typography variant="body2" color="text.secondary">
-                Aucun modèle. Compose-en un à gauche et enregistre-le.
+        <Stack spacing={2}>
+          {/* Modèles enregistrés */}
+          <Card>
+            <CardContent>
+              <Typography variant="h2" gutterBottom>
+                Mes modèles
               </Typography>
-            ) : (
-              <Stack divider={<Divider flexItem />} spacing={0}>
-                {templates.map((t) => (
-                  <Stack key={t.id} direction="row" spacing={1} sx={{ py: 1, alignItems: 'center' }}>
-                    <Box
-                      sx={{
-                        width: 44,
-                        height: 28,
-                        flexShrink: 0,
-                        borderRadius: 0.5,
-                        border: '1px solid',
-                        borderColor: 'divider',
-                        bgcolor: t.bgColor,
-                      }}
-                    />
-                    <Box sx={{ flex: 1, minWidth: 0 }}>
-                      <Typography noWrap sx={{ fontWeight: editingId === t.id ? 700 : 500 }}>
-                        {t.name}
-                      </Typography>
-                      <Typography variant="caption" color="text.secondary">
-                        {t.widthCm}×{t.heightCm} cm
-                        {t.badges.length > 0 ? ` · ${t.badges.length} badge${t.badges.length > 1 ? 's' : ''}` : ''}
-                      </Typography>
-                    </Box>
-                    <Button size="small" onClick={() => loadTemplate(t)}>
-                      Éditer
-                    </Button>
-                    <Button size="small" color="error" onClick={() => void remove(t)}>
-                      Supprimer
-                    </Button>
-                  </Stack>
-                ))}
-              </Stack>
-            )}
-          </CardContent>
-        </Card>
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+                L’étoile ⭐ désigne le <strong>modèle par défaut de l’enseigne</strong> : il s’applique aux produits
+                sans modèle propre lors de l’impression.
+              </Typography>
+              {templates.length === 0 ? (
+                <Typography variant="body2" color="text.secondary">
+                  Aucun modèle. Compose-en un à gauche et enregistre-le.
+                </Typography>
+              ) : (
+                <Stack divider={<Divider flexItem />} spacing={0}>
+                  {templates.map((t) => (
+                    <Stack key={t.id} direction="row" spacing={1} sx={{ py: 1, alignItems: 'center' }}>
+                      <Tooltip title={t.enseigneDefault ? 'Modèle par défaut enseigne (cliquer pour retirer)' : 'Définir comme modèle par défaut enseigne'}>
+                        <IconButton
+                          size="small"
+                          color={t.enseigneDefault ? 'primary' : 'default'}
+                          onClick={() => void toggleDefault(t)}
+                        >
+                          {t.enseigneDefault ? <StarIcon fontSize="small" /> : <StarBorderIcon fontSize="small" />}
+                        </IconButton>
+                      </Tooltip>
+                      <Box
+                        sx={{
+                          width: 44,
+                          height: 28,
+                          flexShrink: 0,
+                          borderRadius: 0.5,
+                          border: '1px solid',
+                          borderColor: 'divider',
+                          bgcolor: t.bgColor,
+                        }}
+                      />
+                      <Box sx={{ flex: 1, minWidth: 0 }}>
+                        <Typography noWrap sx={{ fontWeight: editingId === t.id ? 700 : 500 }}>
+                          {t.name}
+                          {t.enseigneDefault ? ' · défaut enseigne' : ''}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {t.widthCm}×{t.heightCm} cm
+                          {t.badges.length > 0 ? ` · ${t.badges.length} badge${t.badges.length > 1 ? 's' : ''}` : ''}
+                        </Typography>
+                      </Box>
+                      <Button size="small" onClick={() => loadTemplate(t)}>
+                        Éditer
+                      </Button>
+                      <Button size="small" color="error" onClick={() => void remove(t)}>
+                        Supprimer
+                      </Button>
+                    </Stack>
+                  ))}
+                </Stack>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Affectation de produits au modèle en cours d'édition */}
+          {editingId != null && (
+            <Card>
+              <CardContent>
+                <Typography variant="h2" gutterBottom>
+                  Affecter des produits à « {name || 'ce modèle'} »
+                </Typography>
+                <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+                  Coche les produits à imprimer avec ce modèle : ils prendront ce modèle par défaut (comme sur leur
+                  fiche article).
+                </Typography>
+                <TextField
+                  size="small"
+                  fullWidth
+                  placeholder="Rechercher un produit…"
+                  value={assignSearch}
+                  onChange={(e) => setAssignSearch(e.target.value)}
+                  sx={{ mb: 1 }}
+                />
+                <Box sx={{ maxHeight: 300, overflow: 'auto', border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
+                  {assignFiltered.length === 0 ? (
+                    <Typography color="text.secondary" sx={{ p: 2 }}>
+                      Aucun produit.
+                    </Typography>
+                  ) : (
+                    assignFiltered.map((a) => {
+                      const onThis = a.labelTemplateId === editingId
+                      const otherName = templates.find((t) => t.id === a.labelTemplateId)?.name
+                      return (
+                        <Stack
+                          key={a.id}
+                          direction="row"
+                          sx={{ alignItems: 'center', gap: 1, px: 1, py: 0.25, borderBottom: '1px solid', borderColor: 'divider' }}
+                        >
+                          <Checkbox
+                            size="small"
+                            checked={assignSel.has(a.id)}
+                            onChange={() => toggleAssign(a.id)}
+                            sx={{ p: 0.5 }}
+                          />
+                          <Box sx={{ flex: 1, minWidth: 0, cursor: 'pointer' }} onClick={() => toggleAssign(a.id)}>
+                            <Typography variant="body2" noWrap>
+                              {a.name}
+                            </Typography>
+                            <Typography variant="caption" color="text.secondary">
+                              {a.code}
+                              {onThis ? ' · déjà sur ce modèle' : otherName ? ` · modèle : ${otherName}` : ' · sans modèle'}
+                            </Typography>
+                          </Box>
+                          {onThis && <Chip label="✓" size="small" color="primary" variant="outlined" sx={{ height: 20 }} />}
+                        </Stack>
+                      )
+                    })
+                  )}
+                </Box>
+                <Button
+                  variant="contained"
+                  size="small"
+                  sx={{ mt: 1.5 }}
+                  disabled={assignBusy || assignSel.size === 0}
+                  startIcon={assignBusy ? <CircularProgress size={14} color="inherit" /> : undefined}
+                  onClick={() => void applyAssign()}
+                >
+                  Affecter {assignSel.size > 0 ? `(${assignSel.size})` : ''}
+                </Button>
+              </CardContent>
+            </Card>
+          )}
+        </Stack>
       </Box>
     </>
   )

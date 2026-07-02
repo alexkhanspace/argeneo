@@ -54,7 +54,8 @@ public final class LabelTemplateDtos {
             double badgeScale,
             String extraText,
             boolean useDescription,
-            List<Badge> badges) {
+            List<Badge> badges,
+            boolean enseigneDefault) {
 
         public static LabelTemplateResponse from(LabelTemplate t, List<Badge> badges) {
             return new LabelTemplateResponse(
@@ -63,7 +64,11 @@ public final class LabelTemplateDtos {
                     t.getWidthCm(), t.getHeightCm(), t.getFontScale(), t.isShowPrice(),
                     t.getFrame(), t.isChalk(), t.isFillSheet(),
                     t.getBadgePos(), t.getBadgeScale(),
-                    t.getExtraText(), t.isUseDescription(), badges);
+                    t.getExtraText(), t.isUseDescription(), badges, t.isEnseigneDefault());
         }
+    }
+
+    /** Affectation en masse de produits à un modèle (depuis la page Modèles). */
+    public record AssignArticlesRequest(List<Long> articleIds) {
     }
 }
