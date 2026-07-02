@@ -19,12 +19,13 @@ public class LabelTemplateService {
     private static final List<String> FRAMES = List.of("none", "wood");
     private static final List<String> BADGE_POS = List.of("tr", "tl", "footer");
 
-    private final LabelTemplateRepository repository;
-    private final ObjectMapper objectMapper;
+    // Instance locale : pas de bean ObjectMapper à injecter (le contexte ne démarre pas sinon).
+    private static final ObjectMapper MAPPER = new ObjectMapper();
 
-    public LabelTemplateService(LabelTemplateRepository repository, ObjectMapper objectMapper) {
+    private final LabelTemplateRepository repository;
+
+    public LabelTemplateService(LabelTemplateRepository repository) {
         this.repository = repository;
-        this.objectMapper = objectMapper;
     }
 
     @Transactional(readOnly = true)
@@ -91,7 +92,7 @@ public class LabelTemplateService {
             return null;
         }
         try {
-            return objectMapper.writeValueAsString(clean);
+            return MAPPER.writeValueAsString(clean);
         } catch (Exception e) {
             throw new IllegalArgumentException("Badges invalides : " + e.getMessage(), e);
         }
@@ -102,7 +103,7 @@ public class LabelTemplateService {
             return List.of();
         }
         try {
-            return objectMapper.readValue(json, new TypeReference<List<Badge>>() {});
+            return MAPPER.readValue(json, new TypeReference<List<Badge>>() {});
         } catch (Exception e) {
             return List.of();
         }
