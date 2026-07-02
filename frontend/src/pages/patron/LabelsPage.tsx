@@ -27,7 +27,7 @@ import { listLabelTemplates, type LabelTemplate } from '../../api/labels'
 import type { Article } from '../../api/types'
 import { PageHeader } from '../../components/PageHeader'
 import { PdfViewerModal } from '../../components/PdfViewerModal'
-import { LabelPreview } from '../../components/LabelPreview'
+import { LabelPreview, labelLineBreaks } from '../../components/LabelPreview'
 import { buildLabelsPdfBlob } from '../../pdf/buildLabelsPdf'
 import type { LabelItem } from '../../pdf/LabelsPdf'
 
@@ -201,11 +201,11 @@ export function LabelsPage() {
         if (template.useDescription && a.description) noteParts.push(a.description)
         if (extra) noteParts.push(extra)
         const note = noteParts.length ? noteParts.join(' · ') : null
-        for (let i = 0; i < qty; i++) items.push({ name: a.name, price, note, badges })
+        for (let i = 0; i < qty; i++) items.push({ name: labelLineBreaks(a.name), price, note, badges })
       }
       for (const f of freeLabels) {
         for (let i = 0; i < f.qty; i++)
-          items.push({ name: f.name, price: f.price || null, note: extra || null, badges })
+          items.push({ name: labelLineBreaks(f.name), price: f.price || null, note: extra || null, badges })
       }
       if (items.length === 0) {
         setError('Sélectionne au moins un produit ou ajoute une étiquette libre.')

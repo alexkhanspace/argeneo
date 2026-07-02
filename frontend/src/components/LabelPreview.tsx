@@ -3,6 +3,15 @@ import type { LabelBadge } from '../api/labels'
 
 const CHALK_CSS = '"Permanent Marker", "Bricolage Grotesque", cursive'
 
+/**
+ * Convertit le marqueur « \n » tapé dans un nom d'article en vrai saut de ligne.
+ * Permet de contrôler la coupe sur l'étiquette (ex. « Croissant\nChoco noisette »)
+ * sans toucher au nom affiché partout ailleurs dans l'application.
+ */
+export function labelLineBreaks(name: string): string {
+  return name.replace(/\s*\\n\s*/g, '\n')
+}
+
 export interface LabelPreviewStyle {
   brand: string
   bgColor: string
@@ -136,7 +145,7 @@ export function LabelPreview({
               }}
               style={{ fontSize: `${(7.06 * fontScale).toFixed(2)}cqw` }}
             >
-              {name}
+              {labelLineBreaks(name)}
             </Typography>
             {note && (
               <Typography

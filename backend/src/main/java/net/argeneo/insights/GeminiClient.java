@@ -236,6 +236,56 @@ public class GeminiClient {
     }
 
     /**
+     * Compose une image à partir de PLUSIEURS photos réelles + une consigne (Gemini image).
+     * Utilisé pour les affiches « menu » : chaque photo de produit est envoyée telle quelle
+     * et le modèle les met en scène dans un visuel unique.
+     */
+    public byte[] composeImages(String prompt, List<byte[]> images, List<String> mimes) {
+        try {
+            String token = accessToken();
+            String model = (cfg.imageEditModel() == null || cfg.imageEditModel().isBlank())
+                    ? "gemini-2.5-flash-image" : cfg.imageEditModel();
+            String url = "https://" + cfg.location() + "-aiplatform.googleapis.com/v1/projects/"
+                    + cfg.project() + "/locations/" + cfg.location()
+                    + "/publishers/google/models/" + model + ":generateContent";
+
+            List<Map<String, Object>> parts = new java.util.ArrayList<>();
+            parts.add(Map.of("text", prompt));
+            for (int i = 0; i < images.size(); i++) {
+                String b64 = java.util.Base64.getEncoder().encodeToString(images.get(i));
+                parts.add(Map.of("inlineData", Map.of("mimeType", mimes.get(i), "data", b64)));
+            }
+            Map<String, Object> body = Map.of(
+                    "contents", List.of(Map.of("role", "user", "parts", parts)),
+                    "generationConfig", Map.of("responseModalities", List.of("TEXT", "IMAGE")));
+
+            InlineResponse resp = http.post()
+                    .uri(url)
+                    .header("Authorization", "Bearer " + token)
+                    .header("Content-Type", "application/json")
+                    .body(body)
+                    .retrieve()
+                    .body(InlineResponse.class);
+
+            if (resp != null && resp.candidates() != null) {
+                for (InlineCandidate c : resp.candidates()) {
+                    if (c.content() == null || c.content().parts() == null) {
+                        continue;
+                    }
+                    for (InlinePart p : c.content().parts()) {
+                        if (p.inlineData() != null && p.inlineData().data() != null) {
+                            return java.util.Base64.getDecoder().decode(p.inlineData().data());
+                        }
+                    }
+                }
+            }
+            throw new IllegalStateException("Gemini n'a renvoyé aucune image");
+        } catch (Exception e) {
+            throw new IllegalStateException("Appel Vertex/Gemini image (composition) échoué : " + e.getMessage(), e);
+        }
+    }
+
+    /**
      * Analyse multimodale : envoie un fichier (image ou PDF) + une consigne et renvoie le
      * TEXTE généré. Force {@code responseMimeType=application/json} pour une sortie JSON stricte
      * (utilisé pour l'extraction de factures fournisseurs).

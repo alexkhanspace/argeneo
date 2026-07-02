@@ -2,10 +2,12 @@ import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointer
 import { Link as RouterLink } from 'react-router-dom'
 import {
   Alert,
+  Autocomplete,
   Box,
   Button,
   Card,
   CardContent,
+  Chip,
   CircularProgress,
   Divider,
   IconButton,
@@ -21,6 +23,8 @@ import {
 import AddIcon from '@mui/icons-material/Add'
 import UploadIcon from '@mui/icons-material/Upload'
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome'
+import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh'
+import RestaurantMenuIcon from '@mui/icons-material/RestaurantMenu'
 import DownloadIcon from '@mui/icons-material/Download'
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf'
 import SaveIcon from '@mui/icons-material/Save'
@@ -30,8 +34,8 @@ import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 import { errorMessage } from '../../api/client'
 import { getProfile, getSettings, logoUrl } from '../../api/billing'
 import { listArticles, photoUrl } from '../../api/costing'
-import { enhanceImage } from '../../api/insights'
-import { saveCommunication } from '../../api/communication'
+import { composeImages, enhanceImage } from '../../api/insights'
+import { generateImageFromPrompt, saveCommunication } from '../../api/communication'
 import type { Article } from '../../api/types'
 import { PageHeader } from '../../components/PageHeader'
 import { buildPosterPdfBlob } from '../../pdf/buildPosterPdf'
@@ -56,9 +60,19 @@ interface Block {
   bold: boolean
   align: Align
   bg: string | null // pastille de fond, ou null
+  font?: string // famille de police (défaut : FONT)
 }
 
 const FONT = 'Helvetica, Arial, sans-serif'
+// Familles système uniquement : elles rendent à l'identique dans l'aperçu CSS et le canvas d'export.
+const FONTS = [
+  { label: 'Moderne', value: FONT },
+  { label: 'Élégante (serif)', value: 'Georgia, "Times New Roman", serif' },
+  { label: 'Impact (titres)', value: 'Impact, "Arial Black", sans-serif' },
+  { label: 'Manuscrite', value: '"Brush Script MT", "Segoe Script", cursive' },
+  { label: 'Ardoise', value: '"Chalkboard SE", "Comic Sans MS", cursive' },
+  { label: 'Machine à écrire', value: '"Courier New", Courier, monospace' },
+]
 const clamp01 = (v: number) => Math.max(0, Math.min(1, v))
 const safeColor = (c: string | null | undefined, fb: string) =>
   c && /^#[0-9a-fA-F]{3,8}$/.test(c) ? c : fb
@@ -159,6 +173,11 @@ export function AffichettePage() {
   const [articleId, setArticleId] = useState<number | ''>('')
 
   const [enhancing, setEnhancing] = useState(false)
+  const [aiPrompt, setAiPrompt] = useState('')
+  const [aiBusy, setAiBusy] = useState<null | 'retouch' | 'generate' | 'compose'>(null)
+  const [menuArticles, setMenuArticles] = useState<Article[]>([])
+  const [menuFiles, setMenuFiles] = useState<File[]>([])
+  const menuFileRef = useRef<HTMLInputElement | null>(null)
   const [pdfBusy, setPdfBusy] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -204,13 +223,32 @@ export function AffichettePage() {
     setSelectedId(b.id)
   }
 
+  // Suppr/Retour efface le bloc sélectionné (sauf pendant la saisie), Échap désélectionne.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!selectedId) return
+      const t = e.target as HTMLElement | null
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        e.preventDefault()
+        removeBlock(selectedId)
+      } else if (e.key === 'Escape') {
+        setSelectedId(null)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedId])
+
   // --- Déplacement / redimensionnement à la souris ---
+  // 'resize' = largeur seule (poignée latérale) ; 'scale' = largeur + police (poignée d'angle).
   const drag = useRef<
-    | { id: string; mode: 'move' | 'resize'; startX: number; startY: number; b: Block; rect: DOMRect }
+    | { id: string; mode: 'move' | 'resize' | 'scale'; startX: number; startY: number; b: Block; rect: DOMRect }
     | null
   >(null)
 
-  const onPointerDown = (e: ReactPointerEvent, id: string, mode: 'move' | 'resize') => {
+  const onPointerDown = (e: ReactPointerEvent, id: string, mode: 'move' | 'resize' | 'scale') => {
     e.preventDefault()
     e.stopPropagation()
     const stage = stageRef.current
@@ -232,7 +270,14 @@ export function AffichettePage() {
         yPct: clamp01(d.b.yPct + dy),
       })
     } else {
-      updateBlock(d.id, { wPct: Math.max(0.08, Math.min(1 - d.b.xPct, d.b.wPct + dx)) })
+      const wPct = Math.max(0.08, Math.min(1 - d.b.xPct, d.b.wPct + dx))
+      if (d.mode === 'scale') {
+        // La police suit la largeur : agrandir la zone agrandit le texte (façon Canva).
+        const fontPct = Math.max(0.015, Math.min(0.3, d.b.fontPct * (wPct / d.b.wPct)))
+        updateBlock(d.id, { wPct, fontPct })
+      } else {
+        updateBlock(d.id, { wPct })
+      }
     }
   }
   const onPointerUp = () => {
@@ -302,6 +347,107 @@ export function AffichettePage() {
     }
   }
 
+  // --- IA : retouche du fond, génération, composition menu ---
+  /** Le fond actuel (déjà sublimé/généré ou non) converti en fichier PNG pour l'IA. */
+  const bgToFile = async (): Promise<File | null> => {
+    if (!bgImg) return null
+    const c = document.createElement('canvas')
+    c.width = bgImg.naturalWidth || bgImg.width
+    c.height = bgImg.naturalHeight || bgImg.height
+    c.getContext('2d')!.drawImage(bgImg, 0, 0)
+    const blob = await new Promise<Blob | null>((r) => c.toBlob(r, 'image/png'))
+    return blob ? new File([blob], 'fond.png', { type: 'image/png' }) : null
+  }
+
+  /** Retouche le fond actuel selon la consigne libre (les textes restent par-dessus, intacts). */
+  const retouchBg = async () => {
+    if (bgMode !== 'photo' || !bgImg) {
+      setError('Choisis d’abord un fond photo (importe une photo, un produit, ou génère un fond IA).')
+      return
+    }
+    if (!aiPrompt.trim()) {
+      setError('Écris d’abord ta consigne pour l’IA dans la zone de texte libre.')
+      return
+    }
+    setError(null)
+    setAiBusy('retouch')
+    try {
+      const f = await bgToFile()
+      if (!f) throw new Error('Fond illisible')
+      const blob = await enhanceImage(f, undefined, aiPrompt.trim(), 'scene')
+      setBgImg(await imgFromBlob(blob))
+      setBgMode('photo')
+    } catch (e) {
+      setError(errorMessage(e))
+    } finally {
+      setAiBusy(null)
+    }
+  }
+
+  /** Génère un fond de zéro (texte → image) à partir de la consigne libre. */
+  const generateBg = async () => {
+    if (!aiPrompt.trim()) {
+      setError('Décris le fond souhaité dans la zone de texte libre (ex. « vitrine de Noël, ambiance chaleureuse »).')
+      return
+    }
+    setError(null)
+    setAiBusy('generate')
+    try {
+      const blob = await generateImageFromPrompt(aiPrompt.trim())
+      setBgImg(await imgFromBlob(blob))
+      setBgMode('photo')
+      setSourceFile(null)
+    } catch (e) {
+      setError(errorMessage(e))
+    } finally {
+      setAiBusy(null)
+    }
+  }
+
+  /** Compose une affiche « menu » : l'IA met en scène les VRAIES photos des produits choisis. */
+  const composeMenu = async () => {
+    const withPhoto = menuArticles.filter((a) => a.photoFile)
+    if (withPhoto.length + menuFiles.length === 0) {
+      setError('Sélectionne des produits qui ont une photo, ou importe des photos pour le menu.')
+      return
+    }
+    setError(null)
+    setAiBusy('compose')
+    try {
+      const files: File[] = [...menuFiles]
+      for (const a of withPhoto) {
+        const u = photoUrl(a.photoFile)
+        if (!u) continue
+        const r = await fetch(u)
+        if (!r.ok) continue
+        const blob = await r.blob()
+        files.push(new File([blob], `produit-${a.id}.png`, { type: blob.type || 'image/png' }))
+      }
+      if (files.length === 0) throw new Error('Aucune photo exploitable')
+      const blob = await composeImages(files, aiPrompt.trim() || undefined)
+      setBgImg(await imgFromBlob(blob))
+      setBgMode('photo')
+      setSourceFile(null)
+      // Pré-remplit un bloc « carte » avec les produits choisis (nom + prix), librement éditable.
+      if (menuArticles.length > 0) {
+        const lines = menuArticles
+          .map((a) =>
+            a.salePriceTtc != null
+              ? `${a.name} — ${a.salePriceTtc.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} €`
+              : a.name,
+          )
+          .join('\n')
+        const b = newBlock({ text: lines, yPct: 0.5, xPct: 0.08, wPct: 0.84, fontPct: 0.04, align: 'left' })
+        setBlocks((list) => [...list, b])
+        setSelectedId(b.id)
+      }
+    } catch (e) {
+      setError(errorMessage(e))
+    } finally {
+      setAiBusy(null)
+    }
+  }
+
   // --- Rendu haute résolution (export) ---
   const renderToCanvas = (): HTMLCanvasElement => {
     const { w, h } = fmt
@@ -348,7 +494,7 @@ export function AffichettePage() {
       const y = b.yPct * h
       const maxW = b.wPct * w
       const fontSize = b.fontPct * w
-      ctx.font = `${b.bold ? 'bold ' : ''}${fontSize}px ${FONT}`
+      ctx.font = `${b.bold ? 'bold ' : ''}${fontSize}px ${b.font ?? FONT}`
       ctx.textBaseline = 'top'
       const lineH = fontSize * 1.2
       const lines = wrapLines(ctx, b.text, maxW)
@@ -549,7 +695,7 @@ export function AffichettePage() {
                           display: 'inline-block',
                           maxWidth: '100%',
                           color: b.color,
-                          fontFamily: FONT,
+                          fontFamily: b.font ?? FONT,
                           fontWeight: b.bold ? 700 : 400,
                           lineHeight: 1.2,
                           whiteSpace: 'pre-wrap',
@@ -562,20 +708,39 @@ export function AffichettePage() {
                         {b.text || ' '}
                       </Box>
                       {isSel && (
-                        <Box
-                          onPointerDown={(e) => onPointerDown(e, b.id, 'resize')}
-                          sx={{
-                            position: 'absolute',
-                            right: -6,
-                            bottom: -6,
-                            width: 14,
-                            height: 14,
-                            borderRadius: '50%',
-                            bgcolor: 'primary.main',
-                            border: '2px solid #fff',
-                            cursor: 'nwse-resize',
-                          }}
-                        />
+                        <>
+                          {/* Poignée d'angle : agrandit la zone ET la police (proportionnel). */}
+                          <Box
+                            onPointerDown={(e) => onPointerDown(e, b.id, 'scale')}
+                            sx={{
+                              position: 'absolute',
+                              right: -6,
+                              bottom: -6,
+                              width: 14,
+                              height: 14,
+                              borderRadius: '50%',
+                              bgcolor: 'primary.main',
+                              border: '2px solid #fff',
+                              cursor: 'nwse-resize',
+                            }}
+                          />
+                          {/* Poignée latérale : largeur seule (le texte se reflowe). */}
+                          <Box
+                            onPointerDown={(e) => onPointerDown(e, b.id, 'resize')}
+                            sx={{
+                              position: 'absolute',
+                              right: -5,
+                              top: '50%',
+                              transform: 'translateY(-50%)',
+                              width: 8,
+                              height: 22,
+                              borderRadius: 1,
+                              bgcolor: 'primary.main',
+                              border: '2px solid #fff',
+                              cursor: 'ew-resize',
+                            }}
+                          />
+                        </>
                       )}
                     </Box>
                   )
@@ -625,6 +790,19 @@ export function AffichettePage() {
                     minRows={2}
                     size="small"
                   />
+                  <TextField
+                    select
+                    size="small"
+                    label="Police"
+                    value={selected.font ?? FONT}
+                    onChange={(e) => updateBlock(selected.id, { font: e.target.value })}
+                  >
+                    {FONTS.map((f) => (
+                      <MenuItem key={f.value} value={f.value} sx={{ fontFamily: f.value }}>
+                        {f.label}
+                      </MenuItem>
+                    ))}
+                  </TextField>
                   <Box>
                     <Typography variant="caption" color="text.secondary">
                       Taille (× {(selected.fontPct * 100).toFixed(1)})
@@ -696,7 +874,8 @@ export function AffichettePage() {
                 </>
               ) : (
                 <Typography variant="body2" color="text.secondary">
-                  Clique un texte sur l’affichette pour le modifier, ou « Ajouter un texte ».
+                  Clique un texte sur l’affichette pour le modifier, ou « Ajouter un texte ». Touche
+                  Suppr : efface le texte sélectionné. Poignée d’angle : agrandit zone et police.
                 </Typography>
               )}
 
@@ -772,6 +951,99 @@ export function AffichettePage() {
                   void onImportPhoto(f)
                 }}
               />
+
+              <Divider />
+
+              {/* IA : consigne libre + retouche / génération / composition menu */}
+              <Typography variant="subtitle2" color="text.secondary">
+                IA — retouche &amp; génération
+              </Typography>
+              <TextField
+                label="Consigne libre pour l’IA"
+                placeholder="Ex. : ambiance marché de Noël, fond bois chaleureux, lumière dorée…"
+                multiline
+                minRows={2}
+                size="small"
+                value={aiPrompt}
+                onChange={(e) => setAiPrompt(e.target.value)}
+              />
+              <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', gap: 1 }}>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  startIcon={aiBusy === 'retouch' ? <CircularProgress size={14} /> : <AutoFixHighIcon />}
+                  onClick={() => void retouchBg()}
+                  disabled={aiBusy !== null}
+                >
+                  Retoucher le fond (IA)
+                </Button>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  startIcon={aiBusy === 'generate' ? <CircularProgress size={14} /> : <AutoAwesomeIcon />}
+                  onClick={() => void generateBg()}
+                  disabled={aiBusy !== null}
+                >
+                  Générer un fond (IA)
+                </Button>
+              </Stack>
+              <Typography variant="caption" color="text.secondary">
+                L’IA travaille sur le fond : tes textes restent nets et modifiables par-dessus.
+              </Typography>
+
+              <Typography variant="subtitle2" color="text.secondary">
+                Menu — à partir des vraies photos
+              </Typography>
+              <Autocomplete
+                multiple
+                size="small"
+                options={articles}
+                getOptionLabel={(a) => `${a.code} — ${a.name}${a.photoFile ? '' : ' (sans photo)'}`}
+                isOptionEqualToValue={(o, v) => o.id === v.id}
+                value={menuArticles}
+                onChange={(_, v) => setMenuArticles(v)}
+                renderInput={(params) => <TextField {...params} label="Articles du menu" />}
+              />
+              <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', gap: 1, alignItems: 'center' }}>
+                <Button size="small" variant="outlined" startIcon={<UploadIcon />} onClick={() => menuFileRef.current?.click()}>
+                  Ajouter des photos
+                </Button>
+                <Button
+                  size="small"
+                  variant="contained"
+                  startIcon={aiBusy === 'compose' ? <CircularProgress size={14} color="inherit" /> : <RestaurantMenuIcon />}
+                  onClick={() => void composeMenu()}
+                  disabled={aiBusy !== null}
+                >
+                  Composer l’affiche (IA)
+                </Button>
+              </Stack>
+              {menuFiles.length > 0 && (
+                <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', gap: 0.5 }}>
+                  {menuFiles.map((f, i) => (
+                    <Chip
+                      key={`${f.name}-${i}`}
+                      label={f.name}
+                      size="small"
+                      onDelete={() => setMenuFiles((list) => list.filter((_, j) => j !== i))}
+                    />
+                  ))}
+                </Stack>
+              )}
+              <input
+                ref={menuFileRef}
+                type="file"
+                accept="image/*"
+                multiple
+                hidden
+                onChange={(e) => {
+                  const list = Array.from(e.target.files ?? [])
+                  e.target.value = ''
+                  if (list.length) setMenuFiles((prev) => [...prev, ...list].slice(0, 8))
+                }}
+              />
+
+              <Divider />
 
               <Box>
                 <Typography variant="caption" color="text.secondary">

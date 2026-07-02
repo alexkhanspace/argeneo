@@ -92,6 +92,18 @@ export async function enhanceImage(
   return data as Blob
 }
 
+/**
+ * Compose une affiche à partir de PLUSIEURS photos réelles (menu, sélection de produits).
+ * L'IA met en scène les produits fournis dans un visuel unique (sans texte). Renvoie l'image (blob).
+ */
+export async function composeImages(files: File[], instruction?: string): Promise<Blob> {
+  const form = new FormData()
+  for (const f of files) form.append('files', f)
+  if (instruction) form.append('instruction', instruction)
+  const { data } = await api.post('/ai/compose-image', form, { responseType: 'blob' })
+  return data as Blob
+}
+
 /** Accroches publicitaires (3 variantes) pour annoncer une nouveauté. */
 export async function getAdSlogans(input: {
   etablissement: string

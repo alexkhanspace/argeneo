@@ -45,6 +45,56 @@ public class AiImageController {
         }
     }
 
+    /**
+     * Compose une affiche à partir de PLUSIEURS photos réelles (menu, sélection de produits) :
+     * l'IA met en scène les produits fournis dans un visuel unique, sans texte, renvoyé en PNG.
+     */
+    @PostMapping("/api/ai/compose-image")
+    public ResponseEntity<byte[]> compose(@RequestParam("files") java.util.List<MultipartFile> files,
+                                          @RequestParam(value = "instruction", required = false) String instruction) {
+        if (!gemini.isConfigured()) {
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "IA non configurée sur ce serveur");
+        }
+        if (files == null || files.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Aucune photo fournie");
+        }
+        try {
+            java.util.List<byte[]> images = new java.util.ArrayList<>();
+            java.util.List<String> mimes = new java.util.ArrayList<>();
+            // On borne à 8 photos : au-delà le visuel devient illisible et la requête trop lourde.
+            for (MultipartFile f : files.subList(0, Math.min(files.size(), 8))) {
+                if (f == null || f.isEmpty()) {
+                    continue;
+                }
+                images.add(f.getBytes());
+                mimes.add(f.getContentType() != null ? f.getContentType() : "image/png");
+            }
+            if (images.isEmpty()) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Photos vides");
+            }
+            byte[] out = gemini.composeImages(composePrompt(instruction), images, mimes);
+            return ResponseEntity.ok().contentType(MediaType.IMAGE_PNG).body(out);
+        } catch (IOException e) {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Lecture des fichiers impossible", e);
+        }
+    }
+
+    private static String composePrompt(String instruction) {
+        StringBuilder p = new StringBuilder();
+        p.append("Compose UNE seule affiche publicitaire (visuel unique, orientation portrait) pour un commerce ")
+                .append("de bouche artisanal français à partir des photos RÉELLES fournies. GARDE FIDÈLEMENT chaque ")
+                .append("produit tel qu'il est (forme, couleurs, garniture) — ne les remplace pas par des produits ")
+                .append("génériques et n'en invente pas d'autres. Détoure-les et mets-les en scène ensemble dans une ")
+                .append("composition harmonieuse, appétissante et professionnelle (lumière naturelle douce, style ")
+                .append("photo studio, rendu chaleureux). Laisse des zones visuellement calmes en haut et en bas ")
+                .append("pour que du texte puisse être ajouté ensuite. ");
+        if (instruction != null && !instruction.isBlank()) {
+            p.append("CONSIGNE DU CLIENT (à respecter en priorité) : ").append(instruction.trim()).append(". ");
+        }
+        p.append("Ne fais apparaître AUCUN texte, chiffre ni logo sur l'image.");
+        return p.toString();
+    }
+
     public record GenerateImageRequest(String prompt) {
     }
 
