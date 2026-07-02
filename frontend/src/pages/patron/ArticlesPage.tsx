@@ -43,7 +43,6 @@ import { FamilleSelect } from '../../components/FamilleSelect'
 import { Modal } from '../../components/Modal'
 import { PageHeader } from '../../components/PageHeader'
 import { PriceCalculator } from '../../components/PriceCalculator'
-import { PubGenerator } from '../../components/PubGenerator'
 import { ProductSheet } from '../../components/ProductSheet'
 
 const typeLabel = (t: ArticleType): string =>
@@ -123,7 +122,6 @@ export function ArticlesPage() {
   const [editError, setEditError] = useState<string | null>(null)
   const [editBusy, setEditBusy] = useState(false)
   const [calcOpen, setCalcOpen] = useState(false)
-  const [pubOpen, setPubOpen] = useState(false)
   const [genBusy, setGenBusy] = useState(false)
   // Fiche produit (lecture seule) au clic ; le formulaire d'édition est séparé.
   const [sheetOpen, setSheetOpen] = useState(false)
@@ -815,9 +813,9 @@ export function ArticlesPage() {
                   size="small"
                   variant="outlined"
                   startIcon={<CampaignIcon />}
-                  onClick={() => setPubOpen(true)}
+                  onClick={() => editArticle && navigate(`/communication?article=${editArticle.id}`)}
                 >
-                  Générer une pub
+                  Communiquer
                 </Button>
               </Stack>
               <TextField
@@ -899,19 +897,6 @@ export function ArticlesPage() {
       )}
 
       {editArticle && (
-        <PubGenerator
-          open={pubOpen}
-          onClose={() => setPubOpen(false)}
-          article={editArticle}
-          onPhotoSaved={(updated) => {
-            setEditArticle(updated)
-            setEditPhotoFile(updated.photoFile)
-            refresh()
-          }}
-        />
-      )}
-
-      {editArticle && (
         <ProductSheet
           open={sheetOpen}
           onClose={() => setSheetOpen(false)}
@@ -936,7 +921,7 @@ export function ArticlesPage() {
           }}
           onPub={() => {
             setSheetOpen(false)
-            setPubOpen(true)
+            navigate(`/communication?article=${editArticle.id}`)
           }}
           onGeneratePhoto={() => void onGeneratePhoto()}
           onDelete={() => {
