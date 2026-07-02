@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from 'react'
+import { useEffect, useMemo, useState, type ChangeEvent, type FormEvent, type KeyboardEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   Alert,
@@ -47,6 +47,17 @@ import { ProductSheet } from '../../components/ProductSheet'
 
 const typeLabel = (t: ArticleType): string =>
   t === 'FABRIQUE' ? 'Fabriqué' : t === 'MENU' ? 'Menu' : 'Acheté'
+
+/**
+ * Champ « Nom » : Entrée valide le formulaire (comme un champ simple), Shift+Entrée
+ * insère un saut de ligne — repris tel quel sur l'étiquette du produit.
+ */
+function nameKeyDown(e: KeyboardEvent) {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault()
+    ;((e.target as HTMLElement).closest('form') as HTMLFormElement | null)?.requestSubmit()
+  }
+}
 
 function formatEur(value: number | null | undefined): string {
   if (value == null) return '—'
@@ -573,6 +584,10 @@ export function ArticlesPage() {
               onChange={(e) => setName(e.target.value)}
               required
               autoFocus
+              multiline
+              maxRows={3}
+              onKeyDown={nameKeyDown}
+              helperText="Shift+Entrée : saut de ligne (repris sur l'étiquette)"
             />
             <TextField
               label="Description (aide l'IA : photo & prix)"
@@ -728,6 +743,10 @@ export function ArticlesPage() {
                 onChange={(e) => setEditName(e.target.value)}
                 required
                 autoFocus
+                multiline
+                maxRows={3}
+                onKeyDown={nameKeyDown}
+                helperText="Shift+Entrée : saut de ligne (repris sur l'étiquette)"
               />
               <TextField
                 label="Description (aide l'IA : photo & prix)"
