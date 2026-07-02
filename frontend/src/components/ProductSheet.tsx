@@ -187,7 +187,7 @@ export function ProductSheet({
             {genBusy ? 'Génération…' : 'Générer photo IA'}
           </Button>
           <Button variant="outlined" startIcon={<CampaignIcon />} onClick={onPub}>
-            Générer une pub
+            Communiquer
           </Button>
           <Button variant="outlined" color="error" startIcon={<DeleteIcon />} onClick={onDelete}>
             Supprimer

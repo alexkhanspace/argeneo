@@ -148,6 +148,7 @@ export interface Article {
   familleName: string | null
   sousFamilleId: number | null
   sousFamilleName: string | null
+  labelTemplateId: number | null
   active: boolean
   hasRecipe: boolean
 }

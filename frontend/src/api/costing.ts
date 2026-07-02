@@ -104,6 +104,7 @@ export async function createArticle(input: {
   description?: string | null
   familleId?: number | null
   sousFamilleId?: number | null
+  labelTemplateId?: number | null
 }): Promise<Article> {
   const { data } = await api.post<Article>('/articles', input)
   return data
@@ -122,6 +123,7 @@ export async function updateArticle(
     description?: string | null
     familleId?: number | null
     sousFamilleId?: number | null
+    labelTemplateId?: number | null
   },
 ): Promise<Article> {
   const { data } = await api.put<Article>(`/articles/${id}`, input)

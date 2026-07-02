@@ -30,7 +30,9 @@ public final class ArticleDtos {
             /** Famille de classement (optionnelle). */
             Long familleId,
             /** Sous-famille de classement (optionnelle, rattachée à familleId). */
-            Long sousFamilleId) {
+            Long sousFamilleId,
+            /** Modèle d'étiquette affecté (optionnel). */
+            Long labelTemplateId) {
     }
 
     /**
@@ -55,7 +57,9 @@ public final class ArticleDtos {
             /** Famille de classement (optionnelle). */
             Long familleId,
             /** Sous-famille de classement (optionnelle, rattachée à familleId). */
-            Long sousFamilleId) {
+            Long sousFamilleId,
+            /** Modèle d'étiquette affecté (optionnel). */
+            Long labelTemplateId) {
     }
 
     public record ArticleResponse(
@@ -75,6 +79,7 @@ public final class ArticleDtos {
             String familleName,
             Long sousFamilleId,
             String sousFamilleName,
+            Long labelTemplateId,
             boolean active,
             boolean hasRecipe) {
 
@@ -85,7 +90,7 @@ public final class ArticleDtos {
                     a.getSalePriceTtc(), salePriceHt, a.getVatRate(), a.getPurchasePrice(),
                     a.getGtin(), a.getPhotoFile(), a.getDescription(),
                     a.getFamilleId(), familleName, a.getSousFamilleId(), sousFamilleName,
-                    a.isActive(), hasRecipe);
+                    a.getLabelTemplateId(), a.isActive(), hasRecipe);
         }
     }
 }

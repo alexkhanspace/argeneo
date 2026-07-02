@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import {
   Alert,
   Box,
   Button,
   Card,
   CardContent,
+  Chip,
   CircularProgress,
   Divider,
   IconButton,
@@ -21,6 +23,7 @@ import UploadIcon from '@mui/icons-material/Upload'
 import DownloadIcon from '@mui/icons-material/Download'
 import ContentCopyIcon from '@mui/icons-material/ContentCopy'
 import ImageIcon from '@mui/icons-material/Image'
+import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf'
 import SaveIcon from '@mui/icons-material/Save'
 import DeleteIcon from '@mui/icons-material/Delete'
 import NoteAddIcon from '@mui/icons-material/NoteAdd'
@@ -36,18 +39,21 @@ import {
   updateCommunication,
   type CommunicationSummary,
 } from '../../api/communication'
-import { enhanceImage } from '../../api/insights'
+import { enhanceImage, getAdSlogans } from '../../api/insights'
 import { listArticles, photoUrl } from '../../api/costing'
+import { buildPosterPdfBlob } from '../../pdf/buildPosterPdf'
 import { getProfile, getSettings, logoUrl } from '../../api/billing'
 import { listMyEtablissements } from '../../api/daily'
 import type { Article } from '../../api/types'
 import { PageHeader } from '../../components/PageHeader'
 
-type Fmt = 'square' | 'story' | 'poster'
-const FORMATS: Record<Fmt, { w: number; h: number; label: string }> = {
+type Fmt = 'square' | 'story' | 'a4' | 'a5'
+// Formats print (A4/A5) en 150 dpi ≈ 1240×1754 / 874×1240 px (ratio √2 respecté).
+const FORMATS: Record<Fmt, { w: number; h: number; label: string; print?: boolean }> = {
   square: { w: 1080, h: 1080, label: 'Carré' },
   story: { w: 1080, h: 1920, label: 'Story' },
-  poster: { w: 1240, h: 1754, label: 'Affiche' },
+  a4: { w: 1240, h: 1754, label: 'Affiche A4', print: true },
+  a5: { w: 874, h: 1240, label: 'Affichette A5', print: true },
 }
 
 const PLATFORMS = ['Instagram', 'Facebook']
@@ -152,6 +158,12 @@ export function CommunicationPage() {
   const [headline, setHeadline] = useState('')
   const [format, setFormat] = useState<Fmt>('square')
 
+  // Accroches publicitaires (slogan) proposées pour le produit mis en avant.
+  const [slogans, setSlogans] = useState<string[]>([])
+  const [sloganLoading, setSloganLoading] = useState(false)
+  const [pdfBusy, setPdfBusy] = useState(false)
+  const [searchParams, setSearchParams] = useSearchParams()
+
   const [caption, setCaption] = useState('')
   const [captionLoading, setCaptionLoading] = useState(false)
   const [enhancing, setEnhancing] = useState(false)
@@ -182,6 +194,21 @@ export function CommunicationPage() {
     listArticles().then(setArticles).catch(() => undefined)
     refreshArchives()
   }, [])
+
+  // Arrivée depuis la fiche article (?article=<id>) : pré-sélectionne le produit et son accroche.
+  useEffect(() => {
+    const aid = searchParams.get('article')
+    if (!aid || articles.length === 0) return
+    const id = Number(aid)
+    const a = articles.find((x) => x.id === id)
+    if (a) {
+      void onSelectArticle(id)
+      void fetchSlogans(a)
+    }
+    searchParams.delete('article')
+    setSearchParams(searchParams, { replace: true })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [articles])
 
   // Chargement initial : charte (couleurs + logo) et contexte établissement.
   useEffect(() => {
@@ -245,12 +272,38 @@ export function CommunicationPage() {
     }
   }
 
+  // Accroches publicitaires (slogan) pour le produit mis en avant.
+  const fetchSlogans = async (a: Article) => {
+    setSloganLoading(true)
+    try {
+      const res = await getAdSlogans({
+        etablissement: etab.name ?? 'boulangerie',
+        description: etab.description ?? null,
+        location: etab.address ?? null,
+        articleName: a.name,
+        articleDescription: a.description,
+        priceTtc: a.salePriceTtc,
+      })
+      const list = res.enabled ? res.slogans : []
+      setSlogans(list)
+      if (list.length && !headline.trim()) setHeadline(list[0])
+    } catch {
+      // best-effort : pas d'accroche auto
+    } finally {
+      setSloganLoading(false)
+    }
+  }
+
   // Sélection d'un produit : pré-remplit le contexte et charge sa photo comme base du visuel.
   const onSelectArticle = async (id: number | '') => {
     setArticleId(id)
     setSavedMsg(null)
-    if (id === '') return
+    if (id === '') {
+      setSlogans([])
+      return
+    }
     const a = articles.find((x) => x.id === id)
+    if (a) void fetchSlogans(a)
     if (!a?.photoFile) return
     try {
       const url = photoUrl(a.photoFile)
@@ -460,15 +513,65 @@ export function CommunicationPage() {
       ctx.drawImage(logoImg, lx, pad, lw, lh)
     }
 
-    // Accroche (bas-gauche, grosse).
-    if (headline.trim()) {
+    if (selectedArticle) {
+      // Mise en page « pub produit » (rapatriée de la fiche article) : badge Nouveauté,
+      // nom du produit, accroche, pastille prix.
+      ctx.font = `bold ${Math.round(w * 0.04)}px Helvetica, Arial, sans-serif`
+      const badge = 'NOUVEAUTÉ'
+      const bw = ctx.measureText(badge).width + pad
+      const bh = Math.round(w * 0.075)
+      ctx.fillStyle = colors.c1
+      ctx.beginPath()
+      ctx.roundRect(pad, pad, bw, bh, bh / 2)
+      ctx.fill()
+      ctx.fillStyle = '#fff'
+      ctx.textBaseline = 'middle'
+      ctx.textAlign = 'left'
+      ctx.fillText(badge, pad + pad / 2, pad + bh / 2)
+
+      const accroche = headline.trim()
+      // Nom du produit (bas-gauche, gros), accroche juste en dessous.
+      ctx.textBaseline = 'alphabetic'
+      ctx.fillStyle = '#fff'
+      ctx.font = `bold ${Math.round(w * 0.075)}px Helvetica, Arial, sans-serif`
+      const accrocheLines = accroche
+        ? Math.min(3, Math.ceil(ctx.measureText(accroche).width / (w - 2 * pad)))
+        : 0
+      const nameBottom = h - pad - Math.round(w * 0.045) * (accrocheLines + 1)
+      wrapText(ctx, selectedArticle.name, pad, nameBottom, w - 2 * pad - Math.round(w * 0.28), Math.round(w * 0.085))
+
+      if (accroche) {
+        ctx.fillStyle = 'rgba(255,255,255,0.92)'
+        ctx.font = `${Math.round(w * 0.038)}px Helvetica, Arial, sans-serif`
+        wrapText(ctx, accroche, pad, h - pad, w - 2 * pad - Math.round(w * 0.28), Math.round(w * 0.045))
+      }
+
+      // Prix (bas-droite, pastille couleur 2).
+      if (selectedArticle.salePriceTtc != null) {
+        const price = selectedArticle.salePriceTtc.toLocaleString('fr-FR', { minimumFractionDigits: 2 }) + ' €'
+        ctx.font = `bold ${Math.round(w * 0.06)}px Helvetica, Arial, sans-serif`
+        const pw = ctx.measureText(price).width + pad
+        const ph = Math.round(w * 0.11)
+        const px = w - pad - pw
+        const py = h - pad - ph
+        ctx.fillStyle = colors.c2
+        ctx.beginPath()
+        ctx.roundRect(px, py, pw, ph, ph / 2)
+        ctx.fill()
+        ctx.fillStyle = '#fff'
+        ctx.textAlign = 'center'
+        ctx.textBaseline = 'middle'
+        ctx.fillText(price, px + pw / 2, py + ph / 2)
+      }
+    } else if (headline.trim()) {
+      // Publication libre : une seule grande accroche en bas.
       ctx.fillStyle = '#fff'
       ctx.textBaseline = 'alphabetic'
       ctx.textAlign = 'left'
       ctx.font = `bold ${Math.round(w * 0.08)}px Helvetica, Arial, sans-serif`
       wrapText(ctx, headline.trim(), pad, h - pad, w - 2 * pad, Math.round(w * 0.09))
     }
-  }, [format, photoImg, logoImg, headline, colors])
+  }, [format, photoImg, logoImg, headline, colors, selectedArticle])
 
   const download = () => {
     const canvas = canvasRef.current
@@ -484,6 +587,30 @@ export function CommunicationPage() {
       a.remove()
       URL.revokeObjectURL(url)
     }, 'image/png')
+  }
+
+  // Export PDF prêt à imprimer pour les formats affiche (A4/A5).
+  const downloadPdf = async () => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    setError(null)
+    setPdfBusy(true)
+    try {
+      const dataUrl = canvas.toDataURL('image/png')
+      const blob = await buildPosterPdfBlob(dataUrl, format === 'a5' ? 'A5' : 'A4')
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `affiche-${format}.pdf`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(url)
+    } catch (err) {
+      setError(errorMessage(err))
+    } finally {
+      setPdfBusy(false)
+    }
   }
 
   return (
@@ -607,13 +734,14 @@ export function CommunicationPage() {
                 />
               </Stack>
               <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', gap: 1 }}>
-                <Button size="small" variant="outlined" startIcon={<UploadIcon />} onClick={() => fileRef.current?.click()}>
+                <Button size="small" variant="contained" startIcon={<UploadIcon />} onClick={() => fileRef.current?.click()}>
                   Importer une photo
                 </Button>
                 <Button
                   size="small"
-                  variant="outlined"
-                  startIcon={enhancing ? <CircularProgress size={14} /> : <AutoAwesomeIcon />}
+                  variant="contained"
+                  color="secondary"
+                  startIcon={enhancing ? <CircularProgress size={14} color="inherit" /> : <AutoAwesomeIcon />}
                   onClick={() => void onEnhance()}
                   disabled={enhancing || !sourceFile}
                 >
@@ -621,14 +749,18 @@ export function CommunicationPage() {
                 </Button>
                 <Button
                   size="small"
-                  variant="outlined"
+                  variant="text"
                   startIcon={genImg ? <CircularProgress size={14} /> : <ImageIcon />}
                   onClick={() => void onGenerateImage()}
                   disabled={genImg}
                 >
-                  Générer une image (IA)
+                  Générer (IA, dépannage)
                 </Button>
               </Stack>
+              <Typography variant="caption" color="text.secondary" sx={{ mt: -1 }}>
+                Le meilleur rendu vient d’une <strong>vraie photo importée puis sublimée</strong>. La génération
+                complète par IA est un dépannage quand tu n’as pas de photo.
+              </Typography>
               <input
                 ref={fileRef}
                 type="file"
@@ -642,13 +774,39 @@ export function CommunicationPage() {
               />
 
               <TextField
-                label="Texte sur le visuel (optionnel)"
-                placeholder="Ex. Merci à vous !"
+                label={selectedArticle ? 'Accroche (sur le visuel)' : 'Texte sur le visuel (optionnel)'}
+                placeholder={selectedArticle ? 'Ex. La nouveauté gourmande de la semaine' : 'Ex. Merci à vous !'}
                 value={headline}
                 onChange={(e) => setHeadline(e.target.value)}
                 size="small"
-                helperText="L'image IA est générée SANS texte ; ce texte-ci est ajouté proprement par l'appli (en français)."
+                helperText="Ce texte est ajouté proprement par l'appli (en français), par-dessus le visuel."
               />
+              {selectedArticle && (
+                <Box>
+                  <Button
+                    size="small"
+                    startIcon={sloganLoading ? <CircularProgress size={14} /> : <AutoAwesomeIcon />}
+                    onClick={() => void fetchSlogans(selectedArticle)}
+                    disabled={sloganLoading}
+                  >
+                    {slogans.length ? 'Régénérer l’accroche' : 'Proposer une accroche'}
+                  </Button>
+                  {slogans.length > 0 && (
+                    <Stack direction="row" sx={{ gap: 1, flexWrap: 'wrap', mt: 1 }}>
+                      {slogans.map((s, i) => (
+                        <Chip
+                          key={i}
+                          label={s}
+                          size="small"
+                          variant={s === headline ? 'filled' : 'outlined'}
+                          color={s === headline ? 'primary' : 'default'}
+                          onClick={() => setHeadline(s)}
+                        />
+                      ))}
+                    </Stack>
+                  )}
+                </Box>
+              )}
 
               <ToggleButtonGroup size="small" exclusive value={format} onChange={(_, v) => v && setFormat(v)} fullWidth>
                 {(Object.keys(FORMATS) as Fmt[]).map((f) => (
@@ -675,8 +833,18 @@ export function CommunicationPage() {
                 >
                   {savedId ? 'Mettre à jour' : 'Enregistrer'}
                 </Button>
+                {FORMATS[format].print && (
+                  <Button
+                    variant="outlined"
+                    startIcon={pdfBusy ? <CircularProgress size={16} /> : <PictureAsPdfIcon />}
+                    onClick={() => void downloadPdf()}
+                    disabled={pdfBusy}
+                  >
+                    Télécharger PDF
+                  </Button>
+                )}
                 <Button variant="contained" startIcon={<DownloadIcon />} onClick={download}>
-                  Télécharger
+                  Télécharger PNG
                 </Button>
               </Stack>
             </Stack>

@@ -22,6 +22,7 @@ import CalculateIcon from '@mui/icons-material/Calculate'
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome'
 import CampaignIcon from '@mui/icons-material/Campaign'
 import FolderIcon from '@mui/icons-material/Folder'
+import PhotoCameraIcon from '@mui/icons-material/PhotoCamera'
 import { errorMessage } from '../../api/client'
 import {
   createArticle,
@@ -35,13 +36,13 @@ import {
   updateArticle,
   uploadArticlePhoto,
 } from '../../api/costing'
+import { listLabelTemplates, type LabelTemplate } from '../../api/labels'
 import type { Article, ArticleType, Famille, MeasureUnit, UnitInfo } from '../../api/types'
 import { FamilleManager } from '../../components/FamilleManager'
 import { FamilleSelect } from '../../components/FamilleSelect'
 import { Modal } from '../../components/Modal'
 import { PageHeader } from '../../components/PageHeader'
 import { PriceCalculator } from '../../components/PriceCalculator'
-import { PubGenerator } from '../../components/PubGenerator'
 import { ProductSheet } from '../../components/ProductSheet'
 
 const typeLabel = (t: ArticleType): string =>
@@ -74,6 +75,7 @@ export function ArticlesPage() {
   const [costs, setCosts] = useState<Record<number, CostInfo>>({})
   const [units, setUnits] = useState<UnitInfo[]>([])
   const [familles, setFamilles] = useState<Famille[]>([])
+  const [labelTemplates, setLabelTemplates] = useState<LabelTemplate[]>([])
   const [listError, setListError] = useState<string | null>(null)
 
   // Mobile : liste de cartes (fiches) au lieu du tableau, avec un tri dédié.
@@ -96,6 +98,10 @@ export function ArticlesPage() {
   const [description, setDescription] = useState('')
   const [cFamilleId, setCFamilleId] = useState<number | null>(null)
   const [cSousFamilleId, setCSousFamilleId] = useState<number | null>(null)
+  const [cLabelTemplateId, setCLabelTemplateId] = useState<number | null>(null)
+  // Photo prise/importée à la création : conservée puis uploadée dès que l'article a un id.
+  const [cPhotoFile, setCPhotoFile] = useState<File | null>(null)
+  const [cPhotoPreview, setCPhotoPreview] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
@@ -111,11 +117,11 @@ export function ArticlesPage() {
   const [editDescription, setEditDescription] = useState('')
   const [editFamilleId, setEditFamilleId] = useState<number | null>(null)
   const [editSousFamilleId, setEditSousFamilleId] = useState<number | null>(null)
+  const [editLabelTemplateId, setEditLabelTemplateId] = useState<number | null>(null)
   const [editPhotoFile, setEditPhotoFile] = useState<string | null>(null)
   const [editError, setEditError] = useState<string | null>(null)
   const [editBusy, setEditBusy] = useState(false)
   const [calcOpen, setCalcOpen] = useState(false)
-  const [pubOpen, setPubOpen] = useState(false)
   const [genBusy, setGenBusy] = useState(false)
   // Fiche produit (lecture seule) au clic ; le formulaire d'édition est séparé.
   const [sheetOpen, setSheetOpen] = useState(false)
@@ -141,6 +147,7 @@ export function ArticlesPage() {
     refresh()
     refreshFamilles()
     listUnits().then(setUnits).catch(() => undefined)
+    listLabelTemplates().then(setLabelTemplates).catch(() => undefined)
   }, [])
 
   const filterSousFamilles = familles.find((f) => f.id === filterFamille)?.children ?? []
@@ -155,12 +162,32 @@ export function ArticlesPage() {
     }
   }
 
+  // Enregistre la photo prise/importée pour l'article en cours de création (aperçu local).
+  const onCreatePhotoChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    e.target.value = '' // permet de re-sélectionner le même fichier
+    if (!file) return
+    setCPhotoFile(file)
+    setCPhotoPreview((prev) => {
+      if (prev) URL.revokeObjectURL(prev)
+      return URL.createObjectURL(file)
+    })
+  }
+
+  const clearCreatePhoto = () => {
+    setCPhotoFile(null)
+    setCPhotoPreview((prev) => {
+      if (prev) URL.revokeObjectURL(prev)
+      return null
+    })
+  }
+
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault()
     setError(null)
     setBusy(true)
     try {
-      await createArticle({
+      const created = await createArticle({
         name,
         type,
         unit,
@@ -170,13 +197,24 @@ export function ArticlesPage() {
         description: description.trim() || null,
         familleId: cFamilleId,
         sousFamilleId: cSousFamilleId,
+        labelTemplateId: cLabelTemplateId,
       })
+      // La photo ne peut s'attacher qu'à un article existant : on l'envoie après création.
+      if (cPhotoFile) {
+        try {
+          await uploadArticlePhoto(created.id, cPhotoFile)
+        } catch {
+          // Article créé quand même : la photo pourra être ré-ajoutée depuis l'édition.
+        }
+      }
       setName('')
       setSalePrice('')
       setPurchasePrice('')
       setDescription('')
       setCFamilleId(null)
       setCSousFamilleId(null)
+      setCLabelTemplateId(null)
+      clearCreatePhoto()
       setOpen(false)
       refresh()
     } catch (err) {
@@ -198,6 +236,7 @@ export function ArticlesPage() {
     setEditDescription(a.description ?? '')
     setEditFamilleId(a.familleId)
     setEditSousFamilleId(a.sousFamilleId)
+    setEditLabelTemplateId(a.labelTemplateId)
     setEditPhotoFile(a.photoFile)
     setEditError(null)
   }
@@ -265,6 +304,7 @@ export function ArticlesPage() {
         description: editDescription.trim() || null,
         familleId: editFamilleId,
         sousFamilleId: editSousFamilleId,
+        labelTemplateId: editLabelTemplateId,
       })
       setEditArticle(null)
       refresh()
@@ -542,6 +582,39 @@ export function ArticlesPage() {
               minRows={2}
               placeholder="Ex. bagel garni et refermé, saumon fumé, cream cheese, aneth…"
             />
+            {/* Photo du produit : prise directement (caméra) ou importée dès la création. */}
+            <Box
+              sx={{
+                display: 'flex',
+                flexDirection: { xs: 'column', sm: 'row' },
+                alignItems: { xs: 'flex-start', sm: 'center' },
+                gap: 2,
+              }}
+            >
+              <Avatar
+                variant="rounded"
+                src={cPhotoPreview ?? undefined}
+                alt={name}
+                sx={{ width: 72, height: 72, bgcolor: 'action.hover', color: 'text.disabled' }}
+              >
+                ?
+              </Avatar>
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+                <Button variant="outlined" component="label" startIcon={<PhotoCameraIcon />}>
+                  Prendre une photo
+                  <input type="file" accept="image/*" capture="environment" hidden onChange={onCreatePhotoChange} />
+                </Button>
+                <Button variant="outlined" component="label">
+                  {cPhotoFile ? 'Changer' : 'Importer'}
+                  <input type="file" accept="image/*" hidden onChange={onCreatePhotoChange} />
+                </Button>
+                {cPhotoFile && (
+                  <Button color="inherit" onClick={clearCreatePhoto}>
+                    Retirer
+                  </Button>
+                )}
+              </Stack>
+            </Box>
             <TextField
               select
               label="Type"
@@ -602,6 +675,24 @@ export function ArticlesPage() {
                   setCSousFamilleId(sf)
                 }}
               />
+            )}
+            {labelTemplates.length > 0 && (
+              <TextField
+                select
+                label="Modèle d'étiquette (optionnel)"
+                value={cLabelTemplateId == null ? '' : String(cLabelTemplateId)}
+                onChange={(e) => setCLabelTemplateId(e.target.value === '' ? null : Number(e.target.value))}
+                helperText="Le modèle règle l'étiquette (style + badges) à l'impression."
+              >
+                <MenuItem value="">
+                  <em>— Aucun</em>
+                </MenuItem>
+                {labelTemplates.map((t) => (
+                  <MenuItem key={t.id} value={String(t.id)}>
+                    {t.name}
+                  </MenuItem>
+                ))}
+              </TextField>
             )}
             {error && <Alert severity="error">{error}</Alert>}
             <Button type="submit" variant="contained" disabled={busy}>
@@ -679,8 +770,17 @@ export function ArticlesPage() {
                   sx={{ width: 72, height: 72 }}
                 />
                 <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+                  <Button
+                    variant="outlined"
+                    component="label"
+                    startIcon={<PhotoCameraIcon />}
+                    disabled={editBusy || genBusy}
+                  >
+                    Prendre une photo
+                    <input type="file" accept="image/*" capture="environment" hidden onChange={onPhotoChange} />
+                  </Button>
                   <Button variant="outlined" component="label" disabled={editBusy || genBusy}>
-                    {editPhotoFile ? 'Changer la photo' : 'Ajouter une photo'}
+                    {editPhotoFile ? 'Changer la photo' : 'Importer'}
                     <input type="file" accept="image/*" hidden onChange={onPhotoChange} />
                   </Button>
                   <Button
@@ -713,9 +813,9 @@ export function ArticlesPage() {
                   size="small"
                   variant="outlined"
                   startIcon={<CampaignIcon />}
-                  onClick={() => setPubOpen(true)}
+                  onClick={() => editArticle && navigate(`/communication?article=${editArticle.id}`)}
                 >
-                  Générer une pub
+                  Communiquer
                 </Button>
               </Stack>
               <TextField
@@ -750,6 +850,26 @@ export function ArticlesPage() {
                   }}
                 />
               )}
+              <TextField
+                select
+                label="Modèle d'étiquette (optionnel)"
+                value={editLabelTemplateId == null ? '' : String(editLabelTemplateId)}
+                onChange={(e) => setEditLabelTemplateId(e.target.value === '' ? null : Number(e.target.value))}
+                helperText={
+                  labelTemplates.length === 0
+                    ? 'Aucun modèle : crée-en dans « Modèles d’étiquette ».'
+                    : "Règle l'étiquette (style + badges) à l'impression."
+                }
+              >
+                <MenuItem value="">
+                  <em>— Aucun</em>
+                </MenuItem>
+                {labelTemplates.map((t) => (
+                  <MenuItem key={t.id} value={String(t.id)}>
+                    {t.name}
+                  </MenuItem>
+                ))}
+              </TextField>
               {editError && <Alert severity="error">{editError}</Alert>}
               <Button type="submit" variant="contained" disabled={editBusy}>
                 {editBusy ? 'Enregistrement…' : 'Enregistrer'}
@@ -773,19 +893,6 @@ export function ArticlesPage() {
           articleType={editArticle.type === 'FABRIQUE' ? 'Fabriqué (recette)' : 'Acheté-revendu'}
           articleDescription={editDescription || editArticle.description}
           onApply={(ttc) => setEditSalePrice(String(ttc))}
-        />
-      )}
-
-      {editArticle && (
-        <PubGenerator
-          open={pubOpen}
-          onClose={() => setPubOpen(false)}
-          article={editArticle}
-          onPhotoSaved={(updated) => {
-            setEditArticle(updated)
-            setEditPhotoFile(updated.photoFile)
-            refresh()
-          }}
         />
       )}
 
@@ -814,7 +921,7 @@ export function ArticlesPage() {
           }}
           onPub={() => {
             setSheetOpen(false)
-            setPubOpen(true)
+            navigate(`/communication?article=${editArticle.id}`)
           }}
           onGeneratePhoto={() => void onGeneratePhoto()}
           onDelete={() => {
