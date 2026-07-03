@@ -23,6 +23,8 @@ export interface LabelTemplate {
   chalk: boolean
   fillSheet: boolean
   badgePos: 'tr' | 'tl' | 'footer'
+  /** Position de la bande (logo/marque + badges de pied + prix) : sous le nom ou au-dessus. */
+  bandPos: 'bottom' | 'top'
   badgeScale: number
   extraText: string | null
   useDescription: boolean

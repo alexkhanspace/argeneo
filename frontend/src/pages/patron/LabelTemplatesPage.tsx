@@ -91,6 +91,7 @@ const DEFAULTS = {
   chalk: false,
   fillSheet: false,
   badgePos: 'tr' as 'tr' | 'tl' | 'footer',
+  bandPos: 'bottom' as 'bottom' | 'top',
   badgeScale: 1,
   extraText: '',
   useDescription: false,
@@ -117,6 +118,7 @@ export function LabelTemplatesPage() {
   const [chalk, setChalk] = useState(DEFAULTS.chalk)
   const [fillSheet, setFillSheet] = useState(DEFAULTS.fillSheet)
   const [badgePos, setBadgePos] = useState<'tr' | 'tl' | 'footer'>(DEFAULTS.badgePos)
+  const [bandPos, setBandPos] = useState<'bottom' | 'top'>(DEFAULTS.bandPos)
   const [badgeScale, setBadgeScale] = useState(DEFAULTS.badgeScale)
   const [extraText, setExtraText] = useState(DEFAULTS.extraText)
   const [useDescription, setUseDescription] = useState(DEFAULTS.useDescription)
@@ -179,6 +181,7 @@ export function LabelTemplatesPage() {
     setChalk(DEFAULTS.chalk)
     setFillSheet(DEFAULTS.fillSheet)
     setBadgePos(DEFAULTS.badgePos)
+    setBandPos(DEFAULTS.bandPos)
     setBadgeScale(DEFAULTS.badgeScale)
     setExtraText(DEFAULTS.extraText)
     setUseDescription(DEFAULTS.useDescription)
@@ -203,6 +206,7 @@ export function LabelTemplatesPage() {
     setChalk(t.chalk)
     setFillSheet(t.fillSheet)
     setBadgePos(t.badgePos)
+    setBandPos(t.bandPos)
     setBadgeScale(t.badgeScale)
     setExtraText(t.extraText ?? '')
     setUseDescription(t.useDescription)
@@ -225,6 +229,7 @@ export function LabelTemplatesPage() {
     chalk,
     fillSheet,
     badgePos,
+    bandPos,
     badgeScale,
     extraText: extraText.trim() || null,
     useDescription,
@@ -371,6 +376,7 @@ export function LabelTemplatesPage() {
                 frame,
                 chalk,
                 badgePos,
+                bandPos,
                 badgeScale,
               }}
               badges={badges}
@@ -435,6 +441,20 @@ export function LabelTemplatesPage() {
                     label="Remplir l'A4 (moins de perte)"
                   />
                 </Stack>
+                <Box sx={{ mt: 1 }}>
+                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                    Bande (logo, badge, prix)
+                  </Typography>
+                  <ToggleButtonGroup
+                    size="small"
+                    exclusive
+                    value={bandPos}
+                    onChange={(_: unknown, v: 'bottom' | 'top' | null) => v && setBandPos(v)}
+                  >
+                    <ToggleButton value="bottom">En bas</ToggleButton>
+                    <ToggleButton value="top">En haut</ToggleButton>
+                  </ToggleButtonGroup>
+                </Box>
               </Box>
 
               <Box>

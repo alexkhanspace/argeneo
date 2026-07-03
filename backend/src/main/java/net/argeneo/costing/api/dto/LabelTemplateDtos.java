@@ -30,6 +30,7 @@ public final class LabelTemplateDtos {
             Boolean chalk,
             Boolean fillSheet,
             String badgePos,
+            String bandPos,
             Double badgeScale,
             String extraText,
             Boolean useDescription,
@@ -51,6 +52,7 @@ public final class LabelTemplateDtos {
             boolean chalk,
             boolean fillSheet,
             String badgePos,
+            String bandPos,
             double badgeScale,
             String extraText,
             boolean useDescription,
@@ -63,7 +65,7 @@ public final class LabelTemplateDtos {
                     t.getBgColor(), t.getTextColor(), t.getBorderColor(),
                     t.getWidthCm(), t.getHeightCm(), t.getFontScale(), t.isShowPrice(),
                     t.getFrame(), t.isChalk(), t.isFillSheet(),
-                    t.getBadgePos(), t.getBadgeScale(),
+                    t.getBadgePos(), t.getBandPos(), t.getBadgeScale(),
                     t.getExtraText(), t.isUseDescription(), badges, t.isEnseigneDefault());
         }
     }

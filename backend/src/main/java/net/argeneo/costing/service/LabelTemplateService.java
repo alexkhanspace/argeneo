@@ -20,6 +20,7 @@ public class LabelTemplateService {
 
     private static final List<String> FRAMES = List.of("none", "wood");
     private static final List<String> BADGE_POS = List.of("tr", "tl", "footer");
+    private static final List<String> BAND_POS = List.of("bottom", "top");
 
     // Instance locale : pas de bean ObjectMapper à injecter (le contexte ne démarre pas sinon).
     private static final ObjectMapper MAPPER = new ObjectMapper();
@@ -120,6 +121,7 @@ public class LabelTemplateService {
         t.setChalk(Boolean.TRUE.equals(r.chalk()));
         t.setFillSheet(Boolean.TRUE.equals(r.fillSheet()));
         t.setBadgePos(oneOf(r.badgePos(), BADGE_POS, "tr"));
+        t.setBandPos(oneOf(r.bandPos(), BAND_POS, "bottom"));
         t.setBadgeScale(clamp(r.badgeScale(), 0.4, 2.5, 1));
         t.setExtraText(blankToNull(r.extraText()));
         t.setUseDescription(Boolean.TRUE.equals(r.useDescription()));

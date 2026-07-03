@@ -201,6 +201,7 @@ export function LabelsPage() {
     frame: t.frame,
     chalk: t.chalk,
     badgePos: t.badgePos,
+    bandPos: t.bandPos,
     badgeScale: t.badgeScale,
   })
 
@@ -355,6 +356,7 @@ export function LabelsPage() {
                     frame: previewTemplate.frame,
                     chalk: previewTemplate.chalk,
                     badgePos: previewTemplate.badgePos,
+                    bandPos: previewTemplate.bandPos,
                     badgeScale: previewTemplate.badgeScale,
                   }}
                   badges={previewTemplate.badges}

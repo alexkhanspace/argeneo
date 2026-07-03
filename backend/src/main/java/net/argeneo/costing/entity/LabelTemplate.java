@@ -77,6 +77,10 @@ public class LabelTemplate {
     @Column(name = "badge_pos", nullable = false, length = 10)
     private String badgePos = "tr";
 
+    /** Position de la bande (logo/marque + badges de pied + prix) : « bottom » ou « top ». */
+    @Column(name = "band_pos", nullable = false, length = 10)
+    private String bandPos = "bottom";
+
     @Column(name = "badge_scale", nullable = false)
     private double badgeScale = 1;
 

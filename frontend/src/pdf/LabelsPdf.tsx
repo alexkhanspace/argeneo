@@ -45,6 +45,8 @@ export interface LabelStyle {
   chalk: boolean
   /** Position des badges : haut-droite, haut-gauche, ou dans le pied (entre marque et prix). */
   badgePos?: 'tr' | 'tl' | 'footer'
+  /** Position de la bande (logo/marque + badges de pied + prix) : sous le nom (défaut) ou au-dessus. */
+  bandPos?: 'bottom' | 'top'
   /** Multiplicateur de taille de l'image du badge (médaille). */
   badgeScale?: number
 }
@@ -65,6 +67,7 @@ export interface LabelsPdfData {
 function groupPages(group: LabelGroup, logoUrl: string | null, keyPrefix: string) {
   const { items, widthMm, heightMm, brand, bgColor, textColor, borderColor, fill, fontScale, frame, chalk } = group
   const badgePos = group.badgePos ?? 'tr'
+  const bandPos = group.bandPos ?? 'bottom'
   const badgeScale = group.badgeScale ?? 1
 
   // Combien d'étiquettes par page A4, puis agrandissement éventuel pour remplir la feuille.
@@ -209,23 +212,36 @@ function groupPages(group: LabelGroup, logoUrl: string | null, keyPrefix: string
   for (let i = 0; i < items.length; i += perPage) pages.push(items.slice(i, i + perPage))
   if (pages.length === 0) pages.push([])
 
+  const nameBlock = (it: LabelItem) => (
+    <View style={styles.nameWrap}>
+      <Text style={styles.name}>{it.name}</Text>
+      {it.note ? <Text style={styles.note}>{it.note}</Text> : null}
+    </View>
+  )
+  const footerRow = (it: LabelItem) => (
+    <View style={styles.footer}>
+      <View style={styles.brandWrap}>
+        {logoUrl ? <Image src={logoUrl} style={styles.logo} /> : null}
+        <Text style={styles.brand}>{brand}</Text>
+      </View>
+      {footerBadgeFor(it)}
+      {it.price ? <Text style={styles.price}>{it.price}</Text> : null}
+    </View>
+  )
+  // La bande (marque + badges de pied + prix) et son séparateur : l'ordre s'inverse selon bandPos
+  // pour que le trait reste toujours entre la bande et le nom.
+  const bandBlock = (it: LabelItem) => (
+    <View>
+      {bandPos === 'top' && footerRow(it)}
+      <View style={styles.sep} />
+      {bandPos !== 'top' && footerRow(it)}
+    </View>
+  )
   const body = (it: LabelItem) => (
     <View style={styles.body}>
-      <View style={styles.nameWrap}>
-        <Text style={styles.name}>{it.name}</Text>
-        {it.note ? <Text style={styles.note}>{it.note}</Text> : null}
-      </View>
-      <View>
-        <View style={styles.sep} />
-        <View style={styles.footer}>
-          <View style={styles.brandWrap}>
-            {logoUrl ? <Image src={logoUrl} style={styles.logo} /> : null}
-            <Text style={styles.brand}>{brand}</Text>
-          </View>
-          {footerBadgeFor(it)}
-          {it.price ? <Text style={styles.price}>{it.price}</Text> : null}
-        </View>
-      </View>
+      {bandPos === 'top' && bandBlock(it)}
+      {nameBlock(it)}
+      {bandPos !== 'top' && bandBlock(it)}
     </View>
   )
 
