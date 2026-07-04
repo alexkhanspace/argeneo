@@ -318,7 +318,16 @@ export function LabelsPage() {
         </Alert>
       )}
 
-      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 2 }}>
+      <Box
+        sx={{
+          display: 'grid',
+          gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' },
+          gap: 2,
+          // Autorise les colonnes 1fr à rétrécir sous le min-content de leur contenu
+          // (sinon la grille déborde horizontalement sur mobile / iPhone).
+          '& > *': { minWidth: 0 },
+        }}
+      >
         {/* Aperçu du modèle du produit d'exemple */}
         <Card>
           <CardContent>
@@ -400,7 +409,7 @@ export function LabelsPage() {
               />
             </Stack>
             {filtered.length > 0 && (
-              <Stack direction="row" sx={{ gap: 1, mt: 0.5 }}>
+              <Stack direction="row" sx={{ gap: 1, mt: 0.5, flexWrap: 'wrap' }}>
                 <Button size="small" onClick={selectAll}>
                   Tout sélectionner ({filtered.length})
                 </Button>

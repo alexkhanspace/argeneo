@@ -350,7 +350,16 @@ export function LabelTemplatesPage() {
         </Alert>
       )}
 
-      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 2 }}>
+      <Box
+        sx={{
+          display: 'grid',
+          gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' },
+          gap: 2,
+          // Autorise les colonnes 1fr à rétrécir sous le min-content de leur contenu
+          // (sinon la grille déborde horizontalement sur mobile / iPhone).
+          '& > *': { minWidth: 0 },
+        }}
+      >
         {/* Éditeur du modèle */}
         <Card>
           <CardContent>
@@ -450,6 +459,7 @@ export function LabelTemplatesPage() {
                     exclusive
                     value={bandPos}
                     onChange={(_: unknown, v: 'bottom' | 'top' | null) => v && setBandPos(v)}
+                    sx={{ flexWrap: 'wrap' }}
                   >
                     <ToggleButton value="bottom">En bas</ToggleButton>
                     <ToggleButton value="top">En haut</ToggleButton>
@@ -613,7 +623,7 @@ export function LabelTemplatesPage() {
                     exclusive
                     value={badgePos}
                     onChange={(_: unknown, v: 'tr' | 'tl' | 'footer' | null) => v && setBadgePos(v)}
-                    sx={{ mt: 1.5 }}
+                    sx={{ mt: 1.5, flexWrap: 'wrap' }}
                   >
                     <ToggleButton value="tl">Haut gauche</ToggleButton>
                     <ToggleButton value="tr">Haut droite</ToggleButton>
