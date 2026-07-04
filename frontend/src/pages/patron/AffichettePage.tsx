@@ -11,6 +11,8 @@ import {
   CircularProgress,
   Divider,
   IconButton,
+  ListItemIcon,
+  Menu,
   MenuItem,
   Slider,
   Stack,
@@ -31,6 +33,10 @@ import SaveIcon from '@mui/icons-material/Save'
 import DeleteIcon from '@mui/icons-material/Delete'
 import FormatBoldIcon from '@mui/icons-material/FormatBold'
 import ArrowBackIcon from '@mui/icons-material/ArrowBack'
+import RestartAltIcon from '@mui/icons-material/RestartAlt'
+import ContentCopyIcon from '@mui/icons-material/ContentCopy'
+import FlipToFrontIcon from '@mui/icons-material/FlipToFront'
+import ZoomInIcon from '@mui/icons-material/ZoomIn'
 import { errorMessage } from '../../api/client'
 import { getProfile, getSettings, logoUrl } from '../../api/billing'
 import { listArticles, photoUrl } from '../../api/costing'
@@ -81,6 +87,10 @@ const safeColor = (c: string | null | undefined, fb: string) =>
 
 const DRAFT_KEY = 'argeneo.affichette.draft'
 
+// Appui long (tactile) : durée avant déclenchement et tolérance de mouvement (au-delà = glissement).
+const LONG_PRESS_MS = 450
+const MOVE_CANCEL_PX = 8
+
 function imgFromBlob(blob: Blob): Promise<HTMLImageElement> {
   return new Promise((res, rej) => {
     const img = new Image()
@@ -97,8 +107,9 @@ function loadImage(url: string | null): Promise<HTMLImageElement | null> {
     .then(imgFromBlob)
     .catch(() => null)
 }
-function drawCover(ctx: CanvasRenderingContext2D, img: HTMLImageElement, w: number, h: number) {
-  const r = Math.max(w / img.width, h / img.height)
+function drawCover(ctx: CanvasRenderingContext2D, img: HTMLImageElement, w: number, h: number, zoom = 1) {
+  // `zoom` (≥ 1) agrandit la photo autour du centre — identique au transform:scale de l'aperçu CSS.
+  const r = Math.max(w / img.width, h / img.height) * zoom
   const iw = img.width * r
   const ih = img.height * r
   ctx.drawImage(img, (w - iw) / 2, (h - ih) / 2, iw, ih)
@@ -139,6 +150,14 @@ function newBlock(partial: Partial<Block>): Block {
   }
 }
 
+/** Blocs d'une affichette vierge (titre + accroche) — état de départ et « Réinitialiser ». */
+function defaultBlocks(): Block[] {
+  return [
+    newBlock({ text: 'Votre titre', yPct: 0.62, fontPct: 0.09, align: 'left', xPct: 0.06, wPct: 0.88 }),
+    newBlock({ text: 'Votre accroche ici', yPct: 0.78, fontPct: 0.045, align: 'left', xPct: 0.06, wPct: 0.88, bold: false }),
+  ]
+}
+
 /**
  * Éditeur d'affichette « type Canva » : des blocs de texte déplaçables/redimensionnables à la
  * souris par-dessus un fond (photo ou couleurs de l'enseigne). Export PNG/PDF (A4/A5) + sauvegarde.
@@ -155,17 +174,17 @@ export function AffichettePage() {
     } catch {
       // pas de brouillon
     }
-    return [
-      newBlock({ text: 'Votre titre', yPct: 0.62, fontPct: 0.09, align: 'left', xPct: 0.06, wPct: 0.88 }),
-      newBlock({ text: 'Votre accroche ici', yPct: 0.78, fontPct: 0.045, align: 'left', xPct: 0.06, wPct: 0.88, bold: false }),
-    ]
+    return defaultBlocks()
   })
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  // Menu contextuel (appui long / clic droit sur un bloc) : position écran + bloc visé.
+  const [menu, setMenu] = useState<{ x: number; y: number; id: string } | null>(null)
 
   const [bgMode, setBgMode] = useState<BgMode>('brand')
   const [bgImg, setBgImg] = useState<HTMLImageElement | null>(null)
   const [sourceFile, setSourceFile] = useState<File | null>(null)
   const [solid, setSolid] = useState('#c2410c')
+  const [bgZoom, setBgZoom] = useState(1) // zoom de la photo de fond (1 = plein cadre)
   const [veil, setVeil] = useState(0.35)
   const [colors, setColors] = useState({ c1: '#c2410c', c2: '#9a5417' })
   const [logoImg, setLogoImg] = useState<HTMLImageElement | null>(null)
@@ -224,6 +243,32 @@ export function AffichettePage() {
     setBlocks((list) => [...list, b])
     setSelectedId(b.id)
   }
+  // Ajoute un texte centré sur un point (fractions 0..1) — utilisé par l'appui long sur le canva.
+  const addBlockAt = (xPct: number, yPct: number) => {
+    const wPct = 0.8
+    const b = newBlock({ text: 'Nouveau texte', wPct, xPct: clamp01(xPct - wPct / 2), yPct: clamp01(yPct - 0.03) })
+    setBlocks((list) => [...list, b])
+    setSelectedId(b.id)
+  }
+  const duplicateBlock = (id: string) => {
+    const src = blocks.find((b) => b.id === id)
+    if (!src) return
+    const copy: Block = { ...src, id: newId(), xPct: clamp01(src.xPct + 0.04), yPct: clamp01(src.yPct + 0.04) }
+    setBlocks((list) => [...list, copy])
+    setSelectedId(copy.id)
+  }
+  // Passe le bloc au premier plan (dernier dans l'ordre de rendu).
+  const bringToFront = (id: string) =>
+    setBlocks((list) => {
+      const b = list.find((x) => x.id === id)
+      return b ? [...list.filter((x) => x.id !== id), b] : list
+    })
+  // Réinitialise l'affichette (efface les textes en cours, revient au titre + accroche).
+  const resetCanvas = () => {
+    setBlocks(defaultBlocks())
+    setSelectedId(null)
+    setMenu(null)
+  }
 
   // Suppr/Retour efface le bloc sélectionné (sauf pendant la saisie), Échap désélectionne.
   useEffect(() => {
@@ -249,6 +294,14 @@ export function AffichettePage() {
     | { id: string; mode: 'move' | 'resize' | 'scale'; startX: number; startY: number; b: Block; rect: DOMRect }
     | null
   >(null)
+  // Timer d'appui long sur un bloc (ouvre le menu contextuel s'il n'y a pas de glissement).
+  const blockLongPress = useRef<number | null>(null)
+  const clearBlockLongPress = () => {
+    if (blockLongPress.current != null) {
+      clearTimeout(blockLongPress.current)
+      blockLongPress.current = null
+    }
+  }
 
   const onPointerDown = (e: ReactPointerEvent, id: string, mode: 'move' | 'resize' | 'scale') => {
     e.preventDefault()
@@ -260,10 +313,27 @@ export function AffichettePage() {
     drag.current = { id, mode, startX: e.clientX, startY: e.clientY, b, rect: stage.getBoundingClientRect() }
     window.addEventListener('pointermove', onPointerMove)
     window.addEventListener('pointerup', onPointerUp)
+    // Appui long sur le corps du bloc → menu contextuel (annulé dès qu'un glissement commence).
+    if (mode === 'move') {
+      const px = e.clientX
+      const py = e.clientY
+      clearBlockLongPress()
+      blockLongPress.current = window.setTimeout(() => {
+        drag.current = null
+        window.removeEventListener('pointermove', onPointerMove)
+        window.removeEventListener('pointerup', onPointerUp)
+        blockLongPress.current = null
+        setMenu({ x: px, y: py, id })
+      }, LONG_PRESS_MS)
+    }
   }
   const onPointerMove = (e: PointerEvent) => {
     const d = drag.current
     if (!d) return
+    // Dès qu'on bouge assez, c'est un glissement : on annule l'appui long.
+    if (blockLongPress.current != null && Math.hypot(e.clientX - d.startX, e.clientY - d.startY) > MOVE_CANCEL_PX) {
+      clearBlockLongPress()
+    }
     const dx = (e.clientX - d.startX) / d.rect.width
     const dy = (e.clientY - d.startY) / d.rect.height
     if (d.mode === 'move') {
@@ -283,11 +353,40 @@ export function AffichettePage() {
     }
   }
   const onPointerUp = () => {
+    clearBlockLongPress()
     drag.current = null
     window.removeEventListener('pointermove', onPointerMove)
     window.removeEventListener('pointerup', onPointerUp)
   }
   useEffect(() => () => onPointerUp(), [])
+
+  // --- Appui long sur le canva vide → ajouter un texte à cet endroit ---
+  const stagePress = useRef<{ x: number; y: number; timer: number } | null>(null)
+  const clearStagePress = () => {
+    if (stagePress.current != null) {
+      clearTimeout(stagePress.current.timer)
+      stagePress.current = null
+    }
+  }
+  const onStagePointerDown = (e: ReactPointerEvent) => {
+    // Un simple appui désélectionne ; un appui maintenu (sans glisser) ajoute un texte.
+    setSelectedId(null)
+    const stage = stageRef.current
+    if (!stage) return
+    const rect = stage.getBoundingClientRect()
+    const px = e.clientX
+    const py = e.clientY
+    clearStagePress()
+    const timer = window.setTimeout(() => {
+      addBlockAt(clamp01((px - rect.left) / rect.width), clamp01((py - rect.top) / rect.height))
+      stagePress.current = null
+    }, LONG_PRESS_MS)
+    stagePress.current = { x: px, y: py, timer }
+  }
+  const onStagePointerMove = (e: ReactPointerEvent) => {
+    const s = stagePress.current
+    if (s && Math.hypot(e.clientX - s.x, e.clientY - s.y) > MOVE_CANCEL_PX) clearStagePress()
+  }
 
   // --- Fond ---
   const onImportPhoto = async (file: File | undefined) => {
@@ -295,6 +394,7 @@ export function AffichettePage() {
     setSourceFile(file)
     setBgImg(await imgFromBlob(file))
     setBgMode('photo')
+    setBgZoom(1)
   }
   const onUseArticle = async (id: number | '') => {
     setArticleId(id)
@@ -328,6 +428,7 @@ export function AffichettePage() {
         setBgImg(img)
         setBgMode('photo')
         setSourceFile(null)
+        setBgZoom(1)
       }
     }
   }
@@ -399,6 +500,7 @@ export function AffichettePage() {
       setBgImg(await imgFromBlob(blob))
       setBgMode('photo')
       setSourceFile(null)
+      setBgZoom(1)
     } catch (e) {
       setError(errorMessage(e))
     } finally {
@@ -430,6 +532,7 @@ export function AffichettePage() {
       setBgImg(await imgFromBlob(blob))
       setBgMode('photo')
       setSourceFile(null)
+      setBgZoom(1)
       // Pré-remplit un bloc « carte » avec les produits choisis (nom + prix), librement éditable.
       if (menuArticles.length > 0) {
         const lines = menuArticles
@@ -459,7 +562,7 @@ export function AffichettePage() {
     const ctx = canvas.getContext('2d')!
     // Fond
     if (bgMode === 'photo' && bgImg) {
-      drawCover(ctx, bgImg, w, h)
+      drawCover(ctx, bgImg, w, h, bgZoom)
     } else if (bgMode === 'solid') {
       ctx.fillStyle = solid
       ctx.fillRect(0, 0, w, h)
@@ -578,13 +681,14 @@ export function AffichettePage() {
     }
   }
 
-  // Fond CSS de l'aperçu (miroir du rendu canvas).
+  // Fond CSS de l'aperçu (miroir du rendu canvas). La photo est rendue dans un calque à part
+  // (zoomable via transform:scale) ; les fonds uni/enseigne restent directement sur la scène.
   const stageBg =
-    bgMode === 'photo' && bgImg
-      ? { backgroundImage: `url(${bgImg.src})`, backgroundSize: 'cover', backgroundPosition: 'center' }
-      : bgMode === 'solid'
-        ? { background: solid }
-        : { background: `linear-gradient(${colors.c1}, ${colors.c2})` }
+    bgMode === 'solid'
+      ? { background: solid }
+      : bgMode === 'brand'
+        ? { background: `linear-gradient(${colors.c1}, ${colors.c2})` }
+        : {}
 
   return (
     <>
@@ -620,15 +724,24 @@ export function AffichettePage() {
                   </ToggleButton>
                 ))}
               </ToggleButtonGroup>
-              <Button size="small" startIcon={<AddIcon />} onClick={addBlock}>
-                Ajouter un texte
-              </Button>
+              <Stack direction="row" sx={{ gap: 1, flexWrap: 'wrap' }}>
+                <Button size="small" startIcon={<AddIcon />} onClick={addBlock}>
+                  Ajouter un texte
+                </Button>
+                <Button size="small" color="inherit" startIcon={<RestartAltIcon />} onClick={resetCanvas}>
+                  Réinitialiser
+                </Button>
+              </Stack>
             </Stack>
 
             <Box sx={{ display: 'flex', justifyContent: 'center', bgcolor: 'action.hover', borderRadius: 1, p: 1 }}>
               <Box
                 ref={stageRef}
-                onPointerDown={() => setSelectedId(null)}
+                onPointerDown={onStagePointerDown}
+                onPointerMove={onStagePointerMove}
+                onPointerUp={clearStagePress}
+                onPointerLeave={clearStagePress}
+                onContextMenu={(e) => e.preventDefault()}
                 sx={{
                   position: 'relative',
                   width: '100%',
@@ -642,6 +755,21 @@ export function AffichettePage() {
                   ...stageBg,
                 }}
               >
+                {/* Calque photo (zoomable) */}
+                {bgMode === 'photo' && bgImg && (
+                  <Box
+                    sx={{
+                      position: 'absolute',
+                      inset: 0,
+                      backgroundImage: `url(${bgImg.src})`,
+                      backgroundSize: 'cover',
+                      backgroundPosition: 'center',
+                      transform: `scale(${bgZoom})`,
+                      transformOrigin: 'center',
+                      pointerEvents: 'none',
+                    }}
+                  />
+                )}
                 {/* Voile */}
                 {veil > 0 && (
                   <Box
@@ -680,6 +808,12 @@ export function AffichettePage() {
                     <Box
                       key={b.id}
                       onPointerDown={(e) => onPointerDown(e, b.id, 'move')}
+                      onContextMenu={(e) => {
+                        e.preventDefault()
+                        e.stopPropagation()
+                        setSelectedId(b.id)
+                        setMenu({ x: e.clientX, y: e.clientY, id: b.id })
+                      }}
                       sx={{
                         position: 'absolute',
                         left: `${b.xPct * 100}%`,
@@ -876,8 +1010,10 @@ export function AffichettePage() {
                 </>
               ) : (
                 <Typography variant="body2" color="text.secondary">
-                  Clique un texte sur l’affichette pour le modifier, ou « Ajouter un texte ». Touche
-                  Suppr : efface le texte sélectionné. Poignée d’angle : agrandit zone et police.
+                  Clique un texte sur l’affichette pour le modifier, ou « Ajouter un texte ». Appui long
+                  sur le fond : ajoute un texte ; appui long (ou clic droit) sur un texte : menu
+                  (dupliquer, supprimer…). Touche Suppr : efface le texte sélectionné. Poignée d’angle :
+                  agrandit zone et police.
                 </Typography>
               )}
 
@@ -953,6 +1089,25 @@ export function AffichettePage() {
                   void onImportPhoto(f)
                 }}
               />
+
+              {bgMode === 'photo' && bgImg && (
+                <Box>
+                  <Stack direction="row" sx={{ alignItems: 'center', gap: 1, mb: 0.5 }}>
+                    <ZoomInIcon fontSize="small" sx={{ color: 'text.secondary' }} />
+                    <Typography variant="caption" color="text.secondary">
+                      Zoom photo — ×{bgZoom.toFixed(2)}
+                    </Typography>
+                  </Stack>
+                  <Slider
+                    value={bgZoom}
+                    onChange={(_, v) => setBgZoom(Array.isArray(v) ? v[0] : v)}
+                    min={1}
+                    max={3}
+                    step={0.05}
+                    size="small"
+                  />
+                </Box>
+              )}
 
               <Divider />
 
@@ -1067,6 +1222,50 @@ export function AffichettePage() {
           </CardContent>
         </Card>
       </Box>
+
+      {/* Menu contextuel d'un bloc (appui long tactile ou clic droit). */}
+      <Menu
+        open={menu != null}
+        onClose={() => setMenu(null)}
+        anchorReference="anchorPosition"
+        anchorPosition={menu ? { top: menu.y, left: menu.x } : undefined}
+      >
+        <MenuItem
+          onClick={() => {
+            if (menu) duplicateBlock(menu.id)
+            setMenu(null)
+          }}
+        >
+          <ListItemIcon>
+            <ContentCopyIcon fontSize="small" />
+          </ListItemIcon>
+          Dupliquer
+        </MenuItem>
+        <MenuItem
+          onClick={() => {
+            if (menu) bringToFront(menu.id)
+            setMenu(null)
+          }}
+        >
+          <ListItemIcon>
+            <FlipToFrontIcon fontSize="small" />
+          </ListItemIcon>
+          Mettre au premier plan
+        </MenuItem>
+        <Divider />
+        <MenuItem
+          onClick={() => {
+            if (menu) removeBlock(menu.id)
+            setMenu(null)
+          }}
+          sx={{ color: 'error.main' }}
+        >
+          <ListItemIcon>
+            <DeleteIcon fontSize="small" color="error" />
+          </ListItemIcon>
+          Supprimer
+        </MenuItem>
+      </Menu>
     </>
   )
 }
