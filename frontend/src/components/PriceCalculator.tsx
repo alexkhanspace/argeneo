@@ -102,7 +102,15 @@ export function PriceCalculator({
   })()
 
   return (
-    <Modal open={open} onClose={onClose} title="Calculateur de prix">
+    <Modal
+      open={open}
+      onClose={onClose}
+      title={
+        <>
+          Calculateur <Box component="span" sx={{ textTransform: 'none' }}>de</Box> prix
+        </>
+      }
+    >
       <Stack spacing={2} sx={{ mt: 1 }}>
         {cost == null ? (
           <Alert severity="info">
