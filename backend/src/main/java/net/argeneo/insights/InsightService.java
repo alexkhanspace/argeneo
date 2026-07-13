@@ -36,8 +36,10 @@ public class InsightService {
             + "pain et sandwichs pour une boulangerie, boissons et glaces, traiteur…) — PAS un jour de semaine "
             + "ordinaire, et PAS s'il pleut (averses, bruine, orage) ; forte chaleur/canicule → boissons fraîches "
             + "en hausse, produits fragiles (crème, chocolat, glaçage) en baisse ; PLUIE, averses ou froid → "
-            + "produits réconfortants et plats chauds, pas de barbecue ; fêtes et jours fériés → forte affluence "
-            + "et produits de tradition.\n";
+            + "produits réconfortants et plats chauds, pas de barbecue ; certaines fêtes → produits de "
+            + "tradition. ATTENTION : un JOUR FÉRIÉ n'implique PAS mécaniquement plus d'affluence — selon le "
+            + "commerce et le lieu, il peut au contraire FAIRE BAISSER l'activité (clients partis, fermetures) ; "
+            + "ne suppose jamais une hausse par défaut, appuie-toi sur le CHIFFRE RÉEL de la même fête l'an dernier.\n";
 
     /** Garde-fou anti-hallucination : interdit d'inventer des montants absents des données. */
     private static final String NO_INVENT =
@@ -560,7 +562,18 @@ public class InsightService {
                 + "Dans ce cas seulement, chiffre l'écart en % et précise la base (ex. « +20% de pain " + ex + " »). "
                 + "SINON, si les conditions sont SEMBLABLES à la référence (météo proche, aucun événement), "
                 + "conseille simplement de produire COMME D'HABITUDE / comme l'an dernier, SANS pourcentage et "
-                + "sans inventer d'écart. Une météo quasi identique ne justifie AUCUNE hausse.\n";
+                + "sans inventer d'écart. Une météo quasi identique ne justifie AUCUNE hausse.\n"
+                + "JOURS FÉRIÉS / FÊTES — quand le jour analysé porte une FÊTE ou est FÉRIÉ, la BONNE "
+                + "référence est le MÊME jour férié / la MÊME fête l'an dernier : si « événements de la même "
+                + "date l'an dernier » porte la même fête, alors « CA N-1 même date » PRIME sur le jour de "
+                + "semaine équivalent (un mardi ordinaire n'est PAS comparable à un 14 juillet). Un jour férié "
+                + "ne signifie PAS automatiquement plus d'affluence : beaucoup de commerces font MOINS ce "
+                + "jour-là (clients partis, habitudes différentes). Fie-toi au CHIFFRE RÉEL de cette fête "
+                + "l'an dernier — s'il était FAIBLE, ne recommande PAS d'augmenter, prévois plutôt une "
+                + "activité calme.\n"
+                + "PRÉCISE TOUJOURS LA BASE — chaque fois que tu dis d'AUGMENTER ou de RÉDUIRE (production "
+                + "ou appro), indique explicitement par rapport à QUOI (ex. « vs un mardi normal » ou « vs "
+                + "le 14 juillet l'an dernier »). Sans base précisée, une consigne « augmente » n'a aucun sens.\n";
     }
 
     private boolean notBlank(String s) {
