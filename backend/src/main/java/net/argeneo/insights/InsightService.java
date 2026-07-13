@@ -243,14 +243,14 @@ public class InsightService {
             p.append("Nous sommes le ").append(jour)
                     .append(". Dis au patron CE QU'IL DOIT FAIRE AUJOURD'HUI pour la production et ")
                     .append("l'approvisionnement : quoi produire en plus ou en moins, quoi commander, ")
-                    .append("en te basant sur les événements du jour, la météo et le CA de l'an dernier ")
-                    .append("(référence de fréquentation). IMPORTANT — si un JOUR FÉRIÉ, un PONT ou un ")
-                    .append("événement à forte affluence tombe DEMAIN ou dans les tout prochains jours ")
-                    .append("(voir « événement(s) à venir »), PRÉVIENS que c'est une VEILLE : anticipe dès ")
-                    .append("aujourd'hui (produire/commander plus). Si le CA du jour est DÉJÀ saisi, ajoute ")
-                    .append("UNE phrase courte le situant vs le même jour l'an dernier (journée EN COURS, ")
-                    .append("ne surinterprète pas). Reste strictement dans la gamme. 2 à 3 phrases COURTES, ")
-                    .append("ton direct et impératif, concret, pas de puces, pas de titre.\n\n");
+                    .append("en te basant sur les événements du jour, la météo et une référence FIABLE ")
+                    .append("de fréquentation. IMPORTANT — si DEMAIN est férié, un pont ou à forte ")
+                    .append("affluence (voir « événement(s) à venir »), signale que c'est une VEILLE et ")
+                    .append("qu'il faut PRÉPARER dès aujourd'hui en conséquence ; NE cite PAS de chiffres ")
+                    .append("pour demain ici (le détail chiffré est donné sur la carte de demain). Si le CA ")
+                    .append("du jour est DÉJÀ saisi ET la référence N-1 fiable (ni férié atypique, ni 0 €), ")
+                    .append("tu peux le situer en UNE phrase. Reste strictement dans la gamme. 1 à 2 phrases ")
+                    .append("COURTES, ton direct et impératif, concret, pas de puces, pas de titre.\n\n");
         } else {
             // J-1/J-2 : journée FINIE -> bilan ANALYTIQUE, verdict + écart de CA chiffré.
             p.append("La journée ").append(jour)
@@ -573,7 +573,15 @@ public class InsightService {
                 + "activité calme.\n"
                 + "PRÉCISE TOUJOURS LA BASE — chaque fois que tu dis d'AUGMENTER ou de RÉDUIRE (production "
                 + "ou appro), indique explicitement par rapport à QUOI (ex. « vs un mardi normal » ou « vs "
-                + "le 14 juillet l'an dernier »). Sans base précisée, une consigne « augmente » n'a aucun sens.\n";
+                + "le 14 juillet l'an dernier »). Sans base précisée, une consigne « augmente » n'a aucun sens.\n"
+                + "RÉFÉRENCE ATYPIQUE — si le jour analysé est ORDINAIRE mais que sa référence « même jour "
+                + "N-1 » était ELLE-MÊME un jour férié / une fête (voir « événements du même jour l'an "
+                + "dernier »), alors ce chiffre N-1 n'est PAS représentatif d'une journée normale : ne t'y "
+                + "ancre PAS, écarte-le et raisonne comme pour un jour habituel. De même, une référence à "
+                + "0 € (commerce fermé / non saisi) n'est pas exploitable : ignore-la.\n"
+                + "RESTE SIMPLE — n'expose PAS ton raisonnement sur les différentes références chiffrées "
+                + "(pas de « le CA N-1 de X était… donc… ») : donne DIRECTEMENT la consigne pratique, en "
+                + "une base claire au plus.\n";
     }
 
     private boolean notBlank(String s) {
