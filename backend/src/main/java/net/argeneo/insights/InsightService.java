@@ -2,11 +2,17 @@ package net.argeneo.insights;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.StringJoiner;
+import java.util.concurrent.ConcurrentHashMap;
 import net.argeneo.config.ArgeneoProperties;
 import net.argeneo.insights.api.dto.InsightDtos.DayAdvice;
+import net.argeneo.insights.api.dto.InsightDtos.DayAnalysisItem;
 import net.argeneo.insights.api.dto.InsightDtos.DayAnalysisRequest;
 import net.argeneo.insights.api.dto.InsightDtos.DayAnalysisResponse;
+import net.argeneo.insights.api.dto.InsightDtos.DayItem;
+import net.argeneo.insights.api.dto.InsightDtos.DaysAnalysisRequest;
+import net.argeneo.insights.api.dto.InsightDtos.DaysAnalysisResponse;
 import net.argeneo.insights.api.dto.InsightDtos.AdCopyRequest;
 import net.argeneo.insights.api.dto.InsightDtos.AdCopyResponse;
 import net.argeneo.insights.api.dto.InsightDtos.DayContext;
@@ -53,6 +59,17 @@ public class InsightService {
     private static final String STYLE =
             "STYLE — Parle SIMPLEMENT et BRIÈVEMENT, comme à un commerçant pressé : phrases courtes, "
             + "mots courants, AUCUN jargon, pas d'introduction ni de conclusion, droit au but.\n";
+
+    /** Durée de vie d'une analyse en cache (ms). Les données du jour (CA, météo…) bougent peu dans la journée. */
+    private static final long CACHE_TTL_MS = 3 * 60 * 60 * 1000L;
+    /** Plafond du cache : au-delà on purge les entrées expirées (puis tout si nécessaire). */
+    private static final int CACHE_MAX = 500;
+
+    private record CacheEntry(String value, long expiresAt) {
+    }
+
+    /** Cache mémoire des analyses : clé = signature (établissement + jour + mode + baseline + données). */
+    private final Map<String, CacheEntry> cache = new ConcurrentHashMap<>();
 
     private final GeminiClient gemini;
     private final ArgeneoProperties props;
@@ -118,62 +135,131 @@ public class InsightService {
         return p.toString();
     }
 
-    /** Analyse d'UNE journée (tableau de bord) — répond toujours. */
+    /** Analyse d'UNE journée (tableau de bord) — répond toujours, avec cache. */
     public DayAnalysisResponse dayAnalysis(DayAnalysisRequest req) {
         if (!gemini.isConfigured()) {
             return new DayAnalysisResponse(false, null, "Analyse IA non configurée sur ce serveur.");
         }
-        DayContext d = req.day();
-        String mode = req.mode() == null ? "" : req.mode();
-        boolean bilan = "bilan".equalsIgnoreCase(mode);
-        boolean prep = "prep".equalsIgnoreCase(mode);
+        boolean detail = Boolean.TRUE.equals(req.detail());
+        String key = cacheKey(req.etablissement(), req.description(), req.location(), req.baseline(),
+                req.mode(), detail, req.day());
+        String cached = cacheGet(key);
+        if (cached != null) {
+            return new DayAnalysisResponse(true, props.gemini().model(), cached);
+        }
+        StringBuilder p = new StringBuilder(commonPreamble(req.etablissement(), req.location(),
+                req.description(), req.baseline()));
+        appendDayBlock(p, req.day(), req.mode(), detail);
+        String out = gemini.generate(p.toString());
+        cachePut(key, out);
+        return new DayAnalysisResponse(true, props.gemini().model(), out);
+    }
+
+    /**
+     * Analyse PLUSIEURS journées (J-1 / J / J+1) en un seul appel Gemini — pour le tableau de bord.
+     * Chaque analyse est renvoyée avec sa date. Le résultat est mis en cache par batch (clé =
+     * concaténation des signatures) : un rechargement du cockpit à données inchangées ne rappelle pas l'IA.
+     */
+    public DaysAnalysisResponse daysAnalysis(DaysAnalysisRequest req) {
+        if (!gemini.isConfigured()) {
+            return new DaysAnalysisResponse(false, null, List.of());
+        }
+        List<DayItem> items = req.items();
+        StringJoiner keyJoiner = new StringJoiner("||", "batch[", "]");
+        for (DayItem it : items) {
+            keyJoiner.add(cacheKey(req.etablissement(), req.description(), req.location(), req.baseline(),
+                    it.mode(), Boolean.TRUE.equals(it.detail()), it.day()));
+        }
+        String key = keyJoiner.toString();
+
+        String raw = cacheGet(key);
+        if (raw == null) {
+            StringBuilder p = new StringBuilder(commonPreamble(req.etablissement(), req.location(),
+                    req.description(), req.baseline()));
+            p.append("Tu dois analyser PLUSIEURS journées ci-dessous. Pour CHAQUE journée, écris son ")
+                    .append("analyse en la faisant précéder EXACTEMENT d'une ligne marqueur « ===AAAA-MM-JJ=== » ")
+                    .append("(la date de la journée concernée), puis l'analyse en dessous. N'écris rien d'autre ")
+                    .append("(aucun titre, aucune autre ligne).\n\n");
+            for (DayItem it : items) {
+                p.append("========================================\n")
+                        .append("JOURNÉE À ANALYSER : ").append(it.day().date())
+                        .append(" (marqueur attendu : ===").append(it.day().date()).append("===)\n");
+                appendDayBlock(p, it.day(), it.mode(), Boolean.TRUE.equals(it.detail()));
+            }
+            raw = gemini.generate(p.toString());
+            cachePut(key, raw);
+        }
+
+        Map<String, String> byDate = parseBatch(raw);
+        List<DayAnalysisItem> out = new ArrayList<>();
+        for (DayItem it : items) {
+            String text = byDate.get(it.day().date());
+            // Repli : si un seul jour et pas de marqueur, on prend la réponse brute.
+            if (text == null && items.size() == 1) {
+                text = raw == null ? "" : raw.trim();
+            }
+            out.add(new DayAnalysisItem(it.day().date(), it.mode(), text == null ? "" : text));
+        }
+        return new DaysAnalysisResponse(true, props.gemini().model(), out);
+    }
+
+    /** Préambule commun à toutes les analyses jour : rôle, gamme, règles et base de comparaison. */
+    private String commonPreamble(String etablissement, String location, String description, String baseline) {
         StringBuilder p = new StringBuilder();
-        p.append(header(req.etablissement(), req.location(), req.description()));
-        if (notBlank(req.description())) {
+        p.append(header(etablissement, location, description));
+        if (notBlank(description)) {
             p.append("Type d'établissement (à respecter STRICTEMENT, aucun produit hors gamme) : ")
-                    .append(req.description()).append(".\n");
+                    .append(description).append(".\n");
         }
         p.append(METIER);
         p.append(NO_INVENT);
         p.append(EVENTS_NOTE);
         p.append(STYLE);
-        p.append(baselineRule(req.baseline()));
+        p.append(baselineRule(baseline));
+        return p.toString();
+    }
+
+    /** Consigne du mode + données du jour + notes conditionnelles + éventuel « développer ». */
+    private void appendDayBlock(StringBuilder p, DayContext d, String modeRaw, boolean detail) {
+        String mode = modeRaw == null ? "" : modeRaw;
+        boolean bilan = "bilan".equalsIgnoreCase(mode);
+        boolean prep = "prep".equalsIgnoreCase(mode);
+        String jour = d.date() + (notBlank(d.weekday()) ? " (" + d.weekday() + ")" : "");
         if (prep) {
             // J+1 : que PRÉPARER pour demain (orienté production/appro).
-            p.append("Demain, le ").append(d.date());
-            if (notBlank(d.weekday())) {
-                p.append(" (").append(d.weekday()).append(")");
-            }
-            p.append(". Dis au patron CE QU'IL DOIT PRÉPARER POUR DEMAIN pour la production et ")
+            p.append("Demain, le ").append(jour)
+                    .append(". Dis au patron CE QU'IL DOIT PRÉPARER POUR DEMAIN pour la production et ")
                     .append("l'approvisionnement : quoi produire en plus ou en moins, quoi commander, ")
                     .append("selon les événements de demain, la météo prévue et le CA de l'an dernier ")
-                    .append("(simple référence de fréquentation). NE FAIS PAS d'analyse du chiffre d'affaires. ")
+                    .append("(simple référence de fréquentation). Si un jour férié, un pont ou un événement ")
+                    .append("à forte affluence suit juste après (voir « événement(s) à venir »), tiens-en compte. ")
+                    .append("NE FAIS PAS d'analyse du chiffre d'affaires (la journée n'a pas eu lieu). ")
                     .append("Reste strictement dans la gamme. 1 à 2 phrases COURTES, ton direct et ")
                     .append("impératif, concret, pas de puces, pas de titre.\n\n");
         } else if (!bilan) {
-            // J : que FAIRE aujourd'hui (orienté production/appro), PAS d'analyse de CA.
-            p.append("Nous sommes le ").append(d.date());
-            if (notBlank(d.weekday())) {
-                p.append(" (").append(d.weekday()).append(")");
-            }
-            p.append(". Dis au patron CE QU'IL DOIT FAIRE AUJOURD'HUI pour la production et ")
+            // J : que FAIRE aujourd'hui (production/appro) + veille de férié + lecture CA légère.
+            p.append("Nous sommes le ").append(jour)
+                    .append(". Dis au patron CE QU'IL DOIT FAIRE AUJOURD'HUI pour la production et ")
                     .append("l'approvisionnement : quoi produire en plus ou en moins, quoi commander, ")
-                    .append("en te basant sur les événements du jour, la météo, et le CA de l'an dernier ")
-                    .append("(simple référence de fréquentation). NE FAIS PAS d'analyse du chiffre d'affaires. ")
-                    .append("Reste strictement dans la gamme. 1 à 2 phrases COURTES, ton direct et ")
-                    .append("impératif, concret, pas de puces, pas de titre.\n\n");
+                    .append("en te basant sur les événements du jour, la météo et le CA de l'an dernier ")
+                    .append("(référence de fréquentation). IMPORTANT — si un JOUR FÉRIÉ, un PONT ou un ")
+                    .append("événement à forte affluence tombe DEMAIN ou dans les tout prochains jours ")
+                    .append("(voir « événement(s) à venir »), PRÉVIENS que c'est une VEILLE : anticipe dès ")
+                    .append("aujourd'hui (produire/commander plus). Si le CA du jour est DÉJÀ saisi, ajoute ")
+                    .append("UNE phrase courte le situant vs le même jour l'an dernier (journée EN COURS, ")
+                    .append("ne surinterprète pas). Reste strictement dans la gamme. 2 à 3 phrases COURTES, ")
+                    .append("ton direct et impératif, concret, pas de puces, pas de titre.\n\n");
         } else {
-            // J-1/J-2 : journée FINIE -> bilan ANALYTIQUE avec verdict de performance.
-            p.append("La journée ").append(d.date());
-            if (notBlank(d.weekday())) {
-                p.append(" (").append(d.weekday()).append(")");
-            }
-            p.append(" est TERMINÉE : fais-en l'ANALYSE pour le patron. ")
+            // J-1/J-2 : journée FINIE -> bilan ANALYTIQUE, verdict + écart de CA chiffré.
+            p.append("La journée ").append(jour)
+                    .append(" est TERMINÉE : fais-en l'ANALYSE pour le patron. ")
                     .append("COMMENCE par un VERDICT de performance en 2-3 mots ")
                     .append("(ex. « Très bonne journée », « Bonne performance », « Performance correcte », ")
                     .append("« Journée décevante », « Mauvaise journée »), en jugeant le CA réalisé et la ")
-                    .append("fréquentation par rapport à la base indiquée. Puis 1 phrase COURTE : ")
-                    .append("la raison principale + 1 conseil simple. Ton direct, pas de puces, pas de titre.\n\n");
+                    .append("fréquentation par rapport à la base indiquée. Puis, quand le CA du jour ET la ")
+                    .append("référence N-1 sont connus, CHIFFRE l'écart de CA (ex. « +12 % vs même jour ")
+                    .append("l'an dernier ») et donne en 1 phrase la raison principale (météo, événement, ")
+                    .append("fréquentation) + 1 conseil simple. Ton direct, pas de puces, pas de titre.\n\n");
         }
         p.append("Données du jour : ").append(dayLine(d)).append("\n");
         if (d.caN1Date() == null && d.caN1Equiv() == null) {
@@ -184,7 +270,7 @@ public class InsightService {
             p.append("CA du jour : NON SAISI — tu ne connais pas le CA réalisé : n'invente pas de montant, ")
                     .append("indique simplement que le CA n'a pas été saisi et appuie-toi sur le contexte.\n");
         }
-        if (Boolean.TRUE.equals(req.detail())) {
+        if (detail) {
             p.append("\nLe patron demande de DÉVELOPPER : fais une analyse plus complète, 4 à 6 phrases ")
                     .append("(ou quelques points courts). Explique le POURQUOI (météo, événements, ")
                     .append("fréquentation, écart éventuel vs référence) et détaille les recommandations ")
@@ -192,7 +278,74 @@ public class InsightService {
                     .append("la consigne de brièveté — mais respecte TOUTES les autres règles, et N'INVENTE ")
                     .append("toujours AUCUN chiffre.\n");
         }
-        return new DayAnalysisResponse(true, props.gemini().model(), gemini.generate(p.toString()));
+    }
+
+    /** Découpe la réponse batch en analyses par date, sur les marqueurs « ===AAAA-MM-JJ=== ». */
+    private Map<String, String> parseBatch(String raw) {
+        Map<String, String> out = new java.util.LinkedHashMap<>();
+        if (raw == null) {
+            return out;
+        }
+        String currentDate = null;
+        StringBuilder buf = new StringBuilder();
+        for (String line : raw.split("\\R")) {
+            String m = line.strip();
+            java.util.regex.Matcher mk = java.util.regex.Pattern
+                    .compile("^=+\\s*(\\d{4}-\\d{2}-\\d{2})\\s*=+$").matcher(m);
+            if (mk.matches()) {
+                if (currentDate != null) {
+                    out.put(currentDate, buf.toString().strip());
+                }
+                currentDate = mk.group(1);
+                buf.setLength(0);
+            } else if (currentDate != null) {
+                buf.append(line).append("\n");
+            }
+        }
+        if (currentDate != null) {
+            out.put(currentDate, buf.toString().strip());
+        }
+        return out;
+    }
+
+    // ---- Cache mémoire (TTL) des analyses jour ------------------------------------------------
+
+    /** Signature d'une analyse : tout ce qui change la réponse (établissement, mode, baseline, données). */
+    private String cacheKey(String etab, String description, String location, String baseline,
+                            String mode, boolean detail, DayContext d) {
+        return String.join("",
+                nz(etab), nz(description), nz(location), nz(baseline), nz(mode),
+                Boolean.toString(detail), String.valueOf(d));
+    }
+
+    private String cacheGet(String key) {
+        CacheEntry e = cache.get(key);
+        if (e == null) {
+            return null;
+        }
+        if (e.expiresAt() < System.currentTimeMillis()) {
+            cache.remove(key, e);
+            return null;
+        }
+        return e.value();
+    }
+
+    private void cachePut(String key, String value) {
+        if (value == null || value.isBlank()) {
+            return; // ne pas mémoriser une réponse vide (échec transitoire)
+        }
+        if (cache.size() >= CACHE_MAX) {
+            long now = System.currentTimeMillis();
+            cache.values().removeIf(e -> e.expiresAt() < now);
+            if (cache.size() >= CACHE_MAX) {
+                cache.clear();
+            }
+        }
+        cache.put(key, new CacheEntry(value, System.currentTimeMillis() + CACHE_TTL_MS));
+    }
+
+    private static String nz(String s) {
+        return s == null ? "" : s;
     }
 
     /** Avis IA sur le prix de vente d'un article : cohérence, marge, prix psychologique. */
@@ -347,6 +500,7 @@ public class InsightService {
             }
         }
         if (notBlank(d.events())) sj.add("événements ce jour : " + d.events());
+        if (notBlank(d.eventsNext())) sj.add("événement(s) à venir : " + d.eventsNext());
         if (notBlank(d.eventsAr())) sj.add("événements du même jour l'an dernier : " + d.eventsAr());
         if (notBlank(d.eventsAa())) sj.add("événements de la même date l'an dernier : " + d.eventsAa());
         if (notBlank(d.sky()) || d.tMax() != null) {

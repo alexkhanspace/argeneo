@@ -6,6 +6,8 @@ import net.argeneo.insights.api.dto.InsightDtos.AdCopyRequest;
 import net.argeneo.insights.api.dto.InsightDtos.AdCopyResponse;
 import net.argeneo.insights.api.dto.InsightDtos.DayAnalysisRequest;
 import net.argeneo.insights.api.dto.InsightDtos.DayAnalysisResponse;
+import net.argeneo.insights.api.dto.InsightDtos.DaysAnalysisRequest;
+import net.argeneo.insights.api.dto.InsightDtos.DaysAnalysisResponse;
 import net.argeneo.insights.api.dto.InsightDtos.PricingRequest;
 import net.argeneo.insights.api.dto.InsightDtos.PricingResponse;
 import net.argeneo.insights.api.dto.InsightDtos.SocialPostRequest;
@@ -36,6 +38,11 @@ public class InsightController {
     @PostMapping("/day")
     public DayAnalysisResponse day(@Valid @RequestBody DayAnalysisRequest request) {
         return service.dayAnalysis(request);
+    }
+
+    @PostMapping("/days")
+    public DaysAnalysisResponse days(@Valid @RequestBody DaysAnalysisRequest request) {
+        return service.daysAnalysis(request);
     }
 
     @PostMapping("/pricing")

@@ -24,6 +24,8 @@ export interface DayContextInput {
   skyN1?: string | null
   /** Résumé horaire du jour (matin/midi/après-midi/soir) — quand il pleut, etc. */
   hourly?: string | null
+  /** Événements à venir (demain / prochains jours) — pour repérer une VEILLE de férié/pont. */
+  eventsNext?: string | null
 }
 
 export type Baseline = 'habituel' | 'n1'
@@ -145,5 +147,40 @@ export async function getDayAnalysis(input: {
   day: DayContextInput
 }): Promise<DayAnalysisResponse> {
   const { data } = await api.post<DayAnalysisResponse>('/insights/day', input)
+  return data
+}
+
+/** Un jour à analyser dans le batch, avec son mode. */
+export interface DayAnalysisItemInput {
+  mode: 'action' | 'bilan' | 'prep'
+  detail?: boolean
+  day: DayContextInput
+}
+
+/** Analyse d'un jour renvoyée par le batch (associée à sa date). */
+export interface DayAnalysisItemOut {
+  date: string
+  mode: string
+  analysis: string
+}
+
+export interface DaysAnalysisResponse {
+  enabled: boolean
+  model: string | null
+  analyses: DayAnalysisItemOut[]
+}
+
+/**
+ * Analyse PLUSIEURS journées (J-1 / J / J+1) en UN seul appel — pour le cockpit du tableau de bord.
+ * Le backend regroupe tout en une requête Gemini et met le résultat en cache.
+ */
+export async function getDaysAnalysis(input: {
+  etablissement: string
+  description?: string | null
+  location?: string | null
+  baseline?: Baseline
+  items: DayAnalysisItemInput[]
+}): Promise<DaysAnalysisResponse> {
+  const { data } = await api.post<DaysAnalysisResponse>('/insights/days', input)
   return data
 }

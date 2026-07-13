@@ -29,7 +29,9 @@ public final class InsightDtos {
             String eventsAa,
             String sky,
             String skyN1,
-            String hourly) {
+            String hourly,
+            /** Événements à venir (demain / prochains jours) pour repérer une VEILLE de férié/pont. */
+            String eventsNext) {
     }
 
     public record TrendRequest(
@@ -63,6 +65,32 @@ public final class InsightDtos {
     }
 
     public record DayAnalysisResponse(boolean enabled, String model, String analysis) {
+    }
+
+    /**
+     * Analyse de PLUSIEURS journées en un seul appel Gemini (tableau de bord : J-1 / J / J+1).
+     * Évite de multiplier les appels au chargement du cockpit.
+     */
+    public record DaysAnalysisRequest(
+            @NotBlank String etablissement,
+            String description,
+            String location,
+            String baseline,
+            @NotEmpty List<DayItem> items) {
+    }
+
+    /** Un jour à analyser dans le batch, avec son mode ("action" / "bilan" / "prep"). */
+    public record DayItem(
+            String mode,
+            Boolean detail,
+            @jakarta.validation.constraints.NotNull DayContext day) {
+    }
+
+    /** Analyse d'un jour du batch (associée à sa date pour le ré-appariement côté front). */
+    public record DayAnalysisItem(String date, String mode, String analysis) {
+    }
+
+    public record DaysAnalysisResponse(boolean enabled, String model, List<DayAnalysisItem> analyses) {
     }
 
     /** Avis IA sur le prix de vente d'un article (cohérence marché + marge + prix psychologique). */

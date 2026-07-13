@@ -36,7 +36,7 @@ import {
 import { getHolidays } from '../api/holidays'
 import { getMuslimDays, getJewishDays } from '../api/religiousCalendar'
 import { getCuratedEvents } from '../api/observances'
-import { getDayAnalysis, getTrend, type DayContextInput } from '../api/insights'
+import { getDayAnalysis, getDaysAnalysis, getTrend, type DayContextInput } from '../api/insights'
 import { useSettings } from '../settings/SettingsContext'
 import type { DailyEntry, MyEtablissement, Pnet } from '../api/types'
 
@@ -117,6 +117,13 @@ interface DayData {
   hourly?: HourWeather[]
   /** Contexte envoyé à l'IA (réutilisé pour « Développer l'analyse »). */
   ctx?: DayContextInput
+}
+
+/** Carte-jour construite SANS l'appel IA (le contexte seul), pour batcher les analyses ensuite. */
+interface DayContextResult {
+  base: DayData
+  ctx: DayContextInput
+  mode: 'action' | 'bilan' | 'prep'
 }
 
 interface MarginRow {
@@ -259,13 +266,14 @@ export function DashboardPage() {
     void loadCockpit()
   }, [])
 
-  async function buildDayData(
+  /** Construit le contexte d'une carte-jour (fetches météo/CA/événements) SANS appeler l'IA. */
+  async function buildDayContext(
     e: MyEtablissement,
     iso: string,
     weatherMap: MonthWeather,
     eventsFor: (iso: string) => string | null,
     mode: 'action' | 'bilan' | 'prep',
-  ): Promise<DayData> {
+  ): Promise<DayContextResult> {
     // Deux repères l'an dernier : AR = même jour de SEMAINE (−364 j), AA = même DATE (année −1).
     const refDate = new Date(iso + 'T00:00:00')
     const isoEquiv = toISO(addDays(refDate, -364)) // AR : jour équivalent (même jour de semaine)
@@ -289,6 +297,16 @@ export function DashboardPage() {
     const aa: DayRef = { iso: isoSame, ca: entrySame?.revenue ?? null, tMax: wxN1[isoSame]?.tMax ?? null, events: eventsFor(isoSame), entry: entrySame }
     const tMaxJ = wxJ?.tMax ?? null
 
+    // Événements des tout prochains jours → l'IA peut repérer une VEILLE de férié/pont et anticiper l'affluence.
+    const nextIso1 = toISO(addDays(refDate, 1))
+    const nextIso2 = toISO(addDays(refDate, 2))
+    const nextParts: string[] = []
+    const en1 = eventsFor(nextIso1)
+    if (en1) nextParts.push(`demain (${nextIso1}) : ${en1}`)
+    const en2 = eventsFor(nextIso2)
+    if (en2) nextParts.push(`après-demain (${nextIso2}) : ${en2}`)
+    const eventsNext = nextParts.length ? nextParts.join(' ; ') : null
+
     const day: DayContextInput = {
       date: iso,
       weekday: weekdayLongFr(iso),
@@ -308,9 +326,24 @@ export function DashboardPage() {
       sky: wxJ ? weatherIcon(wxJ.code).label : null, // condition du ciel (pluie/soleil…) du jour
       skyN1: wxAr ? weatherIcon(wxAr.code).label : null, // condition du même jour N-1
       hourly: summarizeHourly(hourlyJ) || null, // résumé horaire (matin/midi/aprem/soir)
+      eventsNext, // événements des prochains jours (veille de férié/pont)
     }
-    let analysis = ''
-    let enabled = true
+
+    const base: DayData = {
+      iso, entry, tMaxJ, ar, aa, analysis: '', analysisLoading: false, hourly: hourlyJ, ctx: day,
+    }
+    return { base, ctx: day, mode }
+  }
+
+  /** Contexte + analyse IA d'UNE journée (appel unitaire) — utilisé pour le chargement à la demande. */
+  async function buildDayData(
+    e: MyEtablissement,
+    iso: string,
+    weatherMap: MonthWeather,
+    eventsFor: (iso: string) => string | null,
+    mode: 'action' | 'bilan' | 'prep',
+  ): Promise<DayData> {
+    const { base, ctx } = await buildDayContext(e, iso, weatherMap, eventsFor, mode)
     try {
       const res = await getDayAnalysis({
         etablissement: e.name,
@@ -318,17 +351,12 @@ export function DashboardPage() {
         location: e.address,
         mode,
         baseline,
-        day,
+        day: ctx,
       })
-      analysis = res.analysis
-      enabled = res.enabled
+      return { ...base, analysis: res.analysis }
     } catch (err) {
-      analysis = errorMessage(err)
-      enabled = false
+      return { ...base, analysis: errorMessage(err) }
     }
-    void enabled
-
-    return { iso, entry, tMaxJ, ar, aa, analysis, analysisLoading: false, hourly: hourlyJ, ctx: day }
   }
 
   async function loadCockpit() {
@@ -387,14 +415,38 @@ export function DashboardPage() {
     setYesterday(skeleton(yIso))
     setTomorrow(skeleton(tIso))
 
-    const [d0, d1, d2] = await Promise.all([
-      buildDayData(e, todayIso, weatherMap, eventsFor, 'action'),
-      buildDayData(e, yIso, weatherMap, eventsFor, 'bilan'),
-      buildDayData(e, tIso, weatherMap, eventsFor, 'prep'),
+    // 1) Construire les 3 contextes (fetches météo/CA/événements) sans appeler l'IA.
+    const [c0, c1, c2] = await Promise.all([
+      buildDayContext(e, todayIso, weatherMap, eventsFor, 'action'),
+      buildDayContext(e, yIso, weatherMap, eventsFor, 'bilan'),
+      buildDayContext(e, tIso, weatherMap, eventsFor, 'prep'),
     ])
-    setToday(d0)
-    setYesterday(d1)
-    setTomorrow(d2)
+    const contexts = [c0, c1, c2]
+
+    // 2) UN seul appel IA pour les 3 jours (batché + mis en cache côté backend).
+    const analyses: Record<string, string> = {}
+    try {
+      const res = await getDaysAnalysis({
+        etablissement: e.name,
+        description: e.description,
+        location: e.address,
+        baseline,
+        items: contexts.map((c) => ({ mode: c.mode, day: c.ctx })),
+      })
+      for (const a of res.analyses) analyses[a.date] = a.analysis
+    } catch (err) {
+      const msg = errorMessage(err)
+      for (const c of contexts) analyses[c.base.iso] = msg
+    }
+
+    const attach = (c: DayContextResult): DayData => ({
+      ...c.base,
+      analysis: analyses[c.base.iso] ?? '',
+      analysisLoading: false,
+    })
+    setToday(attach(c0))
+    setYesterday(attach(c1))
+    setTomorrow(attach(c2))
   }
 
   async function loadDayBefore() {
