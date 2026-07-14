@@ -88,13 +88,25 @@ public class SupplierInvoiceService {
               lignes de sous-total, remise globale, acompte, transport/frais de port et éco-participation.
             - Montants en euros, HT de préférence, avec un POINT décimal (jamais de virgule, pas de symbole €).
             - TRÈS IMPORTANT — "quantity" et "unit" doivent exprimer la QUANTITÉ TOTALE NETTE de la ligne,
-              en MULTIPLIANT le conditionnement. Exemples :
+              en MULTIPLIANT le conditionnement par la quantité LIVRÉE (colonne « QTE LIV », sinon « QTE COM »).
+              Exemples :
                 * « 4 x 500 g » (ou 4 sachets de 500 g) -> quantity = 2000, unit = "g"
                 * « sac de 25 kg » -> quantity = 25, unit = "kg"
                 * « 6 bouteilles de 1 L » -> quantity = 6, unit = "L"
                 * article vendu à la pièce -> quantity = nombre de pièces, unit = "pièce"
               Choisis une unité de mesure réelle ("g", "kg", "ml", "L", "pièce") — PAS "sac", "carton", "lot".
-            - "unitPriceHt" = prix unitaire tel qu'écrit (indicatif) ; "lineTotalHt" = total HT de la ligne.
+            - CONDITIONNEMENT « À LA PIÈCE » (très fréquent en boulangerie) : quand la désignation se termine
+              par un nombre suivi de « P » (ex. « 120G 28P », « 24P », « 58G 60P », « 25G 120P »), ce nombre
+              est le NOMBRE DE PIÈCES par unité de vente (P = pièces). Le poids qui précède (« 120G », « 58G »)
+              est le poids d'UNE pièce : NE l'utilise PAS pour la quantité. Si l'unité de vente (U.V.) est un
+              carton/colis/paquet (CRT, CARTON, COL, PAQ, BTE), la colonne QTE compte des CARTONS : alors
+              quantity = (QTE livrée) × (nb de pièces par carton), unit = "pièce", et
+              unitPriceHt = montant HT de la ligne ÷ quantity (prix par pièce).
+                * « MAXI MUFFIN FRUITS ROUGES 120G 28P », U.V. CRT, QTE LIV 1, montant 38,24 €
+                  -> quantity = 28, unit = "pièce", unitPriceHt ≈ 1.366
+                * « MUFFIN NAT CHOC NOIS 120G 24P », U.V. CRT, QTE LIV 1, montant 31,79 € -> quantity = 24, unit = "pièce"
+                * « MINI MORICETTE CUITE 25G 120P », U.V. CRT, QTE LIV 4, montant 149,69 € -> quantity = 480, unit = "pièce"
+            - "unitPriceHt" = prix par unité RÉELLE (montant de la ligne ÷ quantity) ; "lineTotalHt" = total HT de la ligne.
             - "vatRate" en fraction décimale si visible (0.055, 0.10, 0.20), sinon null.
             - Si une valeur est illisible ou absente, mets null. N'invente rien.
             """;
