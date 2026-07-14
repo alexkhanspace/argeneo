@@ -156,6 +156,9 @@ export function DailyPage() {
   const [year, setYear] = useState(now.getFullYear())
   const [month, setMonth] = useState(now.getMonth()) // 0-based
   const [entries, setEntries] = useState<Record<string, DailyEntry>>({})
+  // Sélecteur mois/année (popover fiable PC + mobile, à la place du datepicker natif).
+  const [monthAnchor, setMonthAnchor] = useState<HTMLElement | null>(null)
+  const [pickerYear, setPickerYear] = useState(now.getFullYear())
 
   // Articles (pour le sélecteur de casse).
   const [articles, setArticles] = useState<Article[]>([])
@@ -176,7 +179,6 @@ export function DailyPage() {
   const [ticketScanning, setTicketScanning] = useState(false)
   const [scanMsg, setScanMsg] = useState<string | null>(null)
   const ticketFileRef = useRef<HTMLInputElement | null>(null)
-  const monthPickerRef = useRef<HTMLInputElement | null>(null)
   const ticketGlobalRef = useRef<HTMLInputElement | null>(null)
 
   // Scan « global » : l'IA lit la date du ticket et ouvre le bon jour, sans sélection préalable.
@@ -451,15 +453,6 @@ export function DailyPage() {
   const onSelectDay = (iso: string) => {
     setSelected(iso)
     loadDay(iso)
-  }
-
-  // Saut rapide vers une date (date picker au clic sur le mois).
-  const jumpToDate = (iso: string) => {
-    if (!iso) return
-    const [y, m] = iso.split('-').map(Number)
-    setYear(y)
-    setMonth(m - 1)
-    onSelectDay(iso)
   }
 
   const closeEditor = () => {
@@ -750,32 +743,81 @@ export function DailyPage() {
               <ChevronLeftIcon />
             </IconButton>
             <Stack direction="row" sx={{ alignItems: 'center', gap: 0.5 }}>
-              <Tooltip title="Choisir une date">
+              <Tooltip title="Choisir le mois">
                 <Typography
                   variant="h2"
                   sx={{ m: 0, cursor: 'pointer', '&:hover': { textDecoration: 'underline' } }}
-                  onClick={() => {
-                    const el = monthPickerRef.current
-                    if (!el) return
-                    try {
-                      el.showPicker()
-                    } catch {
-                      el.click()
-                    }
+                  onClick={(e) => {
+                    setPickerYear(year)
+                    setMonthAnchor(e.currentTarget)
                   }}
                 >
                   {MONTHS[month]} {year}
                 </Typography>
               </Tooltip>
-              <input
-                ref={monthPickerRef}
-                type="date"
-                style={{ position: 'absolute', width: 1, height: 1, opacity: 0, pointerEvents: 'none' }}
-                value={selected ?? `${year}-${String(month + 1).padStart(2, '0')}-01`}
-                onChange={(e) => jumpToDate(e.target.value)}
-                tabIndex={-1}
-                aria-hidden
-              />
+              <Popover
+                open={Boolean(monthAnchor)}
+                anchorEl={monthAnchor}
+                onClose={() => setMonthAnchor(null)}
+                anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+                transformOrigin={{ vertical: 'top', horizontal: 'center' }}
+              >
+                <Box sx={{ p: 1.5, width: 260 }}>
+                  <Stack
+                    direction="row"
+                    sx={{ alignItems: 'center', justifyContent: 'space-between', mb: 1 }}
+                  >
+                    <IconButton
+                      size="small"
+                      onClick={() => setPickerYear((y) => y - 1)}
+                      aria-label="Année précédente"
+                    >
+                      <ChevronLeftIcon />
+                    </IconButton>
+                    <Typography sx={{ fontWeight: 600 }}>{pickerYear}</Typography>
+                    <IconButton
+                      size="small"
+                      onClick={() => setPickerYear((y) => y + 1)}
+                      aria-label="Année suivante"
+                    >
+                      <ChevronRightIcon />
+                    </IconButton>
+                  </Stack>
+                  <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 0.5 }}>
+                    {MONTHS.map((label, i) => (
+                      <Button
+                        key={label}
+                        size="small"
+                        variant={i === month && pickerYear === year ? 'contained' : 'text'}
+                        onClick={() => {
+                          setSelected(null)
+                          setDay(null)
+                          setYear(pickerYear)
+                          setMonth(i)
+                          setMonthAnchor(null)
+                        }}
+                      >
+                        {label.slice(0, 4)}
+                      </Button>
+                    ))}
+                  </Box>
+                  <Button
+                    fullWidth
+                    size="small"
+                    sx={{ mt: 1 }}
+                    onClick={() => {
+                      const t = new Date()
+                      setSelected(null)
+                      setDay(null)
+                      setYear(t.getFullYear())
+                      setMonth(t.getMonth())
+                      setMonthAnchor(null)
+                    }}
+                  >
+                    Aujourd'hui
+                  </Button>
+                </Box>
+              </Popover>
               <Tooltip title="Analyser le mois avec l'IA">
                 <span>
                   <IconButton
