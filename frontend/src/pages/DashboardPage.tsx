@@ -262,9 +262,15 @@ export function DashboardPage() {
       })
       .catch(() => undefined)
 
-    // Cockpit du matin : météo, événements et analyse IA pour J et J-1.
-    void loadCockpit()
+    // KPI/marges/CA : une seule fois au montage (indépendants de l'axe de comparaison).
   }, [])
+
+  // Cockpit du matin : (re)chargé au montage ET à chaque changement d'axe de comparaison,
+  // pour que les analyses IA reflètent la comparaison choisie (le cache backend rend le retour gratuit).
+  useEffect(() => {
+    void loadCockpit()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [baseline])
 
   /** Construit le contexte d'une carte-jour (fetches météo/CA/événements) SANS appeler l'IA. */
   async function buildDayContext(

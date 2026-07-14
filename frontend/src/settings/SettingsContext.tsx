@@ -3,7 +3,7 @@ import type { Baseline } from '../api/insights'
 
 /** Réglages utilisateur (persistés en localStorage), partagés par toute l'app. */
 interface Settings {
-  /** Base de calcul des pourcentages de l'IA : journée habituelle ou N-1. */
+  /** Axe de comparaison global (IA + analytique) : jour normal, N-1 même jour, N-1 même date. */
   baseline: Baseline
   setBaseline: (b: Baseline) => void
 }
@@ -12,10 +12,16 @@ const KEY = 'argeneo.iaBaseline'
 
 const SettingsContext = createContext<Settings | null>(null)
 
+/** Lit le réglage persisté en migrant l'ancienne valeur « n1 » vers « n1_equiv ». */
+function readBaseline(): Baseline {
+  const v = localStorage.getItem(KEY)
+  if (v === 'n1_date') return 'n1_date'
+  if (v === 'n1_equiv' || v === 'n1') return 'n1_equiv'
+  return 'habituel'
+}
+
 export function SettingsProvider({ children }: { children: ReactNode }) {
-  const [baseline, setBaselineState] = useState<Baseline>(() =>
-    localStorage.getItem(KEY) === 'n1' ? 'n1' : 'habituel',
-  )
+  const [baseline, setBaselineState] = useState<Baseline>(readBaseline)
   const setBaseline = (b: Baseline) => {
     localStorage.setItem(KEY, b)
     setBaselineState(b)

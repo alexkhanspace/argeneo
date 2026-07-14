@@ -36,6 +36,7 @@ import { widgetDef, type WidgetCtx } from '../../dashboard/widgets'
 import { PeriodNav } from '../../dashboard/PeriodNav'
 import { PageHeader } from '../../components/PageHeader'
 import { useHeaderSettingsSetter } from '../../components/HeaderSettings'
+import { useSettings } from '../../settings/SettingsContext'
 
 const TODAY = todayIso()
 
@@ -45,9 +46,6 @@ const weekdayMon0 = (iso: string): number => {
   const [y, m, d] = iso.split('-').map(Number)
   return (new Date(y, m - 1, d).getDay() + 6) % 7
 }
-/** Comparaison par défaut selon la granularité : mois/année → date à date, jour/semaine → jour équivalent. */
-const defaultCompareMode = (g: Gran): CompareMode => (g === 'mois' || g === 'annee' ? 'date' : 'equiv')
-
 /** Badge d'évolution vs N-1 (vert si en hausse, rouge si en baisse). Cliquable pour révéler les € sous-jacents. */
 function Delta({ pct, onClick }: { pct: number | null; onClick?: () => void }) {
   if (pct == null) return null
@@ -212,9 +210,10 @@ export function AnalyticsPage() {
   // Jours de semaine inclus dans l'analyse (0=Lun..6=Dim). Permet d'exclure p. ex. le
   // dimanche pour comparer N/N-1 à périmètre égal quand l'ouverture a changé d'une année sur l'autre.
   const [includedDays, setIncludedDays] = useState<number[]>(ALL_DAYS)
-  // Comparaison N-1 : défaut selon la granularité (jour/semaine → jour équivalent,
-  // mois/année → date à date). Modifiable manuellement via la roue crantée.
-  const [compareMode, setCompareMode] = useState<CompareMode>(() => defaultCompareMode('jour'))
+  // Axe de comparaison GLOBAL (partagé avec le tableau de bord / calendrier via les réglages).
+  // L'analytique compare toujours au N-1 : « même date » → alignement date à date, sinon jour équivalent.
+  const { baseline, setBaseline } = useSettings()
+  const compareMode: CompareMode = baseline === 'n1_date' ? 'date' : 'equiv'
   // Sélection de période : navigation par granularité OU plage de dates libre.
   const [periodMode, setPeriodMode] = useState<'nav' | 'libre'>('nav')
   const [freeFrom, setFreeFrom] = useState(`${TODAY.slice(0, 7)}-01`)
@@ -303,7 +302,6 @@ export function AnalyticsPage() {
     setPeriodMode('nav')
     setGran(g)
     setRefKey(defaultRefKey(g, TODAY))
-    setCompareMode(defaultCompareMode(g))
   }
 
   // Réglages contextuels de la page, injectés dans la roue crantée du header (gain de place).
@@ -317,17 +315,19 @@ export function AnalyticsPage() {
       <Stack spacing={1.5}>
         <Box>
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
-            Comparaison N-1
+            Comparaison (tout le site)
           </Typography>
           <ToggleButtonGroup
             size="small"
             exclusive
+            orientation="vertical"
             fullWidth
-            value={compareMode}
-            onChange={(_, v: CompareMode | null) => v && setCompareMode(v)}
+            value={baseline}
+            onChange={(_, v: typeof baseline | null) => v && setBaseline(v)}
           >
-            <ToggleButton value="equiv">Jour équivalent</ToggleButton>
-            <ToggleButton value="date">Date à date</ToggleButton>
+            <ToggleButton value="habituel">Jour normal</ToggleButton>
+            <ToggleButton value="n1_equiv">N‑1 · même jour</ToggleButton>
+            <ToggleButton value="n1_date">N‑1 · même date</ToggleButton>
           </ToggleButtonGroup>
         </Box>
         <Box>
@@ -360,7 +360,7 @@ export function AnalyticsPage() {
       </Stack>
       ),
     })
-  }, [compareMode, includedDays, setHeaderSettings])
+  }, [baseline, setBaseline, includedDays, setHeaderSettings])
 
   type Stat = {
     label: string

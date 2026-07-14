@@ -564,13 +564,24 @@ public class InsightService {
      * facteur réel. Si les conditions ressemblent à la référence → « comme d'habitude », sans %.
      */
     private String baselineRule(String baseline) {
-        boolean n1 = "n1".equalsIgnoreCase(baseline);
-        String base = n1
-                ? "l'an dernier — en PRIORITÉ le MÊME JOUR DE LA SEMAINE (« CA N-1 jour équiv. ») ; "
-                  + "la « même date » (« CA N-1 même date ») n'est qu'un repère secondaire : "
-                  + "si elle tombe un autre jour de semaine, NE l'utilise PAS pour la comparaison principale"
-                : "une JOURNÉE HABITUELLE (même jour de semaine, sans particularité)";
-        String ex = n1 ? "vs même jour N-1" : "vs un jour normal";
+        boolean n1Date = "n1_date".equalsIgnoreCase(baseline);
+        // Rétro-compat : l'ancienne valeur « n1 » = comparaison au même jour de semaine (équivalent).
+        boolean n1Equiv = "n1_equiv".equalsIgnoreCase(baseline) || "n1".equalsIgnoreCase(baseline);
+        String base;
+        String ex;
+        if (n1Date) {
+            base = "l'an dernier À LA MÊME DATE (« CA N-1 même date ») en PRIORITÉ ; le même jour de "
+                    + "semaine (« CA N-1 jour équiv. ») n'est qu'un repère secondaire";
+            ex = "vs la même date N-1";
+        } else if (n1Equiv) {
+            base = "l'an dernier — en PRIORITÉ le MÊME JOUR DE LA SEMAINE (« CA N-1 jour équiv. ») ; "
+                    + "la « même date » (« CA N-1 même date ») n'est qu'un repère secondaire : "
+                    + "si elle tombe un autre jour de semaine, NE l'utilise PAS pour la comparaison principale";
+            ex = "vs même jour N-1";
+        } else {
+            base = "une JOURNÉE HABITUELLE (même jour de semaine, sans particularité)";
+            ex = "vs un jour normal";
+        }
         return "RÉFÉRENCE : compare à " + base + ". "
                 + "Ne recommande une HAUSSE ou une BAISSE QUE si un facteur RÉEL la justifie "
                 + "(météo nettement différente de la référence, fête, jour férié, pont, événement local). "

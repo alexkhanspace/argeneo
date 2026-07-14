@@ -28,7 +28,13 @@ export interface DayContextInput {
   eventsNext?: string | null
 }
 
-export type Baseline = 'habituel' | 'n1'
+/**
+ * Axe de comparaison GLOBAL (partagé tableau de bord / calendrier / analytique) :
+ * - 'habituel'  → vs un jour de semaine normal ;
+ * - 'n1_equiv'  → vs le même JOUR de semaine l'an dernier (jour équivalent) ;
+ * - 'n1_date'   → vs la même DATE l'an dernier (date à date).
+ */
+export type Baseline = 'habituel' | 'n1_equiv' | 'n1_date'
 
 export interface TrendInput {
   etablissement: string

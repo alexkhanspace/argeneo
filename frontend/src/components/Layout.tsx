@@ -334,19 +334,22 @@ export function Layout() {
           {!pageSettings?.hideGlobal && (
             <>
               <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
-                Base des pourcentages des conseils IA
+                Comparaison (tout le site)
               </Typography>
               <ToggleButtonGroup
                 size="small"
                 exclusive
+                orientation="vertical"
+                fullWidth
                 value={baseline}
                 onChange={(_, v) => {
                   if (v) setBaseline(v)
                 }}
-                aria-label="Base de calcul de l'IA"
+                aria-label="Axe de comparaison"
               >
-                <ToggleButton value="habituel">vs jour normal</ToggleButton>
-                <ToggleButton value="n1">vs N-1</ToggleButton>
+                <ToggleButton value="habituel">Jour normal</ToggleButton>
+                <ToggleButton value="n1_equiv">N‑1 · même jour</ToggleButton>
+                <ToggleButton value="n1_date">N‑1 · même date</ToggleButton>
               </ToggleButtonGroup>
             </>
           )}
