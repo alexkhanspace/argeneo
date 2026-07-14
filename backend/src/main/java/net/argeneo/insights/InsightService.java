@@ -236,6 +236,8 @@ public class InsightService {
         String mode = modeRaw == null ? "" : modeRaw;
         boolean bilan = "bilan".equalsIgnoreCase(mode);
         boolean prep = "prep".equalsIgnoreCase(mode);
+        // Un CA saisi = journée CLÔTURÉE → on analyse le chiffre (bilan), même si c'est « aujourd'hui ».
+        boolean caSaisi = d.revenue() != null;
         String jour = d.date() + (notBlank(d.weekday()) ? " (" + d.weekday() + ")" : "");
         if (prep) {
             // J+1 : que PRÉPARER pour demain (orienté production/appro).
@@ -248,23 +250,10 @@ public class InsightService {
                     .append("NE FAIS PAS d'analyse du chiffre d'affaires (la journée n'a pas eu lieu). ")
                     .append("Reste strictement dans la gamme. 1 à 2 phrases COURTES, ton direct et ")
                     .append("impératif, concret, pas de puces, pas de titre.\n\n");
-        } else if (!bilan) {
-            // J : que FAIRE aujourd'hui (production/appro) + veille de férié + lecture CA légère.
-            p.append("Nous sommes le ").append(jour)
-                    .append(". Dis au patron CE QU'IL DOIT FAIRE AUJOURD'HUI pour la production et ")
-                    .append("l'approvisionnement : quoi produire en plus ou en moins, quoi commander, ")
-                    .append("en te basant sur les événements du jour, la météo et une référence FIABLE ")
-                    .append("de fréquentation. IMPORTANT — si DEMAIN est férié, un pont ou à forte ")
-                    .append("affluence (voir « événement(s) à venir »), signale que c'est une VEILLE et ")
-                    .append("qu'il faut PRÉPARER dès aujourd'hui en conséquence ; NE cite PAS de chiffres ")
-                    .append("pour demain ici (le détail chiffré est donné sur la carte de demain). Si le CA ")
-                    .append("du jour est DÉJÀ saisi ET la référence N-1 fiable (ni férié atypique, ni 0 €), ")
-                    .append("tu peux le situer en UNE phrase. Reste strictement dans la gamme. 1 à 2 phrases ")
-                    .append("COURTES, ton direct et impératif, concret, pas de puces, pas de titre.\n\n");
-        } else {
-            // J-1/J-2 : journée FINIE -> bilan ANALYTIQUE, verdict + écart de CA chiffré.
-            p.append("La journée ").append(jour)
-                    .append(" est TERMINÉE : fais-en l'ANALYSE pour le patron. ")
+        } else if (bilan || caSaisi) {
+            // Journée TERMINÉE ou CA DÉJÀ SAISI (clôture) -> bilan ANALYTIQUE, verdict + écart de CA chiffré.
+            p.append("Fais le BILAN de la journée ").append(jour)
+                    .append(" (journée terminée, ou CA déjà saisi = journée clôturée) : ANALYSE le chiffre. ")
                     .append("COMMENCE par un VERDICT de performance en 2-3 mots ")
                     .append("(ex. « Très bonne journée », « Bonne performance », « Performance correcte », ")
                     .append("« Journée décevante », « Mauvaise journée »), en jugeant le CA réalisé et la ")
@@ -272,6 +261,18 @@ public class InsightService {
                     .append("référence N-1 sont connus, CHIFFRE l'écart de CA (ex. « +12 % vs même jour ")
                     .append("l'an dernier ») et donne en 1 phrase la raison principale (météo, événement, ")
                     .append("fréquentation) + 1 conseil simple. Ton direct, pas de puces, pas de titre.\n\n");
+        } else {
+            // J : aujourd'hui, CA PAS ENCORE saisi -> production/appro + veille de férié (pas d'analyse de CA).
+            p.append("Nous sommes le ").append(jour)
+                    .append(". Le CA du jour n'est PAS encore saisi. Dis au patron CE QU'IL DOIT FAIRE ")
+                    .append("AUJOURD'HUI pour la production et l'approvisionnement : quoi produire en plus ou ")
+                    .append("en moins, quoi commander, en te basant sur les événements du jour, la météo et ")
+                    .append("une référence FIABLE de fréquentation. IMPORTANT — si DEMAIN est férié, un pont ")
+                    .append("ou à forte affluence (voir « événement(s) à venir »), signale que c'est une VEILLE ")
+                    .append("et qu'il faut PRÉPARER dès aujourd'hui en conséquence ; NE cite PAS de chiffres ")
+                    .append("pour demain (le détail chiffré est sur la carte de demain). NE fais PAS d'analyse ")
+                    .append("de CA (non saisi). Reste strictement dans la gamme. 1 à 2 phrases COURTES, ton ")
+                    .append("direct et impératif, concret, pas de puces, pas de titre.\n\n");
         }
         p.append("Données du jour : ").append(dayLine(d)).append("\n");
         if (d.caN1Date() == null && d.caN1Equiv() == null) {
