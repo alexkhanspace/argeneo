@@ -132,10 +132,24 @@ export function SaisieRapidePage() {
             </MenuItem>
           ))}
         </TextField>
+        <Button
+          size="small"
+          variant={date === todayIso() ? 'contained' : 'outlined'}
+          onClick={() => goToDate(todayIso())}
+        >
+          Aujourd'hui
+        </Button>
+        <Button
+          size="small"
+          variant={date === addDays(todayIso(), -1) ? 'contained' : 'outlined'}
+          onClick={() => goToDate(addDays(todayIso(), -1))}
+        >
+          Hier
+        </Button>
         <TextField
           type="date"
           size="small"
-          label="Aller au jour"
+          label="Autre jour"
           value={date}
           onChange={(e) => goToDate(e.target.value)}
           slotProps={{ inputLabel: { shrink: true } }}
