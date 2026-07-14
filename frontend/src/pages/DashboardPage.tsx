@@ -491,7 +491,9 @@ export function DashboardPage() {
         const d = new Date(now.getFullYear(), now.getMonth() + k, 1)
         return { y: d.getFullYear(), m: d.getMonth() }
       })
-      const years = [...new Set(months.map((mm) => mm.y))]
+      // Années de l'horizon + années N-1 (pour comparer chaque jour à la MÊME date l'an dernier).
+      const horizonYears = [...new Set(months.map((mm) => mm.y))]
+      const years = [...new Set([...horizonYears, ...horizonYears.map((y) => y - 1)])]
       const holidaysByYear: Record<number, Record<string, string>> = {}
       const fetesByYear: Record<number, Record<string, string>> = {}
       await Promise.all(
@@ -500,11 +502,13 @@ export function DashboardPage() {
           fetesByYear[y] = getCuratedEvents(y)
         }),
       )
+      // Mois de l'horizon + les mêmes mois l'an dernier (fêtes musulmanes/juives, à date mobile).
+      const allMonths = [...months, ...months.map((mm) => ({ y: mm.y - 1, m: mm.m }))]
       const muslimMaps = await Promise.all(
-        months.map((mm) => getMuslimDays(mm.y, mm.m).catch((): Record<string, string> => ({}))),
+        allMonths.map((mm) => getMuslimDays(mm.y, mm.m).catch((): Record<string, string> => ({}))),
       )
       const jewishMaps = await Promise.all(
-        months.map((mm) => getJewishDays(mm.y, mm.m).catch((): Record<string, string> => ({}))),
+        allMonths.map((mm) => getJewishDays(mm.y, mm.m).catch((): Record<string, string> => ({}))),
       )
       const muslim: Record<string, string> = Object.assign({}, ...muslimMaps)
       const jewish: Record<string, string> = Object.assign({}, ...jewishMaps)
@@ -513,9 +517,29 @@ export function DashboardPage() {
         const parts = [holidaysByYear[y]?.[iso], muslim[iso] || jewish[iso], fetesByYear[y]?.[iso]].filter(Boolean)
         return parts.length ? parts.join(' · ') : null
       }
+
+      // Même date l'an dernier (année −1, même mois/jour) — repère de la même fête.
+      const sameDateN1 = (iso: string): string => {
+        const d = new Date(iso + 'T00:00:00')
+        return toISO(new Date(d.getFullYear() - 1, d.getMonth(), d.getDate()))
+      }
+      // CA réel de la même date l'an dernier sur toute la fenêtre, en UNE requête.
+      const firstIso = toISO(addDays(now, 1))
+      const lastIso = toISO(addDays(now, horizon))
+      const caN1ByDate: Record<string, number> = {}
+      try {
+        const n1Entries = await listMonth(etab.id, sameDateN1(firstIso), sameDateN1(lastIso))
+        for (const en of n1Entries) {
+          if (en.revenue != null) caN1ByDate[en.date] = en.revenue
+        }
+      } catch {
+        // Pas de N-1 disponible : la prévision reste basée sur météo + événements.
+      }
+
       const days: DayContextInput[] = []
       for (let i = 1; i <= horizon; i++) {
         const iso = toISO(addDays(now, i))
+        const isoN1 = sameDateN1(iso)
         const w = weather[iso]
         days.push({
           date: iso,
@@ -523,6 +547,8 @@ export function DashboardPage() {
           tMax: w?.tMax ?? null,
           sky: w ? weatherIcon(w.code).label : null,
           events: eventsFor(iso),
+          eventsAa: eventsFor(isoN1), // événements de la même date l'an dernier (même fête)
+          caN1Date: caN1ByDate[isoN1] ?? null, // CA réel de la même date l'an dernier
         })
       }
       const res = await getTrend({

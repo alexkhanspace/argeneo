@@ -121,11 +121,18 @@ public class InsightService {
         p.append(STYLE);
         p.append(baselineRule(req.baseline()));
         p.append("Analyse les jours ci-dessous et donne un conseil de PRODUCTION / APPROVISIONNEMENT ")
-                .append("UNIQUEMENT pour les jours à enjeu (fête, météo marquante, écart de CA vs an dernier).\n\n")
+                .append("UNIQUEMENT pour les jours à enjeu (fête, météo marquante, écart de CA vs an dernier).\n")
+                .append("RAPPEL IMPORTANT — un JOUR FÉRIÉ ou une FÊTE n'implique PAS forcément une hausse : ")
+                .append("quand le « CA N-1 (même date) » de la même fête l'an dernier est fourni, APPUIE-TOI ")
+                .append("dessus (s'il était FAIBLE, prévois une journée calme, ne recommande PAS d'augmenter). ")
+                .append("Ne chiffre un écart QUE s'il est réellement justifié, et PRÉCISE toujours la base ")
+                .append("(ex. « vs le 14 juillet l'an dernier ») ; sinon conseille « comme l'an dernier ».\n\n")
                 .append("FORMAT DE RÉPONSE STRICT : une ligne par jour notable, exactement\n")
                 .append("AAAA-MM-JJ | conseil court et actionnable\n")
-                .append("(ex. « 2026-06-21 | Fête de la Musique + chaleur : forte affluence, +20 % sur les produits phares et boissons fraîches »).\n")
-                .append("Un conseil de 120 caractères max, concret et chiffré si possible. ")
+                .append("(ex. « 2026-06-21 | Fête de la Musique + beau temps : prévois plus de produits à ")
+                .append("emporter et boissons fraîches, comme l'an dernier »).\n")
+                .append("Un conseil de 120 caractères max, concret ; chiffre un écart seulement si un ")
+                .append("facteur réel le justifie et précise la base. ")
                 .append("N'inclus PAS les jours sans enjeu. Aucune autre ligne, pas d'introduction ni de puces.\n\n")
                 .append("Données :\n");
 
