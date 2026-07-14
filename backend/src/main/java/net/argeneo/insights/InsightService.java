@@ -39,7 +39,10 @@ public class InsightService {
             + "produits réconfortants et plats chauds, pas de barbecue ; certaines fêtes → produits de "
             + "tradition. ATTENTION : un JOUR FÉRIÉ n'implique PAS mécaniquement plus d'affluence — selon le "
             + "commerce et le lieu, il peut au contraire FAIRE BAISSER l'activité (clients partis, fermetures) ; "
-            + "ne suppose jamais une hausse par défaut, appuie-toi sur le CHIFFRE RÉEL de la même fête l'an dernier.\n";
+            + "ne suppose jamais une hausse par défaut, appuie-toi sur le CHIFFRE RÉEL de la même fête l'an dernier. "
+            + "VACANCES SCOLAIRES / GRANDS DÉPARTS (été, surtout août, chassé-croisé) → le SENS dépend du LIEU et "
+            + "du type de commerce : l'activité peut MONTER (zone touristique, littoral) ou BAISSER (quartier "
+            + "résidentiel, ville) ; n'assume AUCUNE direction, tranche avec le CA de la même période l'an dernier.\n";
 
     /** Garde-fou anti-hallucination : interdit d'inventer des montants absents des données. */
     private static final String NO_INVENT =

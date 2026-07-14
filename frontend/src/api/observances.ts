@@ -92,6 +92,13 @@ export function getCuratedEvents(year: number): Observances {
   // Beaujolais nouveau : 3e jeudi de novembre.
   add(toIso(nthWeekday(year, 10, 4, 3)), '🍷 Beaujolais nouveau')
 
+  // Vacances d'été / grands départs — repères d'affluence saisonnière. Le SENS (hausse en zone
+  // touristique, baisse en ville) dépend du lieu : ce ne sont que des marqueurs de contexte, l'IA
+  // tranche avec le CA de l'an dernier. On ne pose que les jours PIVOTS pour ne pas noyer la prévision.
+  add(toIso(lastWeekday(year, 6, 6)), '🧳 Grands départs (juilletistes)') // dernier samedi de juillet
+  add(toIso(nthWeekday(year, 7, 6, 1)), '🧳 Chassé-croisé (aoûtiens)') // 1er samedi d'août
+  add(toIso(lastWeekday(year, 7, 6)), '🔄 Retours de vacances') // dernier samedi d'août
+
   cache.set(year, o)
   return o
 }
