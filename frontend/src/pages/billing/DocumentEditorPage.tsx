@@ -36,6 +36,18 @@ import { listArticles } from '../../api/costing'
 import type { Article } from '../../api/types'
 import { PageHeader } from '../../components/PageHeader'
 
+// Dates de facturation en local (évite le décalage de fuseau de toISOString).
+const pad2 = (x: number): string => String(x).padStart(2, '0')
+const billToday = (): string => {
+  const d = new Date()
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`
+}
+const billAddDays = (iso: string, n: number): string => {
+  const base = iso ? new Date(iso + 'T00:00:00') : new Date()
+  base.setDate(base.getDate() + n)
+  return `${base.getFullYear()}-${pad2(base.getMonth() + 1)}-${pad2(base.getDate())}`
+}
+
 interface LineRow {
   designation: string
   articleId: number | ''
@@ -273,22 +285,40 @@ export function DocumentEditorPage() {
                   </MenuItem>
                 ))}
               </TextField>
-              <TextField
-                label="Date d'émission"
-                type="date"
-                value={issueDate}
-                onChange={(e) => setIssueDate(e.target.value)}
-                slotProps={{ inputLabel: { shrink: true } }}
-                sx={{ width: { xs: '100%', sm: 'auto' } }}
-              />
-              <TextField
-                label="Échéance"
-                type="date"
-                value={dueDate}
-                onChange={(e) => setDueDate(e.target.value)}
-                slotProps={{ inputLabel: { shrink: true } }}
-                sx={{ width: { xs: '100%', sm: 'auto' } }}
-              />
+              <Stack spacing={0.5}>
+                <TextField
+                  label="Date d'émission"
+                  type="date"
+                  value={issueDate}
+                  onChange={(e) => setIssueDate(e.target.value)}
+                  slotProps={{ inputLabel: { shrink: true } }}
+                  sx={{ width: { xs: '100%', sm: 'auto' } }}
+                />
+                <Button size="small" sx={{ alignSelf: 'flex-start' }} onClick={() => setIssueDate(billToday())}>
+                  Aujourd'hui
+                </Button>
+              </Stack>
+              <Stack spacing={0.5}>
+                <TextField
+                  label="Échéance"
+                  type="date"
+                  value={dueDate}
+                  onChange={(e) => setDueDate(e.target.value)}
+                  slotProps={{ inputLabel: { shrink: true } }}
+                  sx={{ width: { xs: '100%', sm: 'auto' } }}
+                />
+                <Stack direction="row" spacing={0.5}>
+                  <Button size="small" onClick={() => setDueDate(issueDate || billToday())}>
+                    Réception
+                  </Button>
+                  <Button size="small" onClick={() => setDueDate(billAddDays(issueDate, 30))}>
+                    +30 j
+                  </Button>
+                  <Button size="small" onClick={() => setDueDate(billAddDays(issueDate, 60))}>
+                    +60 j
+                  </Button>
+                </Stack>
+              </Stack>
             </Stack>
           </Stack>
         </CardContent>
