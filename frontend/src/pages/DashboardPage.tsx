@@ -190,6 +190,8 @@ export function DashboardPage() {
   const [details, setDetails] = useState<Record<string, { loading: boolean; text: string }>>({})
   // Popup météo horaire (clic sur la météo d'une carte).
   const [hourlyAnchor, setHourlyAnchor] = useState<{ el: HTMLElement; day: DayData } | null>(null)
+  // Popup détail du CA N-1 (clic sur le chip « CA … » d'une ligne de référence).
+  const [refDetail, setRefDetail] = useState<{ el: HTMLElement; label: string; r: DayRef } | null>(null)
   // Prévision longue (anticipation des prochaines semaines), chargée à la demande.
   const [longForecast, setLongForecast] = useState<
     { date: string; weeks: number; label: string; conseil: string }[] | null
@@ -599,7 +601,13 @@ export function DashboardPage() {
             {r.iso ? ` · ${formatDateFr(r.iso)}` : ''}
           </Typography>
           <Typography variant="body2">{r.tMax != null ? `~${Math.round(r.tMax)}°` : '—'}</Typography>
-          <Chip size="small" variant="outlined" label={`CA ${formatEur(r.ca)}`} />
+          <Chip
+            size="small"
+            variant="outlined"
+            label={`CA ${formatEur(r.ca)}`}
+            onClick={r.entry ? (e) => setRefDetail({ el: e.currentTarget, label, r }) : undefined}
+            sx={r.entry ? { cursor: 'pointer' } : undefined}
+          />
           {delta != null && (
             <Typography
               variant="body2"
@@ -1108,6 +1116,56 @@ export function DashboardPage() {
               ))}
           </Box>
         </Box>
+      </Popover>
+
+      {/* Popup détail du jour N-1 (clic sur le chip « CA … » d'une ligne de référence) */}
+      <Popover
+        open={Boolean(refDetail)}
+        anchorEl={refDetail?.el}
+        onClose={() => setRefDetail(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+      >
+        {refDetail && (
+          <Box sx={{ p: 1.5, minWidth: 220, maxWidth: 320 }}>
+            <Typography variant="subtitle2" gutterBottom>
+              {refDetail.label}
+              {refDetail.r.iso ? ` — ${formatDateLongFr(refDetail.r.iso)}` : ''}
+            </Typography>
+            <Stack spacing={0.5}>
+              <Typography variant="body2">
+                CA : <strong>{formatEur(refDetail.r.entry?.revenue)}</strong>
+              </Typography>
+              <Typography variant="body2">
+                Clients : {refDetail.r.entry?.clientCount ?? '—'}
+                {refDetail.r.entry?.revenue != null && refDetail.r.entry?.clientCount
+                  ? ` — ticket moyen ${formatEur(refDetail.r.entry.revenue / refDetail.r.entry.clientCount)}`
+                  : ''}
+              </Typography>
+              <Typography variant="body2">
+                Perte :{' '}
+                {refDetail.r.entry?.lossAmount != null ? formatEur(refDetail.r.entry.lossAmount) : '—'}
+              </Typography>
+              <Typography variant="body2">
+                Météo : {refDetail.r.tMax != null ? `~${Math.round(refDetail.r.tMax)}°` : '—'}
+              </Typography>
+              {refDetail.r.events && (
+                <Typography variant="body2" sx={{ color: '#1565c0' }}>
+                  🎉 {refDetail.r.events}
+                </Typography>
+              )}
+              {refDetail.r.entry?.noteProd && (
+                <Typography variant="caption" color="text.secondary">
+                  Prod : {refDetail.r.entry.noteProd}
+                </Typography>
+              )}
+              {refDetail.r.entry?.noteSale && (
+                <Typography variant="caption" color="text.secondary">
+                  Vente : {refDetail.r.entry.noteSale}
+                </Typography>
+              )}
+            </Stack>
+          </Box>
+        )}
       </Popover>
     </>
   )
