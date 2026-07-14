@@ -276,8 +276,12 @@ public class InsightService {
                     .append("ne cite aucun montant pour l'an dernier.\n");
         }
         if (bilan && d.revenue() == null) {
-            p.append("CA du jour : NON SAISI — tu ne connais pas le CA réalisé : n'invente pas de montant, ")
-                    .append("indique simplement que le CA n'a pas été saisi et appuie-toi sur le contexte.\n");
+            p.append("CA du jour : NON SAISI — tu ne connais PAS le CA réalisé. N'invente aucun montant et ")
+                    .append("n'affirme AUCUN impact ni performance (ni hausse, ni baisse, ni « impact négatif ») ")
+                    .append("que les données ne montrent pas — une veille de fête peut être positive comme "
+                            + "négative, tu n'en sais rien sans chiffre. Dis simplement que le CA n'a pas été ")
+                    .append("saisi ; tu peux au plus rappeler un point pratique sûr (météo, événement), sans ")
+                    .append("juger la journée.\n");
         }
         if (detail) {
             p.append("\nLe patron demande de DÉVELOPPER : fais une analyse plus complète, 4 à 6 phrases ")
@@ -577,7 +581,9 @@ public class InsightService {
                 + "ne signifie PAS automatiquement plus d'affluence : beaucoup de commerces font MOINS ce "
                 + "jour-là (clients partis, habitudes différentes). Fie-toi au CHIFFRE RÉEL de cette fête "
                 + "l'an dernier — s'il était FAIBLE, ne recommande PAS d'augmenter, prévois plutôt une "
-                + "activité calme.\n"
+                + "activité calme. FORMULATION — pour un férié qui fut FAIBLE, dis « produis COMME cette "
+                + "fête l'an dernier (≈ montant) » ou « −X % vs un jour NORMAL » ; ne dis JAMAIS « −X % vs "
+                + "cette fête l'an dernier » (tu réduirais une 2e fois un jour déjà faible).\n"
                 + "PRÉCISE TOUJOURS LA BASE — chaque fois que tu dis d'AUGMENTER ou de RÉDUIRE (production "
                 + "ou appro), indique explicitement par rapport à QUOI (ex. « vs un mardi normal » ou « vs "
                 + "le 14 juillet l'an dernier »). Sans base précisée, une consigne « augmente » n'a aucun sens.\n"
