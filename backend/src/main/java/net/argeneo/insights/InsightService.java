@@ -597,7 +597,13 @@ public class InsightService {
                 + "0 € (commerce fermé / non saisi) n'est pas exploitable : ignore-la.\n"
                 + "RESTE SIMPLE — n'expose PAS ton raisonnement sur les différentes références chiffrées "
                 + "(pas de « le CA N-1 de X était… donc… ») : donne DIRECTEMENT la consigne pratique, en "
-                + "une base claire au plus.\n";
+                + "une base claire au plus.\n"
+                + "COHÉRENCE OBLIGATOIRE — la conclusion et le chiffre cité doivent aller dans le MÊME sens. "
+                + "Si tu écris « +X % vs [référence] », c'est une HAUSSE (positif) : tu ne peux PAS qualifier "
+                + "la journée de « faible » ou « décevante » par rapport à CETTE référence. N'utilise qu'UNE "
+                + "seule référence dans ta conclusion et NE MÉLANGE JAMAIS deux comparaisons de sens opposé "
+                + "(ex. interdit : « très faible … +70 % »). Pour un jour de fête, la référence est la même "
+                + "fête l'an dernier : un « +X % » signifie une BONNE journée de fête.\n";
     }
 
     private boolean notBlank(String s) {
