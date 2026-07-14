@@ -192,6 +192,8 @@ export function DashboardPage() {
   const [hourlyAnchor, setHourlyAnchor] = useState<{ el: HTMLElement; day: DayData } | null>(null)
   // Popup détail du CA N-1 (clic sur le chip « CA … » d'une ligne de référence).
   const [refDetail, setRefDetail] = useState<{ el: HTMLElement; label: string; r: DayRef } | null>(null)
+  // Météo heure par heure du jour N-1 affiché dans la popup (archive Open-Meteo), chargée à l'ouverture.
+  const [refHourly, setRefHourly] = useState<HourWeather[] | null>(null)
   // Prévision longue (anticipation des prochaines semaines), chargée à la demande.
   const [longForecast, setLongForecast] = useState<
     { date: string; weeks: number; label: string; conseil: string }[] | null
@@ -273,6 +275,23 @@ export function DashboardPage() {
     void loadCockpit()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [baseline])
+
+  // Météo horaire du jour N-1 de la popup (archive), chargée à l'ouverture.
+  useEffect(() => {
+    const iso = refDetail?.r.iso
+    if (!iso || !etab || etab.latitude == null || etab.longitude == null) {
+      setRefHourly(null)
+      return
+    }
+    let cancelled = false
+    setRefHourly(null)
+    getHourlyWeather(etab.latitude, etab.longitude, iso)
+      .then((h) => !cancelled && setRefHourly(h))
+      .catch(() => !cancelled && setRefHourly([]))
+    return () => {
+      cancelled = true
+    }
+  }, [refDetail, etab])
 
   /** Construit le contexte d'une carte-jour (fetches météo/CA/événements) SANS appeler l'IA. */
   async function buildDayContext(
@@ -656,7 +675,7 @@ export function DashboardPage() {
               <Typography variant="body2">{day.tMaxJ != null ? `~${Math.round(day.tMaxJ)}°` : '—'}</Typography>
               {day.hourly && day.hourly.length > 0 && (
                 <Typography variant="caption" color="primary">
-                  détail ▾
+                  ▾
                 </Typography>
               )}
             </Box>
@@ -1164,6 +1183,42 @@ export function DashboardPage() {
                 </Typography>
               )}
             </Stack>
+
+            {refHourly && refHourly.length > 0 && (
+              <>
+                <Typography
+                  variant="caption"
+                  color="text.secondary"
+                  sx={{ display: 'block', mt: 1, mb: 0.5 }}
+                >
+                  Météo heure par heure
+                </Typography>
+                <Box
+                  sx={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(2, 1fr)',
+                    columnGap: 2,
+                    rowGap: 0.25,
+                    maxHeight: 240,
+                    overflowY: 'auto',
+                  }}
+                >
+                  {refHourly
+                    .filter((h) => h.hour >= 5 && h.hour <= 23)
+                    .map((h) => (
+                      <Stack key={h.hour} direction="row" spacing={0.75} sx={{ alignItems: 'center' }}>
+                        <Typography variant="caption" sx={{ minWidth: 30 }}>
+                          {String(h.hour).padStart(2, '0')}h
+                        </Typography>
+                        <Box component="span">{weatherIcon(h.code).emoji}</Box>
+                        <Typography variant="caption">
+                          {h.temp != null ? `${Math.round(h.temp)}°` : '—'}
+                        </Typography>
+                      </Stack>
+                    ))}
+                </Box>
+              </>
+            )}
           </Box>
         )}
       </Popover>
