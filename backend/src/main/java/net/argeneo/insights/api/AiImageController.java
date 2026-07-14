@@ -112,16 +112,46 @@ public class AiImageController {
         if (req == null || req.prompt() == null || req.prompt().isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Brief vide");
         }
-        // Format demandé (carré, A5…) : on le donne à l'IA pour qu'elle cadre le visuel en conséquence,
-        // faute de quoi un rendu carré se retrouve rogné une fois placé dans une affichette A5.
+        // Format demandé (carré, A5…) : on le donne à l'IA à la fois via l'API (imageConfig) ET en
+        // toutes lettres dans le prompt — beaucoup de modèles ignorent le ratio API et rendent du carré,
+        // qui se retrouve alors rogné une fois placé dans une affichette A5.
         String aspectRatio = req.aspectRatio() != null && ASPECT_RATIOS.contains(req.aspectRatio())
                 ? req.aspectRatio() : null;
-        String prompt = "Crée un visuel publicitaire soigné et appétissant pour un commerce de bouche artisanal "
-                + "française artisanale : style photo professionnelle, haute qualité, lumière naturelle douce, "
-                + "fond épuré. Ne fais apparaître AUCUN texte ni logo sur l'image (aucune lettre, aucun mot, "
+        String prompt = "Crée un visuel publicitaire soigné et appétissant pour un commerce de bouche "
+                + "artisanal français : style photo professionnelle, haute qualité, lumière naturelle douce, "
+                + "fond épuré. " + orientationHint(aspectRatio)
+                + "Ne fais apparaître AUCUN texte ni logo sur l'image (aucune lettre, aucun mot, "
                 + "aucune pancarte, aucune étiquette, aucun emballage imprimé). Sujet : " + req.prompt().trim() + ".";
         byte[] out = gemini.generateFromText(prompt, aspectRatio);
         return ResponseEntity.ok().contentType(MediaType.IMAGE_PNG).body(out);
+    }
+
+    /** Consigne de cadrage en toutes lettres selon le ratio (le modèle suit mieux le texte que l'API). */
+    private static String orientationHint(String aspectRatio) {
+        if (aspectRatio == null) {
+            return "";
+        }
+        String[] p = aspectRatio.split(":");
+        if (p.length != 2) {
+            return "";
+        }
+        try {
+            double w = Double.parseDouble(p[0]);
+            double h = Double.parseDouble(p[1]);
+            if (h > w) {
+                return "IMPÉRATIF SUR LE CADRAGE : rends l'image en FORMAT PORTRAIT VERTICAL, nettement "
+                        + "PLUS HAUTE QUE LARGE (ratio " + aspectRatio + ", proche d'une affiche A5). "
+                        + "Compose la scène verticalement, sujet centré, avec de l'espace calme en haut et "
+                        + "en bas. NE rends PAS une image carrée. ";
+            }
+            if (w > h) {
+                return "IMPÉRATIF SUR LE CADRAGE : rends l'image en FORMAT PAYSAGE HORIZONTAL, plus LARGE "
+                        + "que haute (ratio " + aspectRatio + "). NE rends PAS une image carrée. ";
+            }
+            return "Rends l'image en FORMAT CARRÉ (ratio 1:1). ";
+        } catch (NumberFormatException e) {
+            return "";
+        }
     }
 
     private static String buildPrompt(String ambiance, String instruction, String mode) {
