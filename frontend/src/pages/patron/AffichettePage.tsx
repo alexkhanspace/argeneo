@@ -37,6 +37,7 @@ import RestartAltIcon from '@mui/icons-material/RestartAlt'
 import ContentCopyIcon from '@mui/icons-material/ContentCopy'
 import FlipToFrontIcon from '@mui/icons-material/FlipToFront'
 import ZoomInIcon from '@mui/icons-material/ZoomIn'
+import SendIcon from '@mui/icons-material/Send'
 import { errorMessage } from '../../api/client'
 import { getProfile, getSettings, logoUrl } from '../../api/billing'
 import { listArticles, photoUrl } from '../../api/costing'
@@ -55,6 +56,17 @@ const FORMATS: Record<Fmt, { w: number; h: number; label: string; size: 'A4' | '
 }
 type BgMode = 'photo' | 'brand' | 'solid'
 type Align = 'left' | 'center' | 'right'
+
+// Ambiances de fond proposées à l'IA (mêmes choix que la page Communication).
+const AMBIANCES = [
+  'Laisser l’IA choisir',
+  'Fond ardoise élégant',
+  'Planche en bois rustique',
+  'Fond clair épuré (studio)',
+  'Table dressée lifestyle',
+  'Marché / étal gourmand',
+  "Fond aux couleurs de l'enseigne",
+]
 
 /** Un bloc de texte libre, positionné en fractions (0..1) de l'affichette. */
 interface Block {
@@ -195,7 +207,12 @@ export function AffichettePage() {
 
   const [enhancing, setEnhancing] = useState(false)
   const [aiPrompt, setAiPrompt] = useState('')
-  const [aiBusy, setAiBusy] = useState<null | 'retouch' | 'generate' | 'compose'>(null)
+  const [aiBusy, setAiBusy] = useState<null | 'retouch' | 'generate' | 'compose' | 'chat'>(null)
+  // Ambiance du fond généré (presets « comme dans Communication »).
+  const [ambiance, setAmbiance] = useState(AMBIANCES[0])
+  // Mini-chat IA : échange court pour affiner le fond au fil de l'eau (retouche itérative).
+  const [chatInput, setChatInput] = useState('')
+  const [chatLog, setChatLog] = useState<{ role: 'user' | 'ai'; text: string }[]>([])
   const [menuArticles, setMenuArticles] = useState<Article[]>([])
   const [menuFiles, setMenuFiles] = useState<File[]>([])
   const menuFileRef = useRef<HTMLInputElement | null>(null)
@@ -462,6 +479,15 @@ export function AffichettePage() {
     return blob ? new File([blob], 'fond.png', { type: 'image/png' }) : null
   }
 
+  /** Traduit l'ambiance choisie en consigne pour l'IA (couleurs de l'enseigne, ardoise, bois…). */
+  const ambiancePrompt = (): string | undefined => {
+    if (ambiance.startsWith('Laisser')) return undefined
+    if (ambiance.toLowerCase().includes('enseigne')) {
+      return `fond uni ou dégradé harmonieux aux couleurs de l'enseigne : ${colors.c1} et ${colors.c2}`
+    }
+    return ambiance
+  }
+
   /** Retouche le fond actuel selon la consigne libre (les textes restent par-dessus, intacts). */
   const retouchBg = async () => {
     if (bgMode !== 'photo' || !bgImg) {
@@ -487,16 +513,17 @@ export function AffichettePage() {
     }
   }
 
-  /** Génère un fond de zéro (texte → image) à partir de la consigne libre. */
+  /** Génère un fond de zéro (texte → image) à partir de la consigne libre + ambiance choisie. */
   const generateBg = async () => {
-    if (!aiPrompt.trim()) {
-      setError('Décris le fond souhaité dans la zone de texte libre (ex. « vitrine de Noël, ambiance chaleureuse »).')
+    const prompt = [aiPrompt.trim(), ambiancePrompt()].filter(Boolean).join('. ')
+    if (!prompt) {
+      setError('Décris le fond souhaité (ou choisis une ambiance) — ex. « vitrine de Noël, ambiance chaleureuse ».')
       return
     }
     setError(null)
     setAiBusy('generate')
     try {
-      const blob = await generateImageFromPrompt(aiPrompt.trim(), fmt.ar)
+      const blob = await generateImageFromPrompt(prompt, fmt.ar)
       setBgImg(await imgFromBlob(blob))
       setBgMode('photo')
       setSourceFile(null)
@@ -528,7 +555,8 @@ export function AffichettePage() {
         files.push(new File([blob], `produit-${a.id}.png`, { type: blob.type || 'image/png' }))
       }
       if (files.length === 0) throw new Error('Aucune photo exploitable')
-      const blob = await composeImages(files, aiPrompt.trim() || undefined)
+      const instruction = [aiPrompt.trim(), ambiancePrompt()].filter(Boolean).join('. ')
+      const blob = await composeImages(files, instruction || undefined)
       setBgImg(await imgFromBlob(blob))
       setBgMode('photo')
       setSourceFile(null)
@@ -548,6 +576,38 @@ export function AffichettePage() {
       }
     } catch (e) {
       setError(errorMessage(e))
+    } finally {
+      setAiBusy(null)
+    }
+  }
+
+  /** Mini-chat IA : affine le fond au fil des messages (retouche image→image, ou génère si pas de fond). */
+  const sendChat = async () => {
+    const msg = chatInput.trim()
+    if (!msg) return
+    setError(null)
+    setChatInput('')
+    setChatLog((l) => [...l, { role: 'user', text: msg }])
+    setAiBusy('chat')
+    try {
+      const instruction = [msg, ambiancePrompt()].filter(Boolean).join('. ')
+      let blob: Blob
+      if (bgMode === 'photo' && bgImg) {
+        const f = await bgToFile()
+        if (!f) throw new Error('Fond illisible')
+        blob = await enhanceImage(f, undefined, instruction, 'scene')
+      } else {
+        blob = await generateImageFromPrompt(instruction, fmt.ar)
+        setBgZoom(1)
+      }
+      setBgImg(await imgFromBlob(blob))
+      setBgMode('photo')
+      setSourceFile(null)
+      setChatLog((l) => [...l, { role: 'ai', text: 'Fond mis à jour ✅' }])
+    } catch (e) {
+      const m = errorMessage(e)
+      setChatLog((l) => [...l, { role: 'ai', text: `⚠️ ${m}` }])
+      setError(m)
     } finally {
       setAiBusy(null)
     }
@@ -1124,6 +1184,20 @@ export function AffichettePage() {
                 value={aiPrompt}
                 onChange={(e) => setAiPrompt(e.target.value)}
               />
+              <TextField
+                select
+                size="small"
+                label="Ambiance du fond"
+                value={ambiance}
+                onChange={(e) => setAmbiance(e.target.value)}
+                helperText="Appliquée à la génération, à la composition menu et au chat."
+              >
+                {AMBIANCES.map((a) => (
+                  <MenuItem key={a} value={a}>
+                    {a}
+                  </MenuItem>
+                ))}
+              </TextField>
               <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', gap: 1 }}>
                 <Button
                   size="small"
@@ -1146,6 +1220,66 @@ export function AffichettePage() {
               </Stack>
               <Typography variant="caption" color="text.secondary">
                 L’IA travaille sur le fond : tes textes restent nets et modifiables par-dessus.
+              </Typography>
+
+              {/* Mini-chat IA : affine le fond au fil de l'eau */}
+              <Divider textAlign="left">
+                <Typography variant="caption" color="text.secondary">
+                  Chat IA — affine le fond
+                </Typography>
+              </Divider>
+              {chatLog.length > 0 && (
+                <Box
+                  sx={{
+                    maxHeight: 160,
+                    overflowY: 'auto',
+                    bgcolor: 'action.hover',
+                    borderRadius: 1,
+                    p: 1,
+                  }}
+                >
+                  <Stack spacing={0.5}>
+                    {chatLog.map((m, i) => (
+                      <Typography
+                        key={i}
+                        variant="caption"
+                        sx={{
+                          textAlign: m.role === 'user' ? 'right' : 'left',
+                          color: m.role === 'user' ? 'text.primary' : 'primary.main',
+                        }}
+                      >
+                        {m.role === 'user' ? `🧑 ${m.text}` : `🤖 ${m.text}`}
+                      </Typography>
+                    ))}
+                  </Stack>
+                </Box>
+              )}
+              <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+                <TextField
+                  size="small"
+                  fullWidth
+                  placeholder="Ex. : plus chaleureux, ajoute des guirlandes, fond plus sombre…"
+                  value={chatInput}
+                  onChange={(e) => setChatInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault()
+                      void sendChat()
+                    }
+                  }}
+                  disabled={aiBusy !== null}
+                />
+                <IconButton
+                  color="primary"
+                  onClick={() => void sendChat()}
+                  disabled={aiBusy !== null || !chatInput.trim()}
+                  aria-label="Envoyer au chat IA"
+                >
+                  {aiBusy === 'chat' ? <CircularProgress size={18} /> : <SendIcon />}
+                </IconButton>
+              </Stack>
+              <Typography variant="caption" color="text.secondary">
+                Chaque message affine le fond actuel (ou en génère un si aucun fond). Idéal pour les menus.
               </Typography>
 
               <Typography variant="subtitle2" color="text.secondary">
