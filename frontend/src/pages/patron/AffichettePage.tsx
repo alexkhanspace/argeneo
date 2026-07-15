@@ -25,7 +25,6 @@ import {
 import AddIcon from '@mui/icons-material/Add'
 import UploadIcon from '@mui/icons-material/Upload'
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome'
-import RestaurantMenuIcon from '@mui/icons-material/RestaurantMenu'
 import DownloadIcon from '@mui/icons-material/Download'
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf'
 import SaveIcon from '@mui/icons-material/Save'
@@ -35,7 +34,6 @@ import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 import RestartAltIcon from '@mui/icons-material/RestartAlt'
 import ContentCopyIcon from '@mui/icons-material/ContentCopy'
 import FlipToFrontIcon from '@mui/icons-material/FlipToFront'
-import ZoomInIcon from '@mui/icons-material/ZoomIn'
 import SendIcon from '@mui/icons-material/Send'
 import { errorMessage } from '../../api/client'
 import { getProfile, getSettings, logoUrl } from '../../api/billing'
@@ -56,7 +54,7 @@ const FORMATS: Record<Fmt, { w: number; h: number; label: string; size: 'A4' | '
 type BgMode = 'photo' | 'brand' | 'solid'
 type Align = 'left' | 'center' | 'right'
 
-// Ambiances de fond proposées à l'IA (mêmes choix que la page Communication).
+// Ambiances / styles de fond proposés à l'IA (aides cliquables).
 const AMBIANCES = [
   'Laisser l’IA choisir',
   'Fond ardoise élégant',
@@ -65,6 +63,15 @@ const AMBIANCES = [
   'Table dressée lifestyle',
   'Marché / étal gourmand',
   "Fond aux couleurs de l'enseigne",
+]
+
+// Aides « occasion » : ajoutent une intention au brief IA.
+const OCCASIONS: { label: string; text: string }[] = [
+  { label: 'Nouveauté', text: 'annonce une NOUVEAUTÉ' },
+  { label: 'Promo', text: 'met en avant une PROMOTION' },
+  { label: 'Offre du moment', text: 'offre du moment / édition limitée' },
+  { label: 'Fête / Noël', text: 'ambiance festive de fin d’année (Noël)' },
+  { label: 'Été / fraîcheur', text: 'ambiance estivale et fraîcheur' },
 ]
 
 /** Un bloc de texte libre, positionné en fractions (0..1) de l'affichette. */
@@ -175,7 +182,6 @@ function defaultBlocks(): Block[] {
  */
 export function AffichettePage() {
   const stageRef = useRef<HTMLDivElement | null>(null)
-  const fileRef = useRef<HTMLInputElement | null>(null)
 
   const [format, setFormat] = useState<Fmt>('a4')
   const [blocks, setBlocks] = useState<Block[]>(() => {
@@ -193,7 +199,6 @@ export function AffichettePage() {
 
   const [bgMode, setBgMode] = useState<BgMode>('brand')
   const [bgImg, setBgImg] = useState<HTMLImageElement | null>(null)
-  const [sourceFile, setSourceFile] = useState<File | null>(null)
   const [solid, setSolid] = useState('#c2410c')
   const [bgZoom, setBgZoom] = useState(1) // zoom de la photo de fond (1 = plein cadre)
   const [veil, setVeil] = useState(0.35)
@@ -204,7 +209,9 @@ export function AffichettePage() {
   const [articles, setArticles] = useState<Article[]>([])
   const [articleId, setArticleId] = useState<number | ''>('')
 
-  const [enhancing, setEnhancing] = useState(false)
+  // Parcours guidé : type d'affiche (1 produit ou menu) + garde-fou anti-doublon des textes.
+  const [affType, setAffType] = useState<'produit' | 'menu'>('produit')
+  const [seededProducts, setSeededProducts] = useState(false)
   const [aiPrompt, setAiPrompt] = useState('')
   const [aiBusy, setAiBusy] = useState<null | 'retouch' | 'generate' | 'compose' | 'chat'>(null)
   // Ambiance du fond généré (presets « comme dans Communication »).
@@ -404,69 +411,7 @@ export function AffichettePage() {
     if (s && Math.hypot(e.clientX - s.x, e.clientY - s.y) > MOVE_CANCEL_PX) clearStagePress()
   }
 
-  // --- Fond ---
-  const onImportPhoto = async (file: File | undefined) => {
-    if (!file) return
-    setSourceFile(file)
-    setBgImg(await imgFromBlob(file))
-    setBgMode('photo')
-    setBgZoom(1)
-  }
-  const onUseArticle = async (id: number | '') => {
-    setArticleId(id)
-    if (id === '') return
-    const a = articles.find((x) => x.id === id)
-    if (!a) return
-    // Pré-remplit un titre + prix depuis le produit.
-    setBlocks((list) => {
-      const withoutSeed = list
-      const title = newBlock({ text: a.name, yPct: 0.6, fontPct: 0.09, align: 'left', xPct: 0.06, wPct: 0.88 })
-      const price =
-        a.salePriceTtc != null
-          ? [
-              newBlock({
-                text: a.salePriceTtc.toLocaleString('fr-FR', { minimumFractionDigits: 2 }) + ' €',
-                yPct: 0.85,
-                xPct: 0.6,
-                wPct: 0.34,
-                fontPct: 0.07,
-                align: 'center',
-                bg: colors.c2,
-              }),
-            ]
-          : []
-      return [...withoutSeed, title, ...price]
-    })
-    // Charge la photo du produit en fond si dispo.
-    if (a.photoFile) {
-      const img = await loadImage(photoUrl(a.photoFile))
-      if (img) {
-        setBgImg(img)
-        setBgMode('photo')
-        setSourceFile(null)
-        setBgZoom(1)
-      }
-    }
-  }
-  const sublimeBg = async () => {
-    if (!sourceFile) {
-      setError('Importe d’abord une photo à sublimer.')
-      return
-    }
-    setError(null)
-    setEnhancing(true)
-    try {
-      const amb = `fond uni ou dégradé harmonieux aux couleurs de l'enseigne : ${colors.c1} et ${colors.c2}`
-      const blob = await enhanceImage(sourceFile, amb, undefined, 'scene')
-      setBgImg(await imgFromBlob(blob))
-    } catch (e) {
-      setError(errorMessage(e))
-    } finally {
-      setEnhancing(false)
-    }
-  }
-
-  // --- IA : retouche du fond, génération, composition menu ---
+  // --- IA : brief → affiche ---
   /** Le fond actuel (déjà sublimé/généré ou non) converti en fichier PNG pour l'IA. */
   const bgToFile = async (): Promise<File | null> => {
     if (!bgImg) return null
@@ -487,40 +432,57 @@ export function AffichettePage() {
     return ambiance
   }
 
-  /** Génère un fond de zéro (texte → image) à partir de la consigne libre + ambiance choisie. */
-  const generateBg = async () => {
-    const prompt = [aiPrompt.trim(), ambiancePrompt()].filter(Boolean).join('. ')
-    if (!prompt) {
-      setError('Décris le fond souhaité (ou choisis une ambiance) — ex. « vitrine de Noël, ambiance chaleureuse ».')
-      return
-    }
-    setError(null)
-    setAiBusy('generate')
-    try {
-      const blob = await generateImageFromPrompt(prompt, fmt.ar)
-      setBgImg(await imgFromBlob(blob))
-      setBgMode('photo')
-      setSourceFile(null)
-      setBgZoom(1)
-    } catch (e) {
-      setError(errorMessage(e))
-    } finally {
-      setAiBusy(null)
+  /** Ajoute une intention (occasion) au brief IA, sans doublon. */
+  const addBrief = (text: string) => {
+    setAiPrompt((p) => (p.includes(text) ? p : (p.trim() ? p.trim() + '. ' : '') + text))
+  }
+
+  /** Produits actuellement ciblés selon le type d'affiche (1 produit ou menu). */
+  const selectedProducts = (): Article[] =>
+    affType === 'menu'
+      ? menuArticles
+      : articleId !== ''
+        ? articles.filter((a) => a.id === articleId)
+        : []
+
+  /** Pré-remplit les textes nom + prix des produits (une seule fois, éditables ensuite). */
+  const seedProductBlocks = (products: Article[]) => {
+    if (products.length === 0 || seededProducts) return
+    setSeededProducts(true)
+    const eur = (v: number) => v.toLocaleString('fr-FR', { minimumFractionDigits: 2 }) + ' €'
+    if (affType === 'produit') {
+      const a = products[0]
+      const title = newBlock({ text: a.name, yPct: 0.6, fontPct: 0.09, align: 'left', xPct: 0.06, wPct: 0.88 })
+      const price =
+        a.salePriceTtc != null
+          ? [newBlock({ text: eur(a.salePriceTtc), yPct: 0.85, xPct: 0.6, wPct: 0.34, fontPct: 0.07, align: 'center', bg: colors.c2 })]
+          : []
+      setBlocks((list) => [...list, title, ...price])
+      setSelectedId(title.id)
+    } else {
+      const lines = products.map((a) => (a.salePriceTtc != null ? `${a.name} — ${eur(a.salePriceTtc)}` : a.name)).join('\n')
+      const b = newBlock({ text: lines, yPct: 0.5, xPct: 0.08, wPct: 0.84, fontPct: 0.04, align: 'left' })
+      setBlocks((list) => [...list, b])
+      setSelectedId(b.id)
     }
   }
 
-  /** Compose une affiche « menu » : l'IA met en scène les VRAIES photos des produits choisis. */
-  const composeMenu = async () => {
-    const withPhoto = menuArticles.filter((a) => a.photoFile)
-    if (withPhoto.length + menuFiles.length === 0) {
-      setError('Sélectionne des produits qui ont une photo, ou importe des photos pour le menu.')
+  /**
+   * Crée l'affiche : met en scène les VRAIES photos des produits choisis (ou des photos importées)
+   * via l'IA, ou génère un visuel de zéro si aucune photo. Puis pré-remplit les textes nom + prix.
+   */
+  const createAffiche = async () => {
+    const products = selectedProducts()
+    if (products.length === 0 && menuFiles.length === 0 && !aiPrompt.trim()) {
+      setError('Choisis au moins un produit (ou importe une photo), puis décris ton affiche.')
       return
     }
     setError(null)
     setAiBusy('compose')
     try {
       const files: File[] = [...menuFiles]
-      for (const a of withPhoto) {
+      for (const a of products) {
+        if (!a.photoFile) continue
         const u = photoUrl(a.photoFile)
         if (!u) continue
         const r = await fetch(u)
@@ -528,26 +490,15 @@ export function AffichettePage() {
         const blob = await r.blob()
         files.push(new File([blob], `produit-${a.id}.png`, { type: blob.type || 'image/png' }))
       }
-      if (files.length === 0) throw new Error('Aucune photo exploitable')
       const instruction = [aiPrompt.trim(), ambiancePrompt()].filter(Boolean).join('. ')
-      const blob = await composeImages(files, instruction || undefined)
+      const blob =
+        files.length > 0
+          ? await composeImages(files, instruction || undefined)
+          : await generateImageFromPrompt(instruction || 'affiche promotionnelle appétissante', fmt.ar)
       setBgImg(await imgFromBlob(blob))
       setBgMode('photo')
-      setSourceFile(null)
       setBgZoom(1)
-      // Pré-remplit un bloc « carte » avec les produits choisis (nom + prix), librement éditable.
-      if (menuArticles.length > 0) {
-        const lines = menuArticles
-          .map((a) =>
-            a.salePriceTtc != null
-              ? `${a.name} — ${a.salePriceTtc.toLocaleString('fr-FR', { minimumFractionDigits: 2 })} €`
-              : a.name,
-          )
-          .join('\n')
-        const b = newBlock({ text: lines, yPct: 0.5, xPct: 0.08, wPct: 0.84, fontPct: 0.04, align: 'left' })
-        setBlocks((list) => [...list, b])
-        setSelectedId(b.id)
-      }
+      seedProductBlocks(products)
     } catch (e) {
       setError(errorMessage(e))
     } finally {
@@ -578,7 +529,6 @@ export function AffichettePage() {
       }
       setBgImg(await imgFromBlob(blob))
       setBgMode('photo')
-      setSourceFile(null)
       setChatLog((l) => [...l, { role: 'ai', text: 'Fond mis à jour ✅' }])
     } catch (e) {
       const m = errorMessage(e)
@@ -1055,33 +1005,76 @@ export function AffichettePage() {
 
               <Divider />
 
-              {/* 1 · Produits — mise en scène IA des vraies photos */}
+              {/* 1 · Type d'affiche */}
               <Typography variant="subtitle2" color="text.secondary">
-                1 · Produits (affiche menu)
+                1 · Que veux-tu mettre en avant ?
               </Typography>
-              <Autocomplete
-                multiple
+              <ToggleButtonGroup
                 size="small"
-                options={articles}
-                getOptionLabel={(a) => `${a.code} — ${a.name}${a.photoFile ? '' : ' (sans photo)'}`}
-                isOptionEqualToValue={(o, v) => o.id === v.id}
-                value={menuArticles}
-                onChange={(_, v) => setMenuArticles(v)}
-                renderInput={(params) => <TextField {...params} label="Produits à mettre en scène" />}
-              />
-              <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', gap: 1, alignItems: 'center' }}>
-                <Button size="small" variant="outlined" startIcon={<UploadIcon />} onClick={() => menuFileRef.current?.click()}>
-                  Ajouter des photos
-                </Button>
-                <Button
+                exclusive
+                fullWidth
+                value={affType}
+                onChange={(_, v: 'produit' | 'menu' | null) => {
+                  if (!v) return
+                  setAffType(v)
+                  setSeededProducts(false)
+                }}
+              >
+                <ToggleButton value="produit">Un produit</ToggleButton>
+                <ToggleButton value="menu">Un menu (plusieurs)</ToggleButton>
+              </ToggleButtonGroup>
+
+              <Divider />
+
+              {/* 2 · Choix des produits */}
+              <Typography variant="subtitle2" color="text.secondary">
+                2 · {affType === 'menu' ? 'Choisis les produits' : 'Choisis le produit'}
+              </Typography>
+              {affType === 'produit' ? (
+                <TextField
+                  select
                   size="small"
-                  variant="contained"
-                  startIcon={aiBusy === 'compose' ? <CircularProgress size={14} color="inherit" /> : <RestaurantMenuIcon />}
-                  onClick={() => void composeMenu()}
-                  disabled={aiBusy !== null}
+                  label="Produit"
+                  value={articleId === '' ? '' : String(articleId)}
+                  onChange={(e) => {
+                    setArticleId(e.target.value === '' ? '' : Number(e.target.value))
+                    setSeededProducts(false)
+                  }}
                 >
-                  Composer l’affiche (IA)
+                  <MenuItem value="">
+                    <em>— Choisir —</em>
+                  </MenuItem>
+                  {articles.map((a) => (
+                    <MenuItem key={a.id} value={String(a.id)}>
+                      {a.code} — {a.name}
+                      {a.photoFile ? '' : ' (sans photo)'}
+                    </MenuItem>
+                  ))}
+                </TextField>
+              ) : (
+                <Autocomplete
+                  multiple
+                  size="small"
+                  options={articles}
+                  getOptionLabel={(a) => `${a.code} — ${a.name}${a.photoFile ? '' : ' (sans photo)'}`}
+                  isOptionEqualToValue={(o, v) => o.id === v.id}
+                  value={menuArticles}
+                  onChange={(_, v) => {
+                    setMenuArticles(v)
+                    setSeededProducts(false)
+                  }}
+                  renderInput={(params) => <TextField {...params} label="Produits du menu" />}
+                />
+              )}
+              <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', gap: 0.5, alignItems: 'center' }}>
+                <Button size="small" variant="text" startIcon={<UploadIcon />} onClick={() => menuFileRef.current?.click()}>
+                  Importer des photos
                 </Button>
+                {menuFiles.length > 0 && (
+                  <Typography variant="caption" color="text.secondary">
+                    {menuFiles.length} photo(s)
+                  </Typography>
+                )}
               </Stack>
               {menuFiles.length > 0 && (
                 <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', gap: 0.5 }}>
@@ -1110,171 +1103,56 @@ export function AffichettePage() {
 
               <Divider />
 
-              {/* 2 · Fond */}
+              {/* 3 · Brief IA + aides */}
               <Typography variant="subtitle2" color="text.secondary">
-                2 · Fond
-              </Typography>
-              <ToggleButtonGroup
-                size="small"
-                exclusive
-                value={bgMode}
-                onChange={(_, v: BgMode | null) => v && setBgMode(v)}
-                fullWidth
-              >
-                <ToggleButton value="brand">Enseigne</ToggleButton>
-                <ToggleButton value="solid">Uni</ToggleButton>
-                <ToggleButton value="photo">Photo</ToggleButton>
-              </ToggleButtonGroup>
-
-              {bgMode === 'solid' && (
-                <TextField
-                  type="color"
-                  size="small"
-                  label="Couleur du fond"
-                  value={solid}
-                  onChange={(e) => setSolid(e.target.value)}
-                  slotProps={{ inputLabel: { shrink: true } }}
-                  sx={{ width: 120 }}
-                />
-              )}
-
-              <TextField
-                select
-                size="small"
-                label="Produit (fond + prix)"
-                value={articleId === '' ? '' : String(articleId)}
-                onChange={(e) => void onUseArticle(e.target.value === '' ? '' : Number(e.target.value))}
-              >
-                <MenuItem value="">
-                  <em>— Aucun</em>
-                </MenuItem>
-                {articles.map((a) => (
-                  <MenuItem key={a.id} value={String(a.id)}>
-                    {a.code} — {a.name}
-                  </MenuItem>
-                ))}
-              </TextField>
-
-              <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', gap: 1 }}>
-                <Button size="small" variant="outlined" startIcon={<UploadIcon />} onClick={() => fileRef.current?.click()}>
-                  Importer une photo
-                </Button>
-                <Button
-                  size="small"
-                  variant="outlined"
-                  startIcon={enhancing ? <CircularProgress size={14} /> : <AutoAwesomeIcon />}
-                  onClick={() => void sublimeBg()}
-                  disabled={enhancing || !sourceFile}
-                >
-                  Sublimer (IA)
-                </Button>
-              </Stack>
-              <input
-                ref={fileRef}
-                type="file"
-                accept="image/*"
-                hidden
-                onChange={(e) => {
-                  const f = e.target.files?.[0]
-                  e.target.value = ''
-                  void onImportPhoto(f)
-                }}
-              />
-
-              {bgMode === 'photo' && bgImg && (
-                <Box>
-                  <Stack direction="row" sx={{ alignItems: 'center', gap: 1, mb: 0.5 }}>
-                    <ZoomInIcon fontSize="small" sx={{ color: 'text.secondary' }} />
-                    <Typography variant="caption" color="text.secondary">
-                      Zoom photo — ×{bgZoom.toFixed(2)}
-                    </Typography>
-                  </Stack>
-                  <Slider
-                    value={bgZoom}
-                    onChange={(_, v) => setBgZoom(Array.isArray(v) ? v[0] : v)}
-                    min={1}
-                    max={3}
-                    step={0.05}
-                    size="small"
-                  />
-                </Box>
-              )}
-
-              <Divider />
-
-              {/* Générer un fond avec l'IA (produit un fond photo) */}
-              <Typography variant="caption" color="text.secondary">
-                Ou générer un fond avec l’IA :
+                3 · Décris ton affiche à l’IA
               </Typography>
               <TextField
-                label="Décris le fond souhaité"
-                placeholder="Ex. : ambiance marché de Noël, fond bois chaleureux, lumière dorée…"
+                label="Ce que tu veux sur l’affiche"
+                placeholder="Ex. : mets bien en valeur le produit, appétissant, ambiance chaleureuse…"
                 multiline
                 minRows={2}
                 size="small"
                 value={aiPrompt}
                 onChange={(e) => setAiPrompt(e.target.value)}
               />
-              <TextField
-                select
-                size="small"
-                label="Ambiance du fond"
-                value={ambiance}
-                onChange={(e) => setAmbiance(e.target.value)}
-                helperText="Sert au fond généré, au chat et à la composition menu."
-              >
-                {AMBIANCES.map((a) => (
-                  <MenuItem key={a} value={a}>
-                    {a}
-                  </MenuItem>
+              <Typography variant="caption" color="text.secondary">
+                Occasion :
+              </Typography>
+              <Stack direction="row" spacing={0.5} sx={{ flexWrap: 'wrap', gap: 0.5 }}>
+                {OCCASIONS.map((o) => (
+                  <Chip key={o.label} label={o.label} size="small" variant="outlined" onClick={() => addBrief(o.text)} />
                 ))}
-              </TextField>
+              </Stack>
+              <Typography variant="caption" color="text.secondary">
+                Style de fond :
+              </Typography>
+              <Stack direction="row" spacing={0.5} sx={{ flexWrap: 'wrap', gap: 0.5 }}>
+                {AMBIANCES.map((a) => (
+                  <Chip
+                    key={a}
+                    label={a}
+                    size="small"
+                    color={ambiance === a ? 'primary' : 'default'}
+                    variant={ambiance === a ? 'filled' : 'outlined'}
+                    onClick={() => setAmbiance(a)}
+                  />
+                ))}
+              </Stack>
               <Button
-                size="small"
-                variant="outlined"
-                startIcon={aiBusy === 'generate' ? <CircularProgress size={14} /> : <AutoAwesomeIcon />}
-                onClick={() => void generateBg()}
+                variant="contained"
+                startIcon={aiBusy === 'compose' ? <CircularProgress size={16} color="inherit" /> : <AutoAwesomeIcon />}
+                onClick={() => void createAffiche()}
                 disabled={aiBusy !== null}
-                sx={{ alignSelf: 'flex-start' }}
               >
-                Générer un fond (IA)
+                Créer l’affiche (IA)
               </Button>
 
               <Divider />
 
-              {/* 3 · Couleurs de l'enseigne (édition locale à cette affiche) */}
+              {/* 4 · Affiner l'affiche avec l'IA (chat) */}
               <Typography variant="subtitle2" color="text.secondary">
-                3 · Couleurs de l’enseigne
-              </Typography>
-              <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', gap: 1 }}>
-                <TextField
-                  type="color"
-                  size="small"
-                  label="Couleur 1"
-                  value={colors.c1}
-                  onChange={(e) => setColors((c) => ({ ...c, c1: e.target.value }))}
-                  slotProps={{ inputLabel: { shrink: true } }}
-                  sx={{ width: 100 }}
-                />
-                <TextField
-                  type="color"
-                  size="small"
-                  label="Couleur 2"
-                  value={colors.c2}
-                  onChange={(e) => setColors((c) => ({ ...c, c2: e.target.value }))}
-                  slotProps={{ inputLabel: { shrink: true } }}
-                  sx={{ width: 100 }}
-                />
-              </Stack>
-              <Typography variant="caption" color="text.secondary">
-                Utilisées par le fond « Enseigne » et l’ambiance « aux couleurs de l’enseigne ».
-              </Typography>
-
-              <Divider />
-
-              {/* 4 · Chat IA — affine le fond en continu */}
-              <Typography variant="subtitle2" color="text.secondary">
-                4 · Chat IA — affine le fond
+                4 · Affiner avec l’IA
               </Typography>
               {chatLog.length > 0 && (
                 <Box
