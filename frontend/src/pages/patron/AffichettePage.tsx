@@ -25,7 +25,6 @@ import {
 import AddIcon from '@mui/icons-material/Add'
 import UploadIcon from '@mui/icons-material/Upload'
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome'
-import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh'
 import RestaurantMenuIcon from '@mui/icons-material/RestaurantMenu'
 import DownloadIcon from '@mui/icons-material/Download'
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf'
@@ -486,32 +485,6 @@ export function AffichettePage() {
       return `fond uni ou dégradé harmonieux aux couleurs de l'enseigne : ${colors.c1} et ${colors.c2}`
     }
     return ambiance
-  }
-
-  /** Retouche le fond actuel selon la consigne libre (les textes restent par-dessus, intacts). */
-  const retouchBg = async () => {
-    if (bgMode !== 'photo' || !bgImg) {
-      setError('Choisis d’abord un fond photo (importe une photo, un produit, ou génère un fond IA).')
-      return
-    }
-    if (!aiPrompt.trim() && !ambiancePrompt()) {
-      setError('Écris une consigne ou choisis une ambiance de fond pour l’IA.')
-      return
-    }
-    setError(null)
-    setAiBusy('retouch')
-    try {
-      const f = await bgToFile()
-      if (!f) throw new Error('Fond illisible')
-      // Ambiance via le paramètre dédié (comme sublimeBg / Communication), consigne libre en instruction.
-      const blob = await enhanceImage(f, ambiancePrompt(), aiPrompt.trim() || undefined, 'scene')
-      setBgImg(await imgFromBlob(blob))
-      setBgMode('photo')
-    } catch (e) {
-      setError(errorMessage(e))
-    } finally {
-      setAiBusy(null)
-    }
   }
 
   /** Génère un fond de zéro (texte → image) à partir de la consigne libre + ambiance choisie. */
@@ -1082,9 +1055,64 @@ export function AffichettePage() {
 
               <Divider />
 
-              {/* Fond */}
+              {/* 1 · Produits — mise en scène IA des vraies photos */}
               <Typography variant="subtitle2" color="text.secondary">
-                Fond
+                1 · Produits (affiche menu)
+              </Typography>
+              <Autocomplete
+                multiple
+                size="small"
+                options={articles}
+                getOptionLabel={(a) => `${a.code} — ${a.name}${a.photoFile ? '' : ' (sans photo)'}`}
+                isOptionEqualToValue={(o, v) => o.id === v.id}
+                value={menuArticles}
+                onChange={(_, v) => setMenuArticles(v)}
+                renderInput={(params) => <TextField {...params} label="Produits à mettre en scène" />}
+              />
+              <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', gap: 1, alignItems: 'center' }}>
+                <Button size="small" variant="outlined" startIcon={<UploadIcon />} onClick={() => menuFileRef.current?.click()}>
+                  Ajouter des photos
+                </Button>
+                <Button
+                  size="small"
+                  variant="contained"
+                  startIcon={aiBusy === 'compose' ? <CircularProgress size={14} color="inherit" /> : <RestaurantMenuIcon />}
+                  onClick={() => void composeMenu()}
+                  disabled={aiBusy !== null}
+                >
+                  Composer l’affiche (IA)
+                </Button>
+              </Stack>
+              {menuFiles.length > 0 && (
+                <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', gap: 0.5 }}>
+                  {menuFiles.map((f, i) => (
+                    <Chip
+                      key={`${f.name}-${i}`}
+                      label={f.name}
+                      size="small"
+                      onDelete={() => setMenuFiles((list) => list.filter((_, j) => j !== i))}
+                    />
+                  ))}
+                </Stack>
+              )}
+              <input
+                ref={menuFileRef}
+                type="file"
+                accept="image/*"
+                multiple
+                hidden
+                onChange={(e) => {
+                  const list = Array.from(e.target.files ?? [])
+                  e.target.value = ''
+                  if (list.length) setMenuFiles((prev) => [...prev, ...list].slice(0, 8))
+                }}
+              />
+
+              <Divider />
+
+              {/* 2 · Fond */}
+              <Typography variant="subtitle2" color="text.secondary">
+                2 · Fond
               </Typography>
               <ToggleButtonGroup
                 size="small"
@@ -1174,12 +1202,12 @@ export function AffichettePage() {
 
               <Divider />
 
-              {/* IA : consigne libre + retouche / génération / composition menu */}
-              <Typography variant="subtitle2" color="text.secondary">
-                IA — retouche &amp; génération
+              {/* Générer un fond avec l'IA (produit un fond photo) */}
+              <Typography variant="caption" color="text.secondary">
+                Ou générer un fond avec l’IA :
               </Typography>
               <TextField
-                label="Consigne libre pour l’IA"
+                label="Décris le fond souhaité"
                 placeholder="Ex. : ambiance marché de Noël, fond bois chaleureux, lumière dorée…"
                 multiline
                 minRows={2}
@@ -1193,7 +1221,7 @@ export function AffichettePage() {
                 label="Ambiance du fond"
                 value={ambiance}
                 onChange={(e) => setAmbiance(e.target.value)}
-                helperText="Appliquée à la génération, à la composition menu et au chat."
+                helperText="Sert au fond généré, au chat et à la composition menu."
               >
                 {AMBIANCES.map((a) => (
                   <MenuItem key={a} value={a}>
@@ -1201,36 +1229,53 @@ export function AffichettePage() {
                   </MenuItem>
                 ))}
               </TextField>
+              <Button
+                size="small"
+                variant="outlined"
+                startIcon={aiBusy === 'generate' ? <CircularProgress size={14} /> : <AutoAwesomeIcon />}
+                onClick={() => void generateBg()}
+                disabled={aiBusy !== null}
+                sx={{ alignSelf: 'flex-start' }}
+              >
+                Générer un fond (IA)
+              </Button>
+
+              <Divider />
+
+              {/* 3 · Couleurs de l'enseigne (édition locale à cette affiche) */}
+              <Typography variant="subtitle2" color="text.secondary">
+                3 · Couleurs de l’enseigne
+              </Typography>
               <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', gap: 1 }}>
-                <Button
+                <TextField
+                  type="color"
                   size="small"
-                  variant="outlined"
-                  startIcon={aiBusy === 'retouch' ? <CircularProgress size={14} /> : <AutoFixHighIcon />}
-                  onClick={() => void retouchBg()}
-                  disabled={aiBusy !== null}
-                >
-                  Retoucher le fond (IA)
-                </Button>
-                <Button
+                  label="Couleur 1"
+                  value={colors.c1}
+                  onChange={(e) => setColors((c) => ({ ...c, c1: e.target.value }))}
+                  slotProps={{ inputLabel: { shrink: true } }}
+                  sx={{ width: 100 }}
+                />
+                <TextField
+                  type="color"
                   size="small"
-                  variant="outlined"
-                  startIcon={aiBusy === 'generate' ? <CircularProgress size={14} /> : <AutoAwesomeIcon />}
-                  onClick={() => void generateBg()}
-                  disabled={aiBusy !== null}
-                >
-                  Générer un fond (IA)
-                </Button>
+                  label="Couleur 2"
+                  value={colors.c2}
+                  onChange={(e) => setColors((c) => ({ ...c, c2: e.target.value }))}
+                  slotProps={{ inputLabel: { shrink: true } }}
+                  sx={{ width: 100 }}
+                />
               </Stack>
               <Typography variant="caption" color="text.secondary">
-                L’IA travaille sur le fond : tes textes restent nets et modifiables par-dessus.
+                Utilisées par le fond « Enseigne » et l’ambiance « aux couleurs de l’enseigne ».
               </Typography>
 
-              {/* Mini-chat IA : affine le fond au fil de l'eau */}
-              <Divider textAlign="left">
-                <Typography variant="caption" color="text.secondary">
-                  Chat IA — affine le fond
-                </Typography>
-              </Divider>
+              <Divider />
+
+              {/* 4 · Chat IA — affine le fond en continu */}
+              <Typography variant="subtitle2" color="text.secondary">
+                4 · Chat IA — affine le fond
+              </Typography>
               {chatLog.length > 0 && (
                 <Box
                   sx={{
@@ -1284,58 +1329,6 @@ export function AffichettePage() {
               <Typography variant="caption" color="text.secondary">
                 Chaque message affine le fond actuel (ou en génère un si aucun fond). Idéal pour les menus.
               </Typography>
-
-              <Typography variant="subtitle2" color="text.secondary">
-                Menu — à partir des vraies photos
-              </Typography>
-              <Autocomplete
-                multiple
-                size="small"
-                options={articles}
-                getOptionLabel={(a) => `${a.code} — ${a.name}${a.photoFile ? '' : ' (sans photo)'}`}
-                isOptionEqualToValue={(o, v) => o.id === v.id}
-                value={menuArticles}
-                onChange={(_, v) => setMenuArticles(v)}
-                renderInput={(params) => <TextField {...params} label="Articles du menu" />}
-              />
-              <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', gap: 1, alignItems: 'center' }}>
-                <Button size="small" variant="outlined" startIcon={<UploadIcon />} onClick={() => menuFileRef.current?.click()}>
-                  Ajouter des photos
-                </Button>
-                <Button
-                  size="small"
-                  variant="contained"
-                  startIcon={aiBusy === 'compose' ? <CircularProgress size={14} color="inherit" /> : <RestaurantMenuIcon />}
-                  onClick={() => void composeMenu()}
-                  disabled={aiBusy !== null}
-                >
-                  Composer l’affiche (IA)
-                </Button>
-              </Stack>
-              {menuFiles.length > 0 && (
-                <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', gap: 0.5 }}>
-                  {menuFiles.map((f, i) => (
-                    <Chip
-                      key={`${f.name}-${i}`}
-                      label={f.name}
-                      size="small"
-                      onDelete={() => setMenuFiles((list) => list.filter((_, j) => j !== i))}
-                    />
-                  ))}
-                </Stack>
-              )}
-              <input
-                ref={menuFileRef}
-                type="file"
-                accept="image/*"
-                multiple
-                hidden
-                onChange={(e) => {
-                  const list = Array.from(e.target.files ?? [])
-                  e.target.value = ''
-                  if (list.length) setMenuFiles((prev) => [...prev, ...list].slice(0, 8))
-                }}
-              />
 
               <Divider />
 
