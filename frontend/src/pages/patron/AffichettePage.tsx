@@ -494,8 +494,8 @@ export function AffichettePage() {
       setError('Choisis d’abord un fond photo (importe une photo, un produit, ou génère un fond IA).')
       return
     }
-    if (!aiPrompt.trim()) {
-      setError('Écris d’abord ta consigne pour l’IA dans la zone de texte libre.')
+    if (!aiPrompt.trim() && !ambiancePrompt()) {
+      setError('Écris une consigne ou choisis une ambiance de fond pour l’IA.')
       return
     }
     setError(null)
@@ -503,7 +503,8 @@ export function AffichettePage() {
     try {
       const f = await bgToFile()
       if (!f) throw new Error('Fond illisible')
-      const blob = await enhanceImage(f, undefined, aiPrompt.trim(), 'scene')
+      // Ambiance via le paramètre dédié (comme sublimeBg / Communication), consigne libre en instruction.
+      const blob = await enhanceImage(f, ambiancePrompt(), aiPrompt.trim() || undefined, 'scene')
       setBgImg(await imgFromBlob(blob))
       setBgMode('photo')
     } catch (e) {
@@ -590,14 +591,16 @@ export function AffichettePage() {
     setChatLog((l) => [...l, { role: 'user', text: msg }])
     setAiBusy('chat')
     try {
-      const instruction = [msg, ambiancePrompt()].filter(Boolean).join('. ')
       let blob: Blob
       if (bgMode === 'photo' && bgImg) {
         const f = await bgToFile()
         if (!f) throw new Error('Fond illisible')
-        blob = await enhanceImage(f, undefined, instruction, 'scene')
+        // Retouche image->image : ambiance via le paramètre dédié, message en instruction (comme Communication).
+        blob = await enhanceImage(f, ambiancePrompt(), msg, 'scene')
       } else {
-        blob = await generateImageFromPrompt(instruction, fmt.ar)
+        // Génération pure : pas de paramètre ambiance côté API, on le fond dans le prompt.
+        const prompt = [msg, ambiancePrompt()].filter(Boolean).join('. ')
+        blob = await generateImageFromPrompt(prompt, fmt.ar)
         setBgZoom(1)
       }
       setBgImg(await imgFromBlob(blob))
