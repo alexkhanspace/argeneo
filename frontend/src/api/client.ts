@@ -19,6 +19,24 @@ api.interceptors.request.use((config) => {
   return config
 })
 
+// Session expirée / token invalide (401) : on nettoie et on renvoie au login,
+// au lieu de laisser remonter un « Request failed with status code 401 » brut.
+// Exceptions : l'appel de login lui-même (mauvais identifiants → message en place)
+// et si on est déjà sur /login (évite une boucle de redirection).
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    const status = error?.response?.status
+    const url: string = error?.config?.url ?? ''
+    const onLogin = window.location.pathname.startsWith('/login')
+    if (status === 401 && !url.includes('/auth/login') && !onLogin) {
+      tokenStore.clear()
+      window.location.assign('/login')
+    }
+    return Promise.reject(error)
+  },
+)
+
 /** Extrait un message d'erreur lisible d'une erreur axios. */
 export function errorMessage(error: unknown, fallback = 'Une erreur est survenue'): string {
   if (axios.isAxiosError(error)) {
