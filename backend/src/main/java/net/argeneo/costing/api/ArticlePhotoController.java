@@ -138,7 +138,9 @@ public class ArticlePhotoController {
             p.append(". ").append(hint.trim());
         }
         p.append(". Gros plan sur le produit fini, fond neutre clair, lumière naturelle douce, haute ")
-                .append("qualité, style catalogue produit, sans texte ni logo. SURTOUT PAS de mise en scène ")
+                .append("qualité, style catalogue produit, sans texte ni logo, et AUCUN filigrane / watermark ")
+                .append("ni logo/nom de banque d'images (Vecteezy, Shutterstock, Getty, iStock, Adobe Stock, ")
+                .append("Freepik…). SURTOUT PAS de mise en scène ")
                 .append("déstructurée, pas d'ingrédients crus, séparés, éparpillés ou en vrac autour.");
         return p.toString();
     }

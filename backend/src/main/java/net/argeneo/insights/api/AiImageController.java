@@ -91,7 +91,9 @@ public class AiImageController {
         if (instruction != null && !instruction.isBlank()) {
             p.append("CONSIGNE DU CLIENT (à respecter en priorité) : ").append(instruction.trim()).append(". ");
         }
-        p.append("Ne fais apparaître AUCUN texte, chiffre ni logo sur l'image.");
+        p.append("Ne fais apparaître AUCUN texte, chiffre ni logo sur l'image, et AUCUN filigrane / "
+                + "watermark ni logo/nom de banque d'images (Vecteezy, Shutterstock, Getty, iStock, "
+                + "Adobe Stock, Freepik, Depositphotos, Alamy…).");
         return p.toString();
     }
 
@@ -121,7 +123,9 @@ public class AiImageController {
                 + "artisanal français : style photo professionnelle, haute qualité, lumière naturelle douce, "
                 + "fond épuré. " + orientationHint(aspectRatio)
                 + "Ne fais apparaître AUCUN texte ni logo sur l'image (aucune lettre, aucun mot, "
-                + "aucune pancarte, aucune étiquette, aucun emballage imprimé). Sujet : " + req.prompt().trim() + ".";
+                + "aucune pancarte, aucune étiquette, aucun emballage imprimé), et SURTOUT AUCUN "
+                + "filigrane / watermark ni logo ou nom de banque d'images (Vecteezy, Shutterstock, "
+                + "Getty, iStock, Adobe Stock, Freepik, Depositphotos, Alamy…). Sujet : " + req.prompt().trim() + ".";
         byte[] out = gemini.generateFromText(prompt, aspectRatio);
         return ResponseEntity.ok().contentType(MediaType.IMAGE_PNG).body(out);
     }
@@ -182,7 +186,9 @@ public class AiImageController {
         if (instruction != null && !instruction.isBlank()) {
             p.append("CONSIGNE DU CLIENT (à respecter en priorité) : ").append(instruction.trim()).append(". ");
         }
-        p.append("Cadrage net, haute qualité, sans aucun texte ni logo ajouté.");
+        p.append("Cadrage net, haute qualité, sans aucun texte ni logo ajouté, et AUCUN filigrane / "
+                + "watermark ni logo/nom de banque d'images (Vecteezy, Shutterstock, Getty, iStock, "
+                + "Adobe Stock, Freepik, Depositphotos, Alamy…).");
         return p.toString();
     }
 }
