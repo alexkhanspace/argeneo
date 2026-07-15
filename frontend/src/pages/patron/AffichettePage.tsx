@@ -493,7 +493,7 @@ export function AffichettePage() {
       const instruction = [aiPrompt.trim(), ambiancePrompt()].filter(Boolean).join('. ')
       const blob =
         files.length > 0
-          ? await composeImages(files, instruction || undefined)
+          ? await composeImages(files, instruction || undefined, fmt.ar)
           : await generateImageFromPrompt(instruction || 'affiche promotionnelle appétissante', fmt.ar)
       setBgImg(await imgFromBlob(blob))
       setBgMode('photo')
@@ -519,8 +519,8 @@ export function AffichettePage() {
       if (bgMode === 'photo' && bgImg) {
         const f = await bgToFile()
         if (!f) throw new Error('Fond illisible')
-        // Retouche image->image : ambiance via le paramètre dédié, message en instruction (comme Communication).
-        blob = await enhanceImage(f, ambiancePrompt(), msg, 'scene')
+        // Retouche image->image : ambiance via le paramètre dédié, message en instruction, ratio A5 conservé.
+        blob = await enhanceImage(f, ambiancePrompt(), msg, 'scene', fmt.ar)
       } else {
         // Génération pure : pas de paramètre ambiance côté API, on le fond dans le prompt.
         const prompt = [msg, ambiancePrompt()].filter(Boolean).join('. ')

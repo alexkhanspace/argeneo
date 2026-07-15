@@ -199,8 +199,18 @@ public class GeminiClient {
         }
     }
 
+    /** generationConfig commun pour la génération d'image : modalités + ratio (imageConfig) si fourni. */
+    private static Map<String, Object> imageGenConfig(String aspectRatio) {
+        Map<String, Object> config = new java.util.LinkedHashMap<>();
+        config.put("responseModalities", List.of("TEXT", "IMAGE"));
+        if (aspectRatio != null && !aspectRatio.isBlank()) {
+            config.put("imageConfig", Map.of("aspectRatio", aspectRatio));
+        }
+        return config;
+    }
+
     /** Édite/transforme une image existante à partir d'une consigne (Gemini image). */
-    public byte[] editImage(String prompt, byte[] inputImage, String inputMime) {
+    public byte[] editImage(String prompt, byte[] inputImage, String inputMime, String aspectRatio) {
         try {
             String token = accessToken();
             String model = (cfg.imageEditModel() == null || cfg.imageEditModel().isBlank())
@@ -216,7 +226,7 @@ public class GeminiClient {
                             "parts", List.of(
                                     Map.of("text", prompt),
                                     Map.of("inlineData", Map.of("mimeType", inputMime, "data", b64))))),
-                    "generationConfig", Map.of("responseModalities", List.of("TEXT", "IMAGE")));
+                    "generationConfig", imageGenConfig(aspectRatio));
 
             InlineResponse resp = http.post()
                     .uri(url)
@@ -249,7 +259,7 @@ public class GeminiClient {
      * Utilisé pour les affiches « menu » : chaque photo de produit est envoyée telle quelle
      * et le modèle les met en scène dans un visuel unique.
      */
-    public byte[] composeImages(String prompt, List<byte[]> images, List<String> mimes) {
+    public byte[] composeImages(String prompt, List<byte[]> images, List<String> mimes, String aspectRatio) {
         try {
             String token = accessToken();
             String model = (cfg.imageEditModel() == null || cfg.imageEditModel().isBlank())
@@ -266,7 +276,7 @@ public class GeminiClient {
             }
             Map<String, Object> body = Map.of(
                     "contents", List.of(Map.of("role", "user", "parts", parts)),
-                    "generationConfig", Map.of("responseModalities", List.of("TEXT", "IMAGE")));
+                    "generationConfig", imageGenConfig(aspectRatio));
 
             InlineResponse resp = http.post()
                     .uri(url)

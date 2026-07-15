@@ -90,12 +90,14 @@ export async function enhanceImage(
   ambiance?: string,
   instruction?: string,
   mode?: string,
+  aspectRatio?: string,
 ): Promise<Blob> {
   const form = new FormData()
   form.append('file', file)
   if (ambiance) form.append('ambiance', ambiance)
   if (instruction) form.append('instruction', instruction)
   if (mode) form.append('mode', mode)
+  if (aspectRatio) form.append('aspectRatio', aspectRatio)
   const { data } = await api.post('/ai/enhance-image', form, { responseType: 'blob' })
   return data as Blob
 }
@@ -104,10 +106,15 @@ export async function enhanceImage(
  * Compose une affiche à partir de PLUSIEURS photos réelles (menu, sélection de produits).
  * L'IA met en scène les produits fournis dans un visuel unique (sans texte). Renvoie l'image (blob).
  */
-export async function composeImages(files: File[], instruction?: string): Promise<Blob> {
+export async function composeImages(
+  files: File[],
+  instruction?: string,
+  aspectRatio?: string,
+): Promise<Blob> {
   const form = new FormData()
   for (const f of files) form.append('files', f)
   if (instruction) form.append('instruction', instruction)
+  if (aspectRatio) form.append('aspectRatio', aspectRatio)
   const { data } = await api.post('/ai/compose-image', form, { responseType: 'blob' })
   return data as Blob
 }

@@ -29,7 +29,8 @@ public class AiImageController {
     public ResponseEntity<byte[]> enhance(@RequestParam("file") MultipartFile file,
                                           @RequestParam(value = "ambiance", required = false) String ambiance,
                                           @RequestParam(value = "instruction", required = false) String instruction,
-                                          @RequestParam(value = "mode", required = false) String mode) {
+                                          @RequestParam(value = "mode", required = false) String mode,
+                                          @RequestParam(value = "aspectRatio", required = false) String aspectRatio) {
         if (!gemini.isConfigured()) {
             throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "IA non configurée sur ce serveur");
         }
@@ -38,7 +39,8 @@ public class AiImageController {
         }
         try {
             String mime = file.getContentType() != null ? file.getContentType() : "image/png";
-            byte[] out = gemini.editImage(buildPrompt(ambiance, instruction, mode), file.getBytes(), mime);
+            byte[] out = gemini.editImage(buildPrompt(ambiance, instruction, mode), file.getBytes(), mime,
+                    aspect(aspectRatio));
             return ResponseEntity.ok().contentType(MediaType.IMAGE_PNG).body(out);
         } catch (IOException e) {
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Lecture du fichier impossible", e);
@@ -51,7 +53,8 @@ public class AiImageController {
      */
     @PostMapping("/api/ai/compose-image")
     public ResponseEntity<byte[]> compose(@RequestParam("files") java.util.List<MultipartFile> files,
-                                          @RequestParam(value = "instruction", required = false) String instruction) {
+                                          @RequestParam(value = "instruction", required = false) String instruction,
+                                          @RequestParam(value = "aspectRatio", required = false) String aspectRatio) {
         if (!gemini.isConfigured()) {
             throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "IA non configurée sur ce serveur");
         }
@@ -72,7 +75,7 @@ public class AiImageController {
             if (images.isEmpty()) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Photos vides");
             }
-            byte[] out = gemini.composeImages(composePrompt(instruction), images, mimes);
+            byte[] out = gemini.composeImages(composePrompt(instruction), images, mimes, aspect(aspectRatio));
             return ResponseEntity.ok().contentType(MediaType.IMAGE_PNG).body(out);
         } catch (IOException e) {
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Lecture des fichiers impossible", e);
@@ -81,7 +84,8 @@ public class AiImageController {
 
     private static String composePrompt(String instruction) {
         StringBuilder p = new StringBuilder();
-        p.append("Compose UNE seule affiche publicitaire (visuel unique, orientation portrait) pour un commerce ")
+        p.append("Compose UNE seule affiche publicitaire en FORMAT PORTRAIT VERTICAL, nettement PLUS HAUTE ")
+                .append("QUE LARGE (type affiche A5, ratio ~3:4) — NE rends PAS une image carrée — pour un commerce ")
                 .append("de bouche artisanal français à partir des photos RÉELLES fournies. GARDE FIDÈLEMENT chaque ")
                 .append("produit tel qu'il est (forme, couleurs, garniture) — ne les remplace pas par des produits ")
                 .append("génériques et n'en invente pas d'autres. Détoure-les et mets-les en scène ensemble dans une ")
@@ -101,6 +105,11 @@ public class AiImageController {
     // (une valeur inconnue ferait échouer l'appel Vertex), sinon on laisse le modèle décider.
     private static final java.util.Set<String> ASPECT_RATIOS = java.util.Set.of(
             "1:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "21:9");
+
+    /** Ne renvoie le ratio que s'il est accepté par le modèle (sinon null → le modèle décide). */
+    private static String aspect(String ratio) {
+        return ratio != null && ASPECT_RATIOS.contains(ratio) ? ratio : null;
+    }
 
     public record GenerateImageRequest(String prompt, String aspectRatio) {
     }
