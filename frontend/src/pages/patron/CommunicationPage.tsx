@@ -888,7 +888,7 @@ export function CommunicationPage() {
                       {c.platform ?? '—'} · {new Date(c.createdAt).toLocaleDateString('fr-FR')}
                     </Typography>
                   </Box>
-                  {c.platform?.startsWith('Affichette') && (
+                  {c.hasAfficheState && (
                     <Button
                       size="small"
                       component={RouterLink}

@@ -109,6 +109,9 @@ public class CommunicationService {
         c.setCaption(in.caption());
         c.setArticleId(in.articleId());
         c.setEtablissementId(in.etablissementId());
+        if (in.afficheState() != null) {
+            c.setAfficheState(in.afficheState());
+        }
     }
 
     private String store(MultipartFile image) {

@@ -20,7 +20,8 @@ public final class CommunicationDtos {
             String headline,
             String caption,
             Long articleId,
-            Long etablissementId) {
+            Long etablissementId,
+            String afficheState) {
     }
 
     /** Résumé pour la liste. */
@@ -30,11 +31,13 @@ public final class CommunicationDtos {
             String platform,
             Long articleId,
             boolean hasImage,
+            boolean hasAfficheState,
             Instant createdAt) {
 
         public static CommunicationSummary from(Communication c) {
             return new CommunicationSummary(c.getId(), buildTitle(c), c.getPlatform(), c.getArticleId(),
-                    c.getImageFile() != null, c.getCreatedAt());
+                    c.getImageFile() != null, c.getAfficheState() != null && !c.getAfficheState().isBlank(),
+                    c.getCreatedAt());
         }
     }
 
@@ -51,6 +54,7 @@ public final class CommunicationDtos {
             String caption,
             Long articleId,
             boolean hasImage,
+            String afficheState,
             Instant createdAt,
             Instant updatedAt) {
 
@@ -58,7 +62,7 @@ public final class CommunicationDtos {
             return new CommunicationResponse(c.getId(), c.getEtablissementId(), c.getBrief(),
                     c.getPlatform(), c.getTone(), c.getLength(), c.getAmbiance(), c.getInstruction(),
                     c.getHeadline(), c.getCaption(), c.getArticleId(), c.getImageFile() != null,
-                    c.getCreatedAt(), c.getUpdatedAt());
+                    c.getAfficheState(), c.getCreatedAt(), c.getUpdatedAt());
         }
     }
 

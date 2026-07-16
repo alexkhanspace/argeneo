@@ -12,6 +12,7 @@ export interface CommunicationSummary {
   platform: string | null
   articleId: number | null
   hasImage: boolean
+  hasAfficheState: boolean
   createdAt: string
 }
 
@@ -28,6 +29,7 @@ export interface CommunicationDetail {
   caption: string | null
   articleId: number | null
   hasImage: boolean
+  afficheState: string | null
   createdAt: string
   updatedAt: string | null
 }
@@ -42,6 +44,8 @@ export interface CommunicationInput {
   headline?: string | null
   caption?: string | null
   articleId?: number | null
+  /** État éditable de l'affichette (JSON) pour réouverture universelle. */
+  afficheState?: string | null
 }
 
 /** Rédige une publication réseaux sociaux prête à publier (brief libre et/ou produit). */
@@ -90,6 +94,7 @@ function toForm(input: CommunicationInput, imageBlob?: Blob | null): FormData {
   add('headline', input.headline)
   add('caption', input.caption)
   add('articleId', input.articleId)
+  add('afficheState', input.afficheState)
   if (imageBlob) form.append('image', imageBlob, 'visuel.png')
   return form
 }

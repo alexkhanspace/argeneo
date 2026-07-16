@@ -39,7 +39,7 @@ import { errorMessage } from '../../api/client'
 import { getProfile, getSettings, logoUrl } from '../../api/billing'
 import { listArticles, photoUrl } from '../../api/costing'
 import { composeImages, enhanceImage } from '../../api/insights'
-import { generateImageFromPrompt, saveCommunication } from '../../api/communication'
+import { generateImageFromPrompt, getCommunication, saveCommunication } from '../../api/communication'
 import type { Article } from '../../api/types'
 import { PageHeader } from '../../components/PageHeader'
 import { buildPosterPdfBlob } from '../../pdf/buildPosterPdf'
@@ -289,10 +289,25 @@ export function AffichettePage() {
   useEffect(() => {
     const editId = searchParams.get('edit')
     if (!editId) return
-    const a = savedAffiches.find((x) => x.commId === Number(editId))
-    if (a) reopenAffiche(a)
-    else setSavedMsg('Cette affiche a été créée sur un autre appareil/navigateur : édition indisponible ici.')
     setSearchParams({}, { replace: true }) // évite de rouvrir à chaque rerender
+    const id = Number(editId)
+    void (async () => {
+      // 1) Serveur (universel, multi-appareils)
+      try {
+        const detail = await getCommunication(id)
+        if (detail.afficheState) {
+          restoreState(JSON.parse(detail.afficheState))
+          setSavedMsg('Affiche ouverte en édition.')
+          return
+        }
+      } catch {
+        // on retombe sur le cache local
+      }
+      // 2) Cache local (même appareil)
+      const a = savedAffiches.find((x) => x.commId === id)
+      if (a) reopenAffiche(a)
+      else setSavedMsg('Cette affiche n’a pas d’état éditable (créée avant la mise à jour).')
+    })()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -751,28 +766,40 @@ export function AffichettePage() {
     setSavedAffiches(next)
   }
 
-  /** Rouvre une affiche enregistrée : restaure le fond BRUT + blocs + réglages (voile appliqué UNE fois). */
-  const reopenAffiche = (a: SavedAffiche) => {
+  /** Restaure un état éditable (fond BRUT + blocs + réglages) — commun au cache local et au serveur. */
+  const restoreState = (s: {
+    format?: Fmt
+    blocks?: Block[]
+    veil?: number
+    showLogo?: boolean
+    colors?: { c1: string; c2: string }
+    bgDataUrl?: string | null
+  }) => {
     setEditingId(null)
     setSelectedId(null)
-    setFormat(a.format)
-    setBlocks(a.blocks)
-    setVeil(a.veil)
-    setShowLogo(a.showLogo)
-    setColors(a.colors)
     setChatLog([])
-    if (a.bgDataUrl) {
+    if (s.format === 'a4' || s.format === 'a5') setFormat(s.format)
+    if (Array.isArray(s.blocks)) setBlocks(s.blocks)
+    if (typeof s.veil === 'number') setVeil(s.veil)
+    if (typeof s.showLogo === 'boolean') setShowLogo(s.showLogo)
+    if (s.colors && s.colors.c1 && s.colors.c2) setColors(s.colors)
+    if (s.bgDataUrl) {
       const img = new Image()
       img.onload = () => {
         setBgImg(img)
         setBgMode('photo')
         setBgZoom(1)
       }
-      img.src = a.bgDataUrl
+      img.src = s.bgDataUrl
     } else {
       setBgImg(null)
       setBgMode('brand')
     }
+  }
+
+  /** Rouvre une affiche du cache LOCAL. */
+  const reopenAffiche = (a: SavedAffiche) => {
+    restoreState(a)
     setSavedMsg(`Affiche « ${a.name} » rouverte.`)
   }
 
@@ -783,11 +810,26 @@ export function AffichettePage() {
     try {
       const blob = await canvasToBlob(renderToCanvas())
       const headline = blocks[0]?.text?.slice(0, 200) || 'Affichette'
+      // État éditable (fond BRUT + blocs + réglages) envoyé AU SERVEUR → édition depuis n'importe où.
+      const afficheState = JSON.stringify({
+        v: 1,
+        format,
+        blocks,
+        veil,
+        showLogo,
+        colors,
+        bgDataUrl: bgToDataUrl(),
+      })
       const saved = await saveCommunication(
-        { headline, articleId: articleId === '' ? null : articleId, platform: `Affichette ${fmt.label}` },
+        {
+          headline,
+          articleId: articleId === '' ? null : articleId,
+          platform: `Affichette ${fmt.label}`,
+          afficheState,
+        },
         blob,
       )
-      // Enregistre aussi l'état éditable, lié à la communication (réouverture propre, sans cumuler le voile).
+      // Cache local aussi (réouverture hors-ligne / rapide via le déroulant).
       persistEditable(headline, saved.id)
       setSavedMsg('Affichette enregistrée (et réouvrable pour édition).')
     } catch (e) {

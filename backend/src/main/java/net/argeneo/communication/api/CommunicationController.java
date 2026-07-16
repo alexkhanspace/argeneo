@@ -61,9 +61,10 @@ public class CommunicationController {
             @RequestParam(required = false) String headline,
             @RequestParam(required = false) String caption,
             @RequestParam(required = false) Long articleId,
-            @RequestParam(required = false) Long etablissementId) {
+            @RequestParam(required = false) Long etablissementId,
+            @RequestParam(required = false) String afficheState) {
         return service.save(new CommunicationInput(brief, platform, tone, length, ambiance, instruction,
-                headline, caption, articleId, etablissementId), image);
+                headline, caption, articleId, etablissementId, afficheState), image);
     }
 
     @PutMapping("/{id}")
@@ -79,9 +80,10 @@ public class CommunicationController {
             @RequestParam(required = false) String headline,
             @RequestParam(required = false) String caption,
             @RequestParam(required = false) Long articleId,
-            @RequestParam(required = false) Long etablissementId) {
+            @RequestParam(required = false) Long etablissementId,
+            @RequestParam(required = false) String afficheState) {
         return service.update(id, new CommunicationInput(brief, platform, tone, length, ambiance, instruction,
-                headline, caption, articleId, etablissementId), image);
+                headline, caption, articleId, etablissementId, afficheState), image);
     }
 
     @DeleteMapping("/{id}")

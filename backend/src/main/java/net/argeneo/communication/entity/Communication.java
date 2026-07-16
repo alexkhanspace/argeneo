@@ -68,6 +68,10 @@ public class Communication {
     @Column(name = "image_mime", length = 100)
     private String imageMime;
 
+    /** État éditable de l'affichette (JSON : blocs + réglages + fond brut) pour réouverture universelle. */
+    @Column(name = "affiche_state", columnDefinition = "text")
+    private String afficheState;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 
