@@ -594,6 +594,25 @@ export function AffichettePage() {
   // reprendrait la main sur la couleur ; on ne l'utilise donc que pour un fond photo/IA classique.
   const aiAffine = !!bgImg && !isBrandBg
 
+  /** Proportion de pixels non transparents (0..1) — sert à repérer un détourage « vide ». */
+  const opaqueRatio = (img: HTMLImageElement): number => {
+    const s = 64
+    const c = document.createElement('canvas')
+    c.width = s
+    c.height = s
+    const cx = c.getContext('2d')!
+    cx.clearRect(0, 0, s, s)
+    cx.drawImage(img, 0, 0, s, s)
+    try {
+      const d = cx.getImageData(0, 0, s, s).data
+      let opaque = 0
+      for (let i = 3; i < d.length; i += 4) if (d[i] > 16) opaque++
+      return opaque / (s * s)
+    } catch {
+      return 1 // canvas « taint » improbable (blob same-origin) : on suppose l'image pleine
+    }
+  }
+
   /**
    * Compose le fond enseigne PIXEL-EXACT : aplat de la couleur de la charte + produit(s) détouré(s)
    * (PNG transparents renvoyés par l'IA) posés dessus. La couleur n'est jamais touchée par l'IA.
@@ -745,26 +764,53 @@ export function AffichettePage() {
       if (brandFiles.length === 0) {
         applyBrandBg()
         seedProductBlocks(products)
-        setChatLog((l) => [...l, { role: 'ai', text: 'Fond aux couleurs de l’enseigne appliqué ✅' }])
+        setChatLog((l) => [
+          ...l,
+          {
+            role: 'ai',
+            text:
+              'Fond aux couleurs de l’enseigne appliqué. Importe une photo (ou choisis un produit '
+              + 'avec photo) puis « Créer » pour que l’IA détoure le produit dessus.',
+          },
+        ])
         setAiPrompt('')
         return
       }
       if (brief) setChatLog((l) => [...l, { role: 'user', text: brief }])
       setAiBusy('compose')
       try {
-        const cutouts: HTMLImageElement[] = []
+        const layers: HTMLImageElement[] = []
+        let detourFailed = false
         for (const f of brandFiles) {
-          const blob = await enhanceImage(f, undefined, brief || undefined, 'cutout')
-          cutouts.push(await imgFromBlob(blob))
+          const original = await imgFromBlob(f)
+          let chosen = original
+          try {
+            const cut = await imgFromBlob(await enhanceImage(f, undefined, brief || undefined, 'cutout'))
+            // Détourage exploitable = image transparente avec un vrai sujet (ni vide, ni pleine).
+            const ratio = opaqueRatio(cut)
+            if (ratio >= 0.02 && ratio <= 0.98) chosen = cut
+            else detourFailed = true
+          } catch {
+            detourFailed = true // IA indisponible : on garde la photo d'origine
+          }
+          layers.push(chosen)
         }
-        const outBlob = await canvasToBlob(composeOnBrand(cutouts))
+        const outBlob = await canvasToBlob(composeOnBrand(layers))
         if (!outBlob) throw new Error('Composition impossible')
         setSolid(colors.c1)
         setBgImg(await imgFromBlob(outBlob))
         setBgMode('photo')
         setBgZoom(1)
         seedProductBlocks(products)
-        setChatLog((l) => [...l, { role: 'ai', text: 'Produit détouré sur le fond enseigne ✅' }])
+        setChatLog((l) => [
+          ...l,
+          {
+            role: 'ai',
+            text: detourFailed
+              ? 'Photo posée sur le fond enseigne (détourage IA indisponible pour cette image).'
+              : 'Produit détouré sur le fond enseigne ✅',
+          },
+        ])
         setAiPrompt('')
       } catch (e) {
         setError(errorMessage(e))
