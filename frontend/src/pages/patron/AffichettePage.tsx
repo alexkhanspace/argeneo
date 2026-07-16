@@ -594,8 +594,44 @@ export function AffichettePage() {
   // reprendrait la main sur la couleur ; on ne l'utilise donc que pour un fond photo/IA classique.
   const aiAffine = !!bgImg && !isBrandBg
 
+  /**
+   * Chroma-key : transforme le fond MAGENTA (#FF00FF) renvoyé par l'IA en transparence, en tuant
+   * le halo magenta résiduel sur les bords. Renvoie un canevas (produit détouré sur transparent).
+   */
+  const chromaKeyMagenta = (img: HTMLImageElement): HTMLCanvasElement => {
+    const w = img.naturalWidth || img.width
+    const h = img.naturalHeight || img.height
+    const c = document.createElement('canvas')
+    c.width = w
+    c.height = h
+    const cx = c.getContext('2d')!
+    cx.drawImage(img, 0, 0)
+    try {
+      const im = cx.getImageData(0, 0, w, h)
+      const d = im.data
+      for (let i = 0; i < d.length; i += 4) {
+        const R = d[i]
+        const G = d[i + 1]
+        const B = d[i + 2]
+        // « magenta » = R et B forts, G faible. key ∈ ]0..255], 0 sinon (produit conservé).
+        const key = Math.min(R, B) - G
+        if (key > 0) {
+          const strength = Math.min(1, key / 160)
+          d[i + 3] = Math.round(d[i + 3] * (1 - strength)) // rend transparent le fond magenta
+          // Anti-spill : ramène R et B vers G pour effacer le liseré magenta des bords.
+          d[i] = Math.round(R - (R - G) * strength * 0.7)
+          d[i + 2] = Math.round(B - (B - G) * strength * 0.7)
+        }
+      }
+      cx.putImageData(im, 0, 0)
+    } catch {
+      // canvas « taint » improbable (blob same-origin) : on garde l'image telle quelle
+    }
+    return c
+  }
+
   /** Proportion de pixels non transparents (0..1) — sert à repérer un détourage « vide ». */
-  const opaqueRatio = (img: HTMLImageElement): number => {
+  const opaqueRatio = (img: HTMLImageElement | HTMLCanvasElement): number => {
     const s = 64
     const c = document.createElement('canvas')
     c.width = s
@@ -615,9 +651,9 @@ export function AffichettePage() {
 
   /**
    * Compose le fond enseigne PIXEL-EXACT : aplat de la couleur de la charte + produit(s) détouré(s)
-   * (PNG transparents renvoyés par l'IA) posés dessus. La couleur n'est jamais touchée par l'IA.
+   * (magenta déjà retiré) posés dessus. La couleur de fond n'est jamais touchée par l'IA.
    */
-  const composeOnBrand = (cutouts: HTMLImageElement[]): HTMLCanvasElement => {
+  const composeOnBrand = (cutouts: Array<HTMLImageElement | HTMLCanvasElement>): HTMLCanvasElement => {
     const { w, h } = fmt
     const canvas = document.createElement('canvas')
     canvas.width = w
@@ -631,7 +667,13 @@ export function AffichettePage() {
     const areaY = pad
     const areaW = w - 2 * pad
     const areaH = Math.round(h * 0.62)
-    const drawContain = (img: HTMLImageElement, x: number, y: number, bw: number, bh: number) => {
+    const drawContain = (
+      img: HTMLImageElement | HTMLCanvasElement,
+      x: number,
+      y: number,
+      bw: number,
+      bh: number,
+    ) => {
       const r = Math.min(bw / img.width, bh / img.height)
       const iw = img.width * r
       const ih = img.height * r
@@ -779,16 +821,17 @@ export function AffichettePage() {
       if (brief) setChatLog((l) => [...l, { role: 'user', text: brief }])
       setAiBusy('compose')
       try {
-        const layers: HTMLImageElement[] = []
+        const layers: Array<HTMLImageElement | HTMLCanvasElement> = []
         let detourFailed = false
         for (const f of brandFiles) {
           const original = await imgFromBlob(f)
-          let chosen = original
+          let chosen: HTMLImageElement | HTMLCanvasElement = original
           try {
-            const cut = await imgFromBlob(await enhanceImage(f, undefined, brief || undefined, 'cutout'))
-            // Détourage exploitable = image transparente avec un vrai sujet (ni vide, ni pleine).
-            const ratio = opaqueRatio(cut)
-            if (ratio >= 0.02 && ratio <= 0.98) chosen = cut
+            const raw = await imgFromBlob(await enhanceImage(f, undefined, brief || undefined, 'cutout'))
+            const keyed = chromaKeyMagenta(raw) // retire le fond magenta → produit détouré
+            // Détourage exploitable = sujet présent après key (ni quasi vide, ni fond non retiré).
+            const ratio = opaqueRatio(keyed)
+            if (ratio >= 0.03 && ratio <= 0.95) chosen = keyed
             else detourFailed = true
           } catch {
             detourFailed = true // IA indisponible : on garde la photo d'origine

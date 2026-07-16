@@ -170,16 +170,17 @@ public class AiImageController {
     private static String buildPrompt(String ambiance, String instruction, String mode) {
         StringBuilder p = new StringBuilder();
         if ("cutout".equalsIgnoreCase(mode)) {
-            // Mode découpe : on veut UNIQUEMENT le produit détouré sur fond transparent. Le fond
-            // (couleur de l'enseigne) est ensuite peint localement, pixel-exact, côté application.
-            p.append("Détoure PROPREMENT et PRÉCISÉMENT le produit principal de cette photo (contours ")
-                    .append("nets, y compris les détails fins et les bords). GARDE EXACTEMENT le même produit ")
-                    .append("(forme, couleur, garniture, texture) — ne le modifie pas, ne le redessine pas, ne ")
-                    .append("change pas sa nature. Améliore juste la lumière et la netteté pour un rendu ")
-                    .append("appétissant. Renvoie le produit SEUL, bien centré et le plus grand possible sans le ")
-                    .append("rogner, sur un FOND 100% TRANSPARENT (canal alpha, PNG transparent) : AUCUN décor, ")
-                    .append("AUCUNE couleur de fond, AUCUNE ombre portée, AUCUN reflet au sol, RIEN d'autre que ")
-                    .append("le produit. ");
+            // Mode découpe : on isole le produit sur un fond chroma UNIFORME magenta pur. L'appli
+            // remplace ensuite ce magenta par la couleur EXACTE de l'enseigne (chroma-key local) —
+            // les modèles rendant très rarement une vraie transparence, un aplat magenta est fiable.
+            p.append("Isole le produit principal de cette photo et place-le SEUL, bien centré et le plus ")
+                    .append("grand possible sans le rogner, sur un FOND PARFAITEMENT UNIFORME de couleur MAGENTA ")
+                    .append("PUR (rose-violet vif, RVB 255,0,255, hex #FF00FF) — un aplat total, SANS aucun ")
+                    .append("dégradé, SANS texture, SANS ombre portée ni reflet au sol, SANS aucune autre couleur ")
+                    .append("dans le fond. GARDE EXACTEMENT le même produit (forme, couleur, garniture, texture) — ")
+                    .append("ne le modifie pas, ne le redessine pas, ne change pas sa nature ; améliore seulement la ")
+                    .append("lumière et la netteté pour un rendu appétissant. Le magenta ne doit toucher QUE le ")
+                    .append("fond, jamais le produit. ");
             if (instruction != null && !instruction.isBlank()) {
                 p.append("CONSIGNE DU CLIENT (à respecter) : ").append(instruction.trim()).append(". ");
             }
