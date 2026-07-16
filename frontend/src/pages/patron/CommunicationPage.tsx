@@ -888,6 +888,15 @@ export function CommunicationPage() {
                       {c.platform ?? '—'} · {new Date(c.createdAt).toLocaleDateString('fr-FR')}
                     </Typography>
                   </Box>
+                  {c.platform?.startsWith('Affichette') && (
+                    <Button
+                      size="small"
+                      component={RouterLink}
+                      to={`/communication/affiche?edit=${c.id}`}
+                    >
+                      Éditer
+                    </Button>
+                  )}
                   <Button size="small" onClick={() => void onOpenArchive(c.id)}>
                     Ouvrir
                   </Button>

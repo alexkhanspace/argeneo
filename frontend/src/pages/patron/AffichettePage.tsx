@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
-import { Link as RouterLink } from 'react-router-dom'
+import { Link as RouterLink, useSearchParams } from 'react-router-dom'
 import {
   Alert,
   Autocomplete,
@@ -110,6 +110,8 @@ const DRAFT_KEY = 'argeneo.affichette.draft'
 const AFFICHES_KEY = 'argeneo.affiches'
 interface SavedAffiche {
   id: string
+  /** Id de la communication liée (pour rouvrir depuis la galerie via ?edit=). */
+  commId: number | null
   name: string
   savedAt: number
   format: Fmt
@@ -253,6 +255,7 @@ export function AffichettePage() {
   const [savedMsg, setSavedMsg] = useState<string | null>(null)
   // Affiches réouvrables (état éditable local).
   const [savedAffiches, setSavedAffiches] = useState<SavedAffiche[]>(() => loadAffiches())
+  const [searchParams, setSearchParams] = useSearchParams()
 
   const selected = useMemo(() => blocks.find((b) => b.id === selectedId) ?? null, [blocks, selectedId])
   const fmt = FORMATS[format]
@@ -281,6 +284,17 @@ export function AffichettePage() {
       // quota : on ignore
     }
   }, [blocks])
+
+  // Ouverture en édition depuis la galerie Communication (?edit=<commId>).
+  useEffect(() => {
+    const editId = searchParams.get('edit')
+    if (!editId) return
+    const a = savedAffiches.find((x) => x.commId === Number(editId))
+    if (a) reopenAffiche(a)
+    else setSavedMsg('Cette affiche a été créée sur un autre appareil/navigateur : édition indisponible ici.')
+    setSearchParams({}, { replace: true }) // évite de rouvrir à chaque rerender
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // Entrée en édition inline : place le texte courant dans le span et met le curseur à la fin.
   useEffect(() => {
@@ -710,9 +724,10 @@ export function AffichettePage() {
   }
 
   /** Enregistre l'état ÉDITABLE (fond brut + blocs + réglages) pour réouverture ultérieure. */
-  const persistEditable = (name: string) => {
+  const persistEditable = (name: string, commId: number | null) => {
     const entry: SavedAffiche = {
       id: newId(),
+      commId,
       name,
       savedAt: Date.now(),
       format,
@@ -723,7 +738,8 @@ export function AffichettePage() {
       bgDataUrl: bgToDataUrl(),
     }
     // On garde les 6 dernières (le fond en dataURL est lourd → quota localStorage).
-    let next = [entry, ...savedAffiches].slice(0, 6)
+    // On dédoublonne par communication (réenregistrer la même affiche remplace l'ancienne).
+    let next = [entry, ...savedAffiches.filter((a) => a.commId == null || a.commId !== commId)].slice(0, 6)
     while (next.length > 0) {
       try {
         localStorage.setItem(AFFICHES_KEY, JSON.stringify(next))
@@ -767,12 +783,12 @@ export function AffichettePage() {
     try {
       const blob = await canvasToBlob(renderToCanvas())
       const headline = blocks[0]?.text?.slice(0, 200) || 'Affichette'
-      await saveCommunication(
+      const saved = await saveCommunication(
         { headline, articleId: articleId === '' ? null : articleId, platform: `Affichette ${fmt.label}` },
         blob,
       )
-      // Enregistre aussi l'état éditable (réouverture propre, sans cumuler le voile).
-      persistEditable(headline)
+      // Enregistre aussi l'état éditable, lié à la communication (réouverture propre, sans cumuler le voile).
+      persistEditable(headline, saved.id)
       setSavedMsg('Affichette enregistrée (et réouvrable pour édition).')
     } catch (e) {
       setError(errorMessage(e))
