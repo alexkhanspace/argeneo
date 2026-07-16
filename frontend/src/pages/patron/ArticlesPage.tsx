@@ -832,7 +832,7 @@ export function ArticlesPage() {
                   size="small"
                   variant="outlined"
                   startIcon={<CampaignIcon />}
-                  onClick={() => editArticle && navigate(`/communication?article=${editArticle.id}`)}
+                  onClick={() => editArticle && navigate(`/communication/affiche?article=${editArticle.id}`)}
                 >
                   Communiquer
                 </Button>
@@ -940,7 +940,7 @@ export function ArticlesPage() {
           }}
           onPub={() => {
             setSheetOpen(false)
-            navigate(`/communication?article=${editArticle.id}`)
+            navigate(`/communication/affiche?article=${editArticle.id}`)
           }}
           onGeneratePhoto={() => void onGeneratePhoto()}
           onDelete={() => {

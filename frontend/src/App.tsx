@@ -17,7 +17,6 @@ import { ClientsPage } from './pages/billing/ClientsPage'
 import { DocumentEditorPage } from './pages/billing/DocumentEditorPage'
 import { AnalyticsPage } from './pages/patron/AnalyticsPage'
 import { ArticlesPage } from './pages/patron/ArticlesPage'
-import { CommunicationPage } from './pages/patron/CommunicationPage'
 import { AffichettePage } from './pages/patron/AffichettePage'
 import { InvoicesPage } from './pages/patron/InvoicesPage'
 import { LabelsPage } from './pages/patron/LabelsPage'
@@ -177,14 +176,8 @@ export default function App() {
             </ProtectedRoute>
           }
         />
-        <Route
-          path="/communication"
-          element={
-            <ProtectedRoute allow={isPatron}>
-              <CommunicationPage />
-            </ProtectedRoute>
-          }
-        />
+        {/* Ancienne page « Communication » fusionnée dans l'Affichette (parcours unifié). */}
+        <Route path="/communication" element={<Navigate to="/communication/affiche" replace />} />
         <Route
           path="/communication/affiche"
           element={

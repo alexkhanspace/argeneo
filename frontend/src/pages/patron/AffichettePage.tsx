@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
-import { Link as RouterLink, useSearchParams } from 'react-router-dom'
+import { useSearchParams } from 'react-router-dom'
 import {
   Alert,
   Autocomplete,
@@ -30,7 +30,6 @@ import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf'
 import SaveIcon from '@mui/icons-material/Save'
 import DeleteIcon from '@mui/icons-material/Delete'
 import FormatBoldIcon from '@mui/icons-material/FormatBold'
-import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 import RestartAltIcon from '@mui/icons-material/RestartAlt'
 import ContentCopyIcon from '@mui/icons-material/ContentCopy'
 import FlipToFrontIcon from '@mui/icons-material/FlipToFront'
@@ -39,7 +38,16 @@ import { errorMessage } from '../../api/client'
 import { getProfile, getSettings, logoUrl } from '../../api/billing'
 import { listArticles, photoUrl } from '../../api/costing'
 import { composeImages, enhanceImage } from '../../api/insights'
-import { generateImageFromPrompt, getCommunication, saveCommunication } from '../../api/communication'
+import {
+  deleteCommunication,
+  generateImageFromPrompt,
+  generateSocialPost,
+  getCommunication,
+  listCommunications,
+  saveCommunication,
+  type CommunicationSummary,
+} from '../../api/communication'
+import { listMyEtablissements } from '../../api/daily'
 import type { Article } from '../../api/types'
 import { PageHeader } from '../../components/PageHeader'
 import { buildPosterPdfBlob } from '../../pdf/buildPosterPdf'
@@ -70,6 +78,15 @@ const AMBIANCES = [
   'Table dressée lifestyle',
   'Marché / étal gourmand',
   "Fond aux couleurs de l'enseigne",
+]
+
+// Légende réseaux : réseau ciblé, ton et longueur du texte à publier.
+const PLATFORMS = ['Instagram', 'Facebook']
+const TONES = ['Chaleureux', 'Fier', 'Festif', 'Informatif', 'Gourmand']
+const LENGTHS = [
+  { value: 'court', label: 'Courte' },
+  { value: 'moyen', label: 'Moyenne' },
+  { value: 'long', label: 'Longue' },
 ]
 
 // Aides « occasion » : ajoutent une intention au brief IA.
@@ -260,8 +277,19 @@ export function AffichettePage() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [savedMsg, setSavedMsg] = useState<string | null>(null)
+
+  // Légende réseaux (texte prêt à publier sous le visuel).
+  const [platform, setPlatform] = useState('Instagram')
+  const [tone, setTone] = useState('Chaleureux')
+  const [length, setLength] = useState('moyen')
+  const [caption, setCaption] = useState('')
+  const [captionLoading, setCaptionLoading] = useState(false)
+  const [copied, setCopied] = useState(false)
+  const [etab, setEtab] = useState<{ name?: string; description?: string | null; address?: string | null }>({})
   // Affiches réouvrables (état éditable local).
   const [savedAffiches, setSavedAffiches] = useState<SavedAffiche[]>(() => loadAffiches())
+  // Communications archivées côté serveur (réouvrables depuis n'importe quel appareil).
+  const [archives, setArchives] = useState<CommunicationSummary[]>([])
   const [searchParams, setSearchParams] = useSearchParams()
 
   const selected = useMemo(() => blocks.find((b) => b.id === selectedId) ?? null, [blocks, selectedId])
@@ -281,6 +309,12 @@ export function AffichettePage() {
     getProfile()
       .then((p) => loadImage(p.logoFile ? logoUrl(p.logoFile) : null).then(setLogoImg))
       .catch(() => undefined)
+    listMyEtablissements()
+      .then((etabs) => {
+        const e = etabs[0]
+        if (e) setEtab({ name: e.name, description: e.description, address: e.address })
+      })
+      .catch(() => undefined)
   }, [])
 
   // Autosave du brouillon (blocs uniquement — le fond image reste local à la session).
@@ -292,31 +326,66 @@ export function AffichettePage() {
     }
   }, [blocks])
 
+  // Ouverture en édition d'une communication archivée (serveur d'abord, cache local en secours).
+  const openCommunication = async (id: number) => {
+    // 1) Serveur (universel, multi-appareils)
+    try {
+      const detail = await getCommunication(id)
+      if (detail.afficheState) {
+        restoreState(JSON.parse(detail.afficheState))
+        setSavedMsg('Affiche ouverte en édition.')
+        return
+      }
+    } catch {
+      // on retombe sur le cache local
+    }
+    // 2) Cache local (même appareil)
+    const a = savedAffiches.find((x) => x.commId === id)
+    if (a) reopenAffiche(a)
+    else setSavedMsg('Cette affiche n’a pas d’état éditable (créée avant la mise à jour).')
+  }
+
+  const refreshArchives = () => {
+    listCommunications().then(setArchives).catch(() => undefined)
+  }
+  useEffect(() => {
+    refreshArchives()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const onDeleteArchive = async (id: number) => {
+    if (!window.confirm('Supprimer cette communication ?')) return
+    try {
+      await deleteCommunication(id)
+      refreshArchives()
+    } catch (e) {
+      setError(errorMessage(e))
+    }
+  }
+
   // Ouverture en édition depuis la galerie Communication (?edit=<commId>).
   useEffect(() => {
     const editId = searchParams.get('edit')
     if (!editId) return
     setSearchParams({}, { replace: true }) // évite de rouvrir à chaque rerender
-    const id = Number(editId)
-    void (async () => {
-      // 1) Serveur (universel, multi-appareils)
-      try {
-        const detail = await getCommunication(id)
-        if (detail.afficheState) {
-          restoreState(JSON.parse(detail.afficheState))
-          setSavedMsg('Affiche ouverte en édition.')
-          return
-        }
-      } catch {
-        // on retombe sur le cache local
-      }
-      // 2) Cache local (même appareil)
-      const a = savedAffiches.find((x) => x.commId === id)
-      if (a) reopenAffiche(a)
-      else setSavedMsg('Cette affiche n’a pas d’état éditable (créée avant la mise à jour).')
-    })()
+    void openCommunication(Number(editId))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // Arrivée depuis la fiche article (?article=<id>) : pré-sélectionne le produit à mettre en avant.
+  useEffect(() => {
+    const aid = searchParams.get('article')
+    if (!aid || articles.length === 0) return
+    const id = Number(aid)
+    if (articles.some((a) => a.id === id)) {
+      setAffType('produit')
+      setArticleId(id)
+      setSeededProducts(false)
+    }
+    searchParams.delete('article')
+    setSearchParams(searchParams, { replace: true })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [articles])
 
   // Entrée en édition inline : place le texte courant dans le span et met le curseur à la fin.
   useEffect(() => {
@@ -514,6 +583,54 @@ export function AffichettePage() {
   /** Ajoute une intention (occasion) au brief IA, sans doublon. */
   const addBrief = (text: string) => {
     setAiPrompt((p) => (p.includes(text) ? p : (p.trim() ? p.trim() + '. ' : '') + text))
+  }
+
+  /** Produit mis en avant (le 1er du menu le cas échéant) — sert de contexte à la légende. */
+  const captionArticle = (): Article | null =>
+    affType === 'menu' ? menuArticles[0] ?? null : articles.find((a) => a.id === articleId) ?? null
+
+  /** Rédige la légende réseaux (texte prêt à publier) à partir du brief et/ou du produit ciblé. */
+  const onGenerateCaption = async () => {
+    const a = captionArticle()
+    if (!aiPrompt.trim() && !a) {
+      setError('Décris ton affiche (chat) ou choisis un produit pour rédiger la légende.')
+      return
+    }
+    setError(null)
+    setCaptionLoading(true)
+    try {
+      const res = await generateSocialPost({
+        etablissement: etab.name ?? 'boulangerie',
+        description: etab.description ?? null,
+        location: etab.address ?? null,
+        brief: aiPrompt.trim() || null,
+        platform,
+        tone,
+        length,
+        articleName: a?.name ?? null,
+        articleDescription: a?.description ?? null,
+        priceTtc: a?.salePriceTtc ?? null,
+      })
+      if (!res.enabled) {
+        setError(res.caption || 'Génération IA non disponible.')
+        return
+      }
+      setCaption(res.caption)
+    } catch (err) {
+      setError(errorMessage(err))
+    } finally {
+      setCaptionLoading(false)
+    }
+  }
+
+  const copyCaption = async () => {
+    try {
+      await navigator.clipboard.writeText(caption)
+      setCopied(true)
+      window.setTimeout(() => setCopied(false), 1500)
+    } catch {
+      setError('Copie impossible — sélectionne le texte manuellement.')
+    }
   }
 
   /** Produits actuellement ciblés selon le type d'affiche (1 produit ou menu). */
@@ -782,6 +899,10 @@ export function AffichettePage() {
     showLogo?: boolean
     colors?: { c1: string; c2: string }
     bgDataUrl?: string | null
+    caption?: string
+    socialPlatform?: string
+    tone?: string
+    length?: string
   }) => {
     setEditingId(null)
     setSelectedId(null)
@@ -791,6 +912,10 @@ export function AffichettePage() {
     if (typeof s.veil === 'number') setVeil(s.veil)
     if (typeof s.showLogo === 'boolean') setShowLogo(s.showLogo)
     if (s.colors && s.colors.c1 && s.colors.c2) setColors(s.colors)
+    if (typeof s.caption === 'string') setCaption(s.caption)
+    if (s.socialPlatform && PLATFORMS.includes(s.socialPlatform)) setPlatform(s.socialPlatform)
+    if (s.tone) setTone(s.tone)
+    if (s.length) setLength(s.length)
     if (s.bgDataUrl) {
       const img = new Image()
       img.onload = () => {
@@ -827,18 +952,26 @@ export function AffichettePage() {
         showLogo,
         colors,
         bgDataUrl: bgToDataUrl(),
+        caption,
+        socialPlatform: platform,
+        tone,
+        length,
       })
       const saved = await saveCommunication(
         {
           headline,
           articleId: articleId === '' ? null : articleId,
           platform: `Affichette ${fmt.label}`,
+          tone,
+          length,
+          caption: caption || null,
           afficheState,
         },
         blob,
       )
       // Cache local aussi (réouverture hors-ligne / rapide via le déroulant).
       persistEditable(headline, saved.id)
+      refreshArchives()
       setSavedMsg('Affichette enregistrée (et réouvrable pour édition).')
     } catch (e) {
       setError(errorMessage(e))
@@ -859,8 +992,8 @@ export function AffichettePage() {
   return (
     <>
       <PageHeader
-        title="Affichette"
-        subtitle="Compose ton visuel puis décline-le pour Instagram, Facebook, story ou l’impression A4/A5 : textes déplaçables, fond IA, export PNG/PDF."
+        title="Communication"
+        subtitle="Compose ton visuel puis décline-le pour Instagram, Facebook, story ou l’impression A4/A5 : textes déplaçables, fond IA, légende réseaux, export PNG/PDF."
       />
 
       {error && (
@@ -873,10 +1006,6 @@ export function AffichettePage() {
           {savedMsg}
         </Alert>
       )}
-
-      <Button component={RouterLink} to="/communication" size="small" startIcon={<ArrowBackIcon />} sx={{ mb: 1 }}>
-        Retour à Communication
-      </Button>
 
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'minmax(0, 1fr) 340px' }, gap: 2 }}>
         {/* Scène (aperçu éditable) */}
@@ -1449,6 +1578,103 @@ export function AffichettePage() {
           </CardContent>
         </Card>
       </Box>
+
+      {/* Légende réseaux : texte prêt à publier sous le visuel (Instagram / Facebook). */}
+      <Card sx={{ mt: 2 }}>
+        <CardContent>
+          <Stack spacing={2}>
+            <Typography variant="subtitle2" color="text.secondary">
+              Légende pour les réseaux
+            </Typography>
+            <Typography variant="caption" color="text.secondary" sx={{ mt: -1 }}>
+              Rédige le texte à publier sous ton visuel. Le sujet vient du chat (étape 3) et du produit
+              choisi.
+            </Typography>
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
+              <TextField select size="small" label="Réseau" value={platform} onChange={(e) => setPlatform(e.target.value)} sx={{ flex: 1 }}>
+                {PLATFORMS.map((p) => (
+                  <MenuItem key={p} value={p}>
+                    {p}
+                  </MenuItem>
+                ))}
+              </TextField>
+              <TextField select size="small" label="Ton" value={tone} onChange={(e) => setTone(e.target.value)} sx={{ flex: 1 }}>
+                {TONES.map((t) => (
+                  <MenuItem key={t} value={t}>
+                    {t}
+                  </MenuItem>
+                ))}
+              </TextField>
+              <TextField select size="small" label="Longueur" value={length} onChange={(e) => setLength(e.target.value)} sx={{ flex: 1 }}>
+                {LENGTHS.map((l) => (
+                  <MenuItem key={l.value} value={l.value}>
+                    {l.label}
+                  </MenuItem>
+                ))}
+              </TextField>
+            </Stack>
+            <Button
+              variant="outlined"
+              startIcon={captionLoading ? <CircularProgress size={16} color="inherit" /> : <AutoAwesomeIcon />}
+              onClick={() => void onGenerateCaption()}
+              disabled={captionLoading}
+              sx={{ alignSelf: 'flex-start' }}
+            >
+              {captionLoading ? 'Rédaction…' : 'Générer la légende'}
+            </Button>
+            {caption && (
+              <Box>
+                <TextField
+                  label="Légende (modifiable)"
+                  value={caption}
+                  onChange={(e) => setCaption(e.target.value)}
+                  multiline
+                  minRows={5}
+                  fullWidth
+                />
+                <Button size="small" startIcon={<ContentCopyIcon />} onClick={() => void copyCaption()} sx={{ mt: 1 }}>
+                  {copied ? 'Copié !' : 'Copier la légende'}
+                </Button>
+              </Box>
+            )}
+          </Stack>
+        </CardContent>
+      </Card>
+
+      {/* Communications archivées (réouvrables pour édition). */}
+      {archives.length > 0 && (
+        <Card sx={{ mt: 2 }}>
+          <CardContent>
+            <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1.5 }}>
+              Mes communications
+            </Typography>
+            <Stack divider={<Divider flexItem />} spacing={0}>
+              {archives.map((c) => (
+                <Stack key={c.id} direction="row" spacing={1} sx={{ py: 1, alignItems: 'center' }}>
+                  <Box sx={{ flex: 1, minWidth: 0 }}>
+                    <Typography noWrap sx={{ fontWeight: 500 }}>
+                      {c.title}
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      {c.platform ?? '—'} · {new Date(c.createdAt).toLocaleDateString('fr-FR')}
+                    </Typography>
+                  </Box>
+                  {c.hasAfficheState && (
+                    <Button size="small" onClick={() => void openCommunication(c.id)}>
+                      Éditer
+                    </Button>
+                  )}
+                  <Tooltip title="Supprimer">
+                    <IconButton size="small" color="error" onClick={() => void onDeleteArchive(c.id)}>
+                      <DeleteIcon fontSize="small" />
+                    </IconButton>
+                  </Tooltip>
+                </Stack>
+              ))}
+            </Stack>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Menu contextuel d'un bloc (appui long tactile ou clic droit). */}
       <Menu
