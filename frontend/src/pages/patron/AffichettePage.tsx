@@ -144,6 +144,8 @@ interface SavedAffiche {
   showLogo: boolean
   colors: { c1: string; c2: string }
   bgDataUrl: string | null
+  bgMode?: BgMode
+  solid?: string
 }
 function loadAffiches(): SavedAffiche[] {
   try {
@@ -572,12 +574,20 @@ export function AffichettePage() {
   }
 
   /** Traduit l'ambiance choisie en consigne pour l'IA (couleurs de l'enseigne, ardoise, bois…). */
+  // « Fond aux couleurs de l'enseigne » = aplat UNI de la couleur des paramètres (aucune IA :
+  // l'IA réinterprétait la teinte). Les autres ambiances passent en consigne au générateur d'image.
+  const isBrandBg = ambiance.toLowerCase().includes('enseigne')
   const ambiancePrompt = (): string | undefined => {
-    if (ambiance.startsWith('Laisser')) return undefined
-    if (ambiance.toLowerCase().includes('enseigne')) {
-      return `fond uni ou dégradé harmonieux aux couleurs de l'enseigne : ${colors.c1} et ${colors.c2}`
-    }
+    if (isBrandBg || ambiance.startsWith('Laisser')) return undefined
     return ambiance
+  }
+
+  /** Applique un fond uni exact (couleur primaire de la charte), sans passer par l'IA. */
+  const applyBrandBg = () => {
+    setBgImg(null)
+    setSolid(colors.c1)
+    setBgMode('solid')
+    setBgZoom(1)
   }
 
   /** Ajoute une intention (occasion) au brief IA, sans doublon. */
@@ -675,6 +685,14 @@ export function AffichettePage() {
     }
     const brief = aiPrompt.trim()
     setError(null)
+    // Fond uni enseigne : pas d'IA du tout — aplat exact + textes nom/prix.
+    if (isBrandBg) {
+      applyBrandBg()
+      seedProductBlocks(products)
+      setChatLog((l) => [...l, { role: 'ai', text: 'Fond aux couleurs de l’enseigne appliqué ✅' }])
+      setAiPrompt('')
+      return
+    }
     if (brief) setChatLog((l) => [...l, { role: 'user', text: brief }])
     setAiBusy('compose')
     try {
@@ -710,6 +728,13 @@ export function AffichettePage() {
   const sendChat = async () => {
     const msg = aiPrompt.trim()
     if (!msg) return
+    // Fond uni enseigne : on ne retouche pas via l'IA, on garde l'aplat exact.
+    if (isBrandBg) {
+      applyBrandBg()
+      setAiPrompt('')
+      setChatLog((l) => [...l, { role: 'ai', text: 'Fond aux couleurs de l’enseigne conservé (uni) ✅' }])
+      return
+    }
     setError(null)
     setAiPrompt('')
     setChatLog((l) => [...l, { role: 'user', text: msg }])
@@ -876,6 +901,8 @@ export function AffichettePage() {
       showLogo,
       colors,
       bgDataUrl: bgToDataUrl(),
+      bgMode,
+      solid,
     }
     // On garde les 6 dernières (le fond en dataURL est lourd → quota localStorage).
     // On dédoublonne par communication (réenregistrer la même affiche remplace l'ancienne).
@@ -899,6 +926,8 @@ export function AffichettePage() {
     showLogo?: boolean
     colors?: { c1: string; c2: string }
     bgDataUrl?: string | null
+    bgMode?: BgMode
+    solid?: string
     caption?: string
     socialPlatform?: string
     tone?: string
@@ -916,6 +945,7 @@ export function AffichettePage() {
     if (s.socialPlatform && PLATFORMS.includes(s.socialPlatform)) setPlatform(s.socialPlatform)
     if (s.tone) setTone(s.tone)
     if (s.length) setLength(s.length)
+    if (typeof s.solid === 'string') setSolid(s.solid)
     if (s.bgDataUrl) {
       const img = new Image()
       img.onload = () => {
@@ -925,8 +955,9 @@ export function AffichettePage() {
       }
       img.src = s.bgDataUrl
     } else {
+      // Fond sans photo : on restitue l'aplat (uni enseigne) ou le dégradé selon le mode enregistré.
       setBgImg(null)
-      setBgMode('brand')
+      setBgMode(s.bgMode === 'solid' ? 'solid' : 'brand')
     }
   }
 
@@ -952,6 +983,8 @@ export function AffichettePage() {
         showLogo,
         colors,
         bgDataUrl: bgToDataUrl(),
+        bgMode,
+        solid,
         caption,
         socialPlatform: platform,
         tone,
@@ -1356,7 +1389,11 @@ export function AffichettePage() {
                     size="small"
                     color={ambiance === a ? 'primary' : 'default'}
                     variant={ambiance === a ? 'filled' : 'outlined'}
-                    onClick={() => setAmbiance(a)}
+                    onClick={() => {
+                      setAmbiance(a)
+                      // Aplat enseigne : on l'applique tout de suite (aperçu uni immédiat, sans IA).
+                      if (a.toLowerCase().includes('enseigne')) applyBrandBg()
+                    }}
                   />
                 ))}
               </Stack>
