@@ -105,6 +105,29 @@ const safeColor = (c: string | null | undefined, fb: string) =>
 
 const DRAFT_KEY = 'argeneo.affichette.draft'
 
+// Affiches réouvrables : on stocke l'ÉTAT ÉDITABLE (fond BRUT en dataURL + blocs + réglages),
+// jamais l'image aplatie avec voile — sinon le voile se cumulerait à chaque réouverture.
+const AFFICHES_KEY = 'argeneo.affiches'
+interface SavedAffiche {
+  id: string
+  name: string
+  savedAt: number
+  format: Fmt
+  blocks: Block[]
+  veil: number
+  showLogo: boolean
+  colors: { c1: string; c2: string }
+  bgDataUrl: string | null
+}
+function loadAffiches(): SavedAffiche[] {
+  try {
+    const raw = JSON.parse(localStorage.getItem(AFFICHES_KEY) ?? '[]')
+    return Array.isArray(raw) ? (raw as SavedAffiche[]) : []
+  } catch {
+    return []
+  }
+}
+
 // Appui long (tactile) : durée avant déclenchement et tolérance de mouvement (au-delà = glissement).
 const LONG_PRESS_MS = 450
 const MOVE_CANCEL_PX = 8
@@ -228,6 +251,8 @@ export function AffichettePage() {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [savedMsg, setSavedMsg] = useState<string | null>(null)
+  // Affiches réouvrables (état éditable local).
+  const [savedAffiches, setSavedAffiches] = useState<SavedAffiche[]>(() => loadAffiches())
 
   const selected = useMemo(() => blocks.find((b) => b.id === selectedId) ?? null, [blocks, selectedId])
   const fmt = FORMATS[format]
@@ -670,6 +695,71 @@ export function AffichettePage() {
       setPdfBusy(false)
     }
   }
+  /** Le fond BRUT (sans voile/texte) en dataURL, pour pouvoir rouvrir l'affiche sans cumuler le voile. */
+  const bgToDataUrl = (): string | null => {
+    if (!bgImg) return null
+    const c = document.createElement('canvas')
+    c.width = bgImg.naturalWidth || bgImg.width
+    c.height = bgImg.naturalHeight || bgImg.height
+    c.getContext('2d')!.drawImage(bgImg, 0, 0)
+    try {
+      return c.toDataURL('image/png')
+    } catch {
+      return null
+    }
+  }
+
+  /** Enregistre l'état ÉDITABLE (fond brut + blocs + réglages) pour réouverture ultérieure. */
+  const persistEditable = (name: string) => {
+    const entry: SavedAffiche = {
+      id: newId(),
+      name,
+      savedAt: Date.now(),
+      format,
+      blocks,
+      veil,
+      showLogo,
+      colors,
+      bgDataUrl: bgToDataUrl(),
+    }
+    // On garde les 6 dernières (le fond en dataURL est lourd → quota localStorage).
+    let next = [entry, ...savedAffiches].slice(0, 6)
+    while (next.length > 0) {
+      try {
+        localStorage.setItem(AFFICHES_KEY, JSON.stringify(next))
+        break
+      } catch {
+        next = next.slice(0, next.length - 1) // quota dépassé : on retire la plus ancienne
+      }
+    }
+    setSavedAffiches(next)
+  }
+
+  /** Rouvre une affiche enregistrée : restaure le fond BRUT + blocs + réglages (voile appliqué UNE fois). */
+  const reopenAffiche = (a: SavedAffiche) => {
+    setEditingId(null)
+    setSelectedId(null)
+    setFormat(a.format)
+    setBlocks(a.blocks)
+    setVeil(a.veil)
+    setShowLogo(a.showLogo)
+    setColors(a.colors)
+    setChatLog([])
+    if (a.bgDataUrl) {
+      const img = new Image()
+      img.onload = () => {
+        setBgImg(img)
+        setBgMode('photo')
+        setBgZoom(1)
+      }
+      img.src = a.bgDataUrl
+    } else {
+      setBgImg(null)
+      setBgMode('brand')
+    }
+    setSavedMsg(`Affiche « ${a.name} » rouverte.`)
+  }
+
   const save = async () => {
     setError(null)
     setSavedMsg(null)
@@ -681,7 +771,9 @@ export function AffichettePage() {
         { headline, articleId: articleId === '' ? null : articleId, platform: `Affichette ${fmt.label}` },
         blob,
       )
-      setSavedMsg('Affichette enregistrée dans « Communication ».')
+      // Enregistre aussi l'état éditable (réouverture propre, sans cumuler le voile).
+      persistEditable(headline)
+      setSavedMsg('Affichette enregistrée (et réouvrable pour édition).')
     } catch (e) {
       setError(errorMessage(e))
     } finally {
@@ -1052,6 +1144,25 @@ export function AffichettePage() {
               )}
 
               <Divider />
+
+              {savedAffiches.length > 0 && (
+                <TextField
+                  select
+                  size="small"
+                  label="Rouvrir une affiche enregistrée"
+                  value=""
+                  onChange={(e) => {
+                    const a = savedAffiches.find((x) => x.id === e.target.value)
+                    if (a) reopenAffiche(a)
+                  }}
+                >
+                  {savedAffiches.map((a) => (
+                    <MenuItem key={a.id} value={a.id}>
+                      {a.name || 'Affiche'}
+                    </MenuItem>
+                  ))}
+                </TextField>
+              )}
 
               {/* 1 · Type d'affiche */}
               <Typography variant="subtitle2" color="text.secondary">
