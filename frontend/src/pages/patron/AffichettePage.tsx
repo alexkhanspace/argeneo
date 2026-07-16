@@ -194,6 +194,9 @@ export function AffichettePage() {
     return defaultBlocks()
   })
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  // Édition de texte directement sur le canevas (double-clic) : id en cours d'édition + refs des spans.
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const editRefs = useRef<Record<string, HTMLElement | null>>({})
   // Menu contextuel (appui long / clic droit sur un bloc) : position écran + bloc visé.
   const [menu, setMenu] = useState<{ x: number; y: number; id: string } | null>(null)
 
@@ -253,6 +256,22 @@ export function AffichettePage() {
       // quota : on ignore
     }
   }, [blocks])
+
+  // Entrée en édition inline : place le texte courant dans le span et met le curseur à la fin.
+  useEffect(() => {
+    if (!editingId) return
+    const el = editRefs.current[editingId]
+    if (!el) return
+    el.textContent = blocks.find((b) => b.id === editingId)?.text ?? ''
+    el.focus()
+    const range = document.createRange()
+    range.selectNodeContents(el)
+    range.collapse(false)
+    const sel = window.getSelection()
+    sel?.removeAllRanges()
+    sel?.addRange(range)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editingId])
 
   const updateBlock = (id: string, patch: Partial<Block>) =>
     setBlocks((list) => list.map((b) => (b.id === id ? { ...b, ...patch } : b)))
@@ -796,7 +815,15 @@ export function AffichettePage() {
                   return (
                     <Box
                       key={b.id}
-                      onPointerDown={(e) => onPointerDown(e, b.id, 'move')}
+                      onPointerDown={(e) => {
+                        if (editingId === b.id) return // en cours d'édition : on laisse taper, pas de glissement
+                        onPointerDown(e, b.id, 'move')
+                      }}
+                      onDoubleClick={(e) => {
+                        e.stopPropagation()
+                        setSelectedId(b.id)
+                        setEditingId(b.id)
+                      }}
                       onContextMenu={(e) => {
                         e.preventDefault()
                         e.stopPropagation()
@@ -809,13 +836,29 @@ export function AffichettePage() {
                         top: `${b.yPct * 100}%`,
                         width: `${b.wPct * 100}%`,
                         textAlign: b.align,
-                        cursor: 'move',
+                        cursor: editingId === b.id ? 'text' : 'move',
                         outline: isSel ? '1.5px dashed rgba(255,255,255,0.9)' : 'none',
                         outlineOffset: 2,
                       }}
                     >
                       <Box
                         component="span"
+                        ref={(el: HTMLElement | null) => {
+                          editRefs.current[b.id] = el
+                        }}
+                        contentEditable={editingId === b.id}
+                        suppressContentEditableWarning
+                        onBlur={(e) => {
+                          if (editingId !== b.id) return
+                          updateBlock(b.id, { text: e.currentTarget.textContent ?? '' })
+                          setEditingId(null)
+                        }}
+                        onKeyDown={(e) => {
+                          if (editingId === b.id && e.key === 'Enter' && !e.shiftKey) {
+                            e.preventDefault()
+                            ;(e.currentTarget as HTMLElement).blur()
+                          }
+                        }}
                         sx={{
                           display: 'inline-block',
                           maxWidth: '100%',
@@ -824,13 +867,15 @@ export function AffichettePage() {
                           fontWeight: b.bold ? 700 : 400,
                           lineHeight: 1.2,
                           whiteSpace: 'pre-wrap',
+                          outline: 'none',
+                          cursor: editingId === b.id ? 'text' : 'inherit',
                           ...(b.bg
                             ? { bgcolor: b.bg, borderRadius: 1, px: 0.6, py: 0.2 }
                             : {}),
                         }}
                         style={{ fontSize: `${b.fontPct * 100}cqw` }}
                       >
-                        {b.text || ' '}
+                        {editingId === b.id ? undefined : b.text || ' '}
                       </Box>
                       {isSel && (
                         <>
