@@ -44,12 +44,19 @@ import type { Article } from '../../api/types'
 import { PageHeader } from '../../components/PageHeader'
 import { buildPosterPdfBlob } from '../../pdf/buildPosterPdf'
 
-type Fmt = 'a4' | 'a5'
-// `ar` = ratio donné au générateur d'image IA (A4/A5 en √2 ≈ 3:4) pour que le fond épouse le format
-// et ne soit pas rogné une fois placé dans l'affichette.
-const FORMATS: Record<Fmt, { w: number; h: number; label: string; size: 'A4' | 'A5'; ar: string }> = {
-  a4: { w: 1240, h: 1754, label: 'A4', size: 'A4', ar: '3:4' },
-  a5: { w: 874, h: 1240, label: 'A5', size: 'A5', ar: '3:4' },
+type Fmt = 'square' | 'story' | 'facebook' | 'a4' | 'a5'
+// Déclinaisons : réseaux (carré/story/facebook) + impression (A4/A5). Les textes sont en % → ils se
+// ré-agencent automatiquement à chaque ratio. `ar` = ratio donné à l'IA pour cadrer le fond ;
+// `size`/`print` = uniquement pour l'export PDF (formats imprimables).
+const FORMATS: Record<
+  Fmt,
+  { w: number; h: number; label: string; ar: string; size?: 'A4' | 'A5'; print?: boolean }
+> = {
+  square: { w: 1080, h: 1080, label: 'Carré', ar: '1:1' },
+  story: { w: 1080, h: 1920, label: 'Story', ar: '9:16' },
+  facebook: { w: 1080, h: 1350, label: 'Facebook', ar: '4:5' },
+  a4: { w: 1240, h: 1754, label: 'A4', ar: '3:4', size: 'A4', print: true },
+  a5: { w: 874, h: 1240, label: 'A5', ar: '3:4', size: 'A5', print: true },
 }
 type BgMode = 'photo' | 'brand' | 'solid'
 type Align = 'left' | 'center' | 'right'
@@ -705,6 +712,7 @@ export function AffichettePage() {
     URL.revokeObjectURL(url)
   }
   const downloadPdf = async () => {
+    if (!fmt.size) return // PDF réservé aux formats imprimables (A4/A5)
     setError(null)
     setPdfBusy(true)
     try {
@@ -778,7 +786,7 @@ export function AffichettePage() {
     setEditingId(null)
     setSelectedId(null)
     setChatLog([])
-    if (s.format === 'a4' || s.format === 'a5') setFormat(s.format)
+    if (s.format && s.format in FORMATS) setFormat(s.format)
     if (Array.isArray(s.blocks)) setBlocks(s.blocks)
     if (typeof s.veil === 'number') setVeil(s.veil)
     if (typeof s.showLogo === 'boolean') setShowLogo(s.showLogo)
@@ -852,7 +860,7 @@ export function AffichettePage() {
     <>
       <PageHeader
         title="Affichette"
-        subtitle="Compose une affiche A4/A5 : glisse et redimensionne les textes, choisis un fond, exporte en PDF ou enregistre-la."
+        subtitle="Compose ton visuel puis décline-le pour Instagram, Facebook, story ou l’impression A4/A5 : textes déplaçables, fond IA, export PNG/PDF."
       />
 
       {error && (
@@ -1080,14 +1088,16 @@ export function AffichettePage() {
               <Button variant="outlined" startIcon={<DownloadIcon />} onClick={() => void downloadPng()}>
                 PNG
               </Button>
-              <Button
-                variant="contained"
-                startIcon={pdfBusy ? <CircularProgress size={16} color="inherit" /> : <PictureAsPdfIcon />}
-                onClick={() => void downloadPdf()}
-                disabled={pdfBusy}
-              >
-                PDF
-              </Button>
+              {fmt.print && (
+                <Button
+                  variant="contained"
+                  startIcon={pdfBusy ? <CircularProgress size={16} color="inherit" /> : <PictureAsPdfIcon />}
+                  onClick={() => void downloadPdf()}
+                  disabled={pdfBusy}
+                >
+                  PDF
+                </Button>
+              )}
             </Stack>
           </CardContent>
         </Card>
@@ -1096,132 +1106,6 @@ export function AffichettePage() {
         <Card>
           <CardContent>
             <Stack spacing={2}>
-              {/* Bloc sélectionné */}
-              <Typography variant="subtitle2" color="text.secondary">
-                Texte sélectionné
-              </Typography>
-              {selected ? (
-                <>
-                  <TextField
-                    label="Texte"
-                    value={selected.text}
-                    onChange={(e) => updateBlock(selected.id, { text: e.target.value })}
-                    multiline
-                    minRows={2}
-                    size="small"
-                  />
-                  <TextField
-                    select
-                    size="small"
-                    label="Police"
-                    value={selected.font ?? FONT}
-                    onChange={(e) => updateBlock(selected.id, { font: e.target.value })}
-                  >
-                    {FONTS.map((f) => (
-                      <MenuItem key={f.value} value={f.value} sx={{ fontFamily: f.value }}>
-                        {f.label}
-                      </MenuItem>
-                    ))}
-                  </TextField>
-                  <Box>
-                    <Typography variant="caption" color="text.secondary">
-                      Taille (× {(selected.fontPct * 100).toFixed(1)})
-                    </Typography>
-                    <Slider
-                      value={selected.fontPct}
-                      onChange={(_, v) => updateBlock(selected.id, { fontPct: Array.isArray(v) ? v[0] : v })}
-                      min={0.02}
-                      max={0.18}
-                      step={0.005}
-                      size="small"
-                    />
-                  </Box>
-                  <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
-                    <ToggleButtonGroup
-                      size="small"
-                      exclusive
-                      value={selected.align}
-                      onChange={(_, v: Align | null) => v && updateBlock(selected.id, { align: v })}
-                    >
-                      <ToggleButton value="left">Gauche</ToggleButton>
-                      <ToggleButton value="center">Centre</ToggleButton>
-                      <ToggleButton value="right">Droite</ToggleButton>
-                    </ToggleButtonGroup>
-                    <Tooltip title="Gras">
-                      <IconButton
-                        size="small"
-                        color={selected.bold ? 'primary' : 'default'}
-                        onClick={() => updateBlock(selected.id, { bold: !selected.bold })}
-                      >
-                        <FormatBoldIcon />
-                      </IconButton>
-                    </Tooltip>
-                  </Stack>
-                  <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
-                    <TextField
-                      type="color"
-                      size="small"
-                      label="Couleur"
-                      value={selected.color}
-                      onChange={(e) => updateBlock(selected.id, { color: e.target.value })}
-                      slotProps={{ inputLabel: { shrink: true } }}
-                      sx={{ width: 90 }}
-                    />
-                    <TextField
-                      type="color"
-                      size="small"
-                      label="Pastille"
-                      value={selected.bg ?? '#000000'}
-                      onChange={(e) => updateBlock(selected.id, { bg: e.target.value })}
-                      slotProps={{ inputLabel: { shrink: true } }}
-                      sx={{ width: 90 }}
-                    />
-                    {selected.bg && (
-                      <Button size="small" onClick={() => updateBlock(selected.id, { bg: null })}>
-                        Sans pastille
-                      </Button>
-                    )}
-                  </Stack>
-                  <Button
-                    size="small"
-                    color="error"
-                    startIcon={<DeleteIcon />}
-                    onClick={() => removeBlock(selected.id)}
-                    sx={{ alignSelf: 'flex-start' }}
-                  >
-                    Supprimer ce texte
-                  </Button>
-                </>
-              ) : (
-                <Typography variant="body2" color="text.secondary">
-                  Clique un texte sur l’affichette pour le modifier, ou « Ajouter un texte ». Appui long
-                  sur le fond : ajoute un texte ; appui long (ou clic droit) sur un texte : menu
-                  (dupliquer, supprimer…). Touche Suppr : efface le texte sélectionné. Poignée d’angle :
-                  agrandit zone et police.
-                </Typography>
-              )}
-
-              <Divider />
-
-              {savedAffiches.length > 0 && (
-                <TextField
-                  select
-                  size="small"
-                  label="Rouvrir une affiche enregistrée"
-                  value=""
-                  onChange={(e) => {
-                    const a = savedAffiches.find((x) => x.id === e.target.value)
-                    if (a) reopenAffiche(a)
-                  }}
-                >
-                  {savedAffiches.map((a) => (
-                    <MenuItem key={a.id} value={a.id}>
-                      {a.name || 'Affiche'}
-                    </MenuItem>
-                  ))}
-                </TextField>
-              )}
-
               {/* 1 · Type d'affiche */}
               <Typography variant="subtitle2" color="text.secondary">
                 1 · Que veux-tu mettre en avant ?
@@ -1432,6 +1316,135 @@ export function AffichettePage() {
                 <ToggleButton value="on">Logo affiché</ToggleButton>
                 <ToggleButton value="off">Sans logo</ToggleButton>
               </ToggleButtonGroup>
+
+              <Divider />
+
+              {/* Bloc sélectionné */}
+              <Typography variant="subtitle2" color="text.secondary">
+                Texte sélectionné
+              </Typography>
+              {selected ? (
+                <>
+                  <TextField
+                    label="Texte"
+                    value={selected.text}
+                    onChange={(e) => updateBlock(selected.id, { text: e.target.value })}
+                    multiline
+                    minRows={2}
+                    size="small"
+                  />
+                  <TextField
+                    select
+                    size="small"
+                    label="Police"
+                    value={selected.font ?? FONT}
+                    onChange={(e) => updateBlock(selected.id, { font: e.target.value })}
+                  >
+                    {FONTS.map((f) => (
+                      <MenuItem key={f.value} value={f.value} sx={{ fontFamily: f.value }}>
+                        {f.label}
+                      </MenuItem>
+                    ))}
+                  </TextField>
+                  <Box>
+                    <Typography variant="caption" color="text.secondary">
+                      Taille (× {(selected.fontPct * 100).toFixed(1)})
+                    </Typography>
+                    <Slider
+                      value={selected.fontPct}
+                      onChange={(_, v) => updateBlock(selected.id, { fontPct: Array.isArray(v) ? v[0] : v })}
+                      min={0.02}
+                      max={0.18}
+                      step={0.005}
+                      size="small"
+                    />
+                  </Box>
+                  <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
+                    <ToggleButtonGroup
+                      size="small"
+                      exclusive
+                      value={selected.align}
+                      onChange={(_, v: Align | null) => v && updateBlock(selected.id, { align: v })}
+                    >
+                      <ToggleButton value="left">Gauche</ToggleButton>
+                      <ToggleButton value="center">Centre</ToggleButton>
+                      <ToggleButton value="right">Droite</ToggleButton>
+                    </ToggleButtonGroup>
+                    <Tooltip title="Gras">
+                      <IconButton
+                        size="small"
+                        color={selected.bold ? 'primary' : 'default'}
+                        onClick={() => updateBlock(selected.id, { bold: !selected.bold })}
+                      >
+                        <FormatBoldIcon />
+                      </IconButton>
+                    </Tooltip>
+                  </Stack>
+                  <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
+                    <TextField
+                      type="color"
+                      size="small"
+                      label="Couleur"
+                      value={selected.color}
+                      onChange={(e) => updateBlock(selected.id, { color: e.target.value })}
+                      slotProps={{ inputLabel: { shrink: true } }}
+                      sx={{ width: 90 }}
+                    />
+                    <TextField
+                      type="color"
+                      size="small"
+                      label="Pastille"
+                      value={selected.bg ?? '#000000'}
+                      onChange={(e) => updateBlock(selected.id, { bg: e.target.value })}
+                      slotProps={{ inputLabel: { shrink: true } }}
+                      sx={{ width: 90 }}
+                    />
+                    {selected.bg && (
+                      <Button size="small" onClick={() => updateBlock(selected.id, { bg: null })}>
+                        Sans pastille
+                      </Button>
+                    )}
+                  </Stack>
+                  <Button
+                    size="small"
+                    color="error"
+                    startIcon={<DeleteIcon />}
+                    onClick={() => removeBlock(selected.id)}
+                    sx={{ alignSelf: 'flex-start' }}
+                  >
+                    Supprimer ce texte
+                  </Button>
+                </>
+              ) : (
+                <Typography variant="body2" color="text.secondary">
+                  Clique un texte sur l’affichette pour le modifier, ou « Ajouter un texte ». Appui long
+                  sur le fond : ajoute un texte ; appui long (ou clic droit) sur un texte : menu
+                  (dupliquer, supprimer…). Touche Suppr : efface le texte sélectionné. Poignée d’angle :
+                  agrandit zone et police.
+                </Typography>
+              )}
+
+              {savedAffiches.length > 0 && (
+                <>
+                  <Divider />
+                  <TextField
+                    select
+                    size="small"
+                    label="Rouvrir une affiche enregistrée"
+                    value=""
+                    onChange={(e) => {
+                      const a = savedAffiches.find((x) => x.id === e.target.value)
+                      if (a) reopenAffiche(a)
+                    }}
+                  >
+                    {savedAffiches.map((a) => (
+                      <MenuItem key={a.id} value={a.id}>
+                        {a.name || 'Affiche'}
+                      </MenuItem>
+                    ))}
+                  </TextField>
+                </>
+              )}
             </Stack>
           </CardContent>
         </Card>
