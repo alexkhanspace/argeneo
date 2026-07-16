@@ -590,6 +590,50 @@ export function AffichettePage() {
     setBgZoom(1)
   }
 
+  // En mode enseigne, chaque « envoi » RECRÉE (re-détoure) — l'affinage image→image de l'IA
+  // reprendrait la main sur la couleur ; on ne l'utilise donc que pour un fond photo/IA classique.
+  const aiAffine = !!bgImg && !isBrandBg
+
+  /**
+   * Compose le fond enseigne PIXEL-EXACT : aplat de la couleur de la charte + produit(s) détouré(s)
+   * (PNG transparents renvoyés par l'IA) posés dessus. La couleur n'est jamais touchée par l'IA.
+   */
+  const composeOnBrand = (cutouts: HTMLImageElement[]): HTMLCanvasElement => {
+    const { w, h } = fmt
+    const canvas = document.createElement('canvas')
+    canvas.width = w
+    canvas.height = h
+    const ctx = canvas.getContext('2d')!
+    ctx.fillStyle = colors.c1
+    ctx.fillRect(0, 0, w, h)
+    const pad = Math.round(w * 0.08)
+    // Zone produits : ~62 % du haut ; on laisse le bas pour les textes (nom, prix…).
+    const areaX = pad
+    const areaY = pad
+    const areaW = w - 2 * pad
+    const areaH = Math.round(h * 0.62)
+    const drawContain = (img: HTMLImageElement, x: number, y: number, bw: number, bh: number) => {
+      const r = Math.min(bw / img.width, bh / img.height)
+      const iw = img.width * r
+      const ih = img.height * r
+      ctx.drawImage(img, x + (bw - iw) / 2, y + (bh - ih) / 2, iw, ih)
+    }
+    if (cutouts.length === 1) {
+      drawContain(cutouts[0], areaX, areaY, areaW, areaH)
+    } else {
+      const cols = Math.ceil(Math.sqrt(cutouts.length))
+      const rows = Math.ceil(cutouts.length / cols)
+      const cellW = areaW / cols
+      const cellH = areaH / rows
+      cutouts.forEach((img, i) => {
+        const cx = areaX + (i % cols) * cellW
+        const cy = areaY + Math.floor(i / cols) * cellH
+        drawContain(img, cx + cellW * 0.05, cy + cellH * 0.05, cellW * 0.9, cellH * 0.9)
+      })
+    }
+    return canvas
+  }
+
   /** Ajoute une intention (occasion) au brief IA, sans doublon. */
   const addBrief = (text: string) => {
     setAiPrompt((p) => (p.includes(text) ? p : (p.trim() ? p.trim() + '. ' : '') + text))
@@ -685,12 +729,48 @@ export function AffichettePage() {
     }
     const brief = aiPrompt.trim()
     setError(null)
-    // Fond uni enseigne : pas d'IA du tout — aplat exact + textes nom/prix.
+    // Fond enseigne : la couleur est peinte localement (exacte). L'IA ne fait QUE détourer le(s)
+    // produit(s) sur transparence ; on les compose ensuite sur l'aplat. Sans photo → simple aplat.
     if (isBrandBg) {
-      applyBrandBg()
-      seedProductBlocks(products)
-      setChatLog((l) => [...l, { role: 'ai', text: 'Fond aux couleurs de l’enseigne appliqué ✅' }])
-      setAiPrompt('')
+      const brandFiles: File[] = [...menuFiles]
+      for (const a of products) {
+        if (!a.photoFile) continue
+        const u = photoUrl(a.photoFile)
+        if (!u) continue
+        const r = await fetch(u)
+        if (!r.ok) continue
+        const blob = await r.blob()
+        brandFiles.push(new File([blob], `produit-${a.id}.png`, { type: blob.type || 'image/png' }))
+      }
+      if (brandFiles.length === 0) {
+        applyBrandBg()
+        seedProductBlocks(products)
+        setChatLog((l) => [...l, { role: 'ai', text: 'Fond aux couleurs de l’enseigne appliqué ✅' }])
+        setAiPrompt('')
+        return
+      }
+      if (brief) setChatLog((l) => [...l, { role: 'user', text: brief }])
+      setAiBusy('compose')
+      try {
+        const cutouts: HTMLImageElement[] = []
+        for (const f of brandFiles) {
+          const blob = await enhanceImage(f, undefined, brief || undefined, 'cutout')
+          cutouts.push(await imgFromBlob(blob))
+        }
+        const outBlob = await canvasToBlob(composeOnBrand(cutouts))
+        if (!outBlob) throw new Error('Composition impossible')
+        setSolid(colors.c1)
+        setBgImg(await imgFromBlob(outBlob))
+        setBgMode('photo')
+        setBgZoom(1)
+        seedProductBlocks(products)
+        setChatLog((l) => [...l, { role: 'ai', text: 'Produit détouré sur le fond enseigne ✅' }])
+        setAiPrompt('')
+      } catch (e) {
+        setError(errorMessage(e))
+      } finally {
+        setAiBusy(null)
+      }
       return
     }
     if (brief) setChatLog((l) => [...l, { role: 'user', text: brief }])
@@ -728,11 +808,10 @@ export function AffichettePage() {
   const sendChat = async () => {
     const msg = aiPrompt.trim()
     if (!msg) return
-    // Fond uni enseigne : on ne retouche pas via l'IA, on garde l'aplat exact.
+    // Fond enseigne : on ne retouche pas l'image aplatie via l'IA (elle reprendrait la couleur) ;
+    // on renvoie vers « Créer » qui re-détoure proprement sans toucher au fond.
     if (isBrandBg) {
-      applyBrandBg()
-      setAiPrompt('')
-      setChatLog((l) => [...l, { role: 'ai', text: 'Fond aux couleurs de l’enseigne conservé (uni) ✅' }])
+      void createAffiche()
       return
     }
     setError(null)
@@ -1422,16 +1501,18 @@ export function AffichettePage() {
                   multiline
                   maxRows={4}
                   placeholder={
-                    bgImg
-                      ? 'Affine : plus chaleureux, grossis le prix, ajoute des guirlandes…'
-                      : 'Décris ton affiche : appétissant, met en valeur le produit…'
+                    isBrandBg
+                      ? 'Importe une photo puis « Créer » : l’IA détoure le produit sur le fond enseigne.'
+                      : aiAffine
+                        ? 'Affine : plus chaleureux, grossis le prix, ajoute des guirlandes…'
+                        : 'Décris ton affiche : appétissant, met en valeur le produit…'
                   }
                   value={aiPrompt}
                   onChange={(e) => setAiPrompt(e.target.value)}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && !e.shiftKey) {
                       e.preventDefault()
-                      if (bgImg) void sendChat()
+                      if (aiAffine) void sendChat()
                       else void createAffiche()
                     }
                   }}
@@ -1440,14 +1521,14 @@ export function AffichettePage() {
                 <Button
                   variant="contained"
                   onClick={() => {
-                    if (bgImg) void sendChat()
+                    if (aiAffine) void sendChat()
                     else void createAffiche()
                   }}
                   disabled={aiBusy !== null}
                   startIcon={
                     aiBusy !== null ? (
                       <CircularProgress size={16} color="inherit" />
-                    ) : bgImg ? (
+                    ) : aiAffine ? (
                       <SendIcon />
                     ) : (
                       <AutoAwesomeIcon />
@@ -1455,13 +1536,15 @@ export function AffichettePage() {
                   }
                   sx={{ whiteSpace: 'nowrap' }}
                 >
-                  {bgImg ? 'Envoyer' : 'Créer'}
+                  {aiAffine ? 'Envoyer' : 'Créer'}
                 </Button>
               </Stack>
               <Typography variant="caption" color="text.secondary">
-                {bgImg
-                  ? 'Chaque message affine l’affiche ; tes textes restent nets par-dessus.'
-                  : 'Décris (ou clique les aides), puis « Créer ».'}
+                {isBrandBg
+                  ? 'Fond aux couleurs de l’enseigne : couleur exacte des paramètres, produit détouré par l’IA.'
+                  : aiAffine
+                    ? 'Chaque message affine l’affiche ; tes textes restent nets par-dessus.'
+                    : 'Décris (ou clique les aides), puis « Créer ».'}
               </Typography>
 
               <Divider />

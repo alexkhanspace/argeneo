@@ -169,6 +169,24 @@ public class AiImageController {
 
     private static String buildPrompt(String ambiance, String instruction, String mode) {
         StringBuilder p = new StringBuilder();
+        if ("cutout".equalsIgnoreCase(mode)) {
+            // Mode découpe : on veut UNIQUEMENT le produit détouré sur fond transparent. Le fond
+            // (couleur de l'enseigne) est ensuite peint localement, pixel-exact, côté application.
+            p.append("Détoure PROPREMENT et PRÉCISÉMENT le produit principal de cette photo (contours ")
+                    .append("nets, y compris les détails fins et les bords). GARDE EXACTEMENT le même produit ")
+                    .append("(forme, couleur, garniture, texture) — ne le modifie pas, ne le redessine pas, ne ")
+                    .append("change pas sa nature. Améliore juste la lumière et la netteté pour un rendu ")
+                    .append("appétissant. Renvoie le produit SEUL, bien centré et le plus grand possible sans le ")
+                    .append("rogner, sur un FOND 100% TRANSPARENT (canal alpha, PNG transparent) : AUCUN décor, ")
+                    .append("AUCUNE couleur de fond, AUCUNE ombre portée, AUCUN reflet au sol, RIEN d'autre que ")
+                    .append("le produit. ");
+            if (instruction != null && !instruction.isBlank()) {
+                p.append("CONSIGNE DU CLIENT (à respecter) : ").append(instruction.trim()).append(". ");
+            }
+            p.append("Aucun texte, aucun logo, aucun filigrane / watermark ni logo/nom de banque d'images ")
+                    .append("(Vecteezy, Shutterstock, Getty, iStock, Adobe Stock, Freepik, Depositphotos, Alamy…).");
+            return p.toString();
+        }
         if ("scene".equalsIgnoreCase(mode)) {
             // Mode Communication : photo d'événement/scène (personnes, objets) à préserver fidèlement.
             p.append("Transforme cette photo en VISUEL DE COMMUNICATION soigné pour un commerce de bouche artisanal ")
