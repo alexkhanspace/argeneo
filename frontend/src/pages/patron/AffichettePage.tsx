@@ -216,8 +216,7 @@ export function AffichettePage() {
   const [aiBusy, setAiBusy] = useState<null | 'retouch' | 'generate' | 'compose' | 'chat'>(null)
   // Ambiance du fond généré (presets « comme dans Communication »).
   const [ambiance, setAmbiance] = useState(AMBIANCES[0])
-  // Mini-chat IA : échange court pour affiner le fond au fil de l'eau (retouche itérative).
-  const [chatInput, setChatInput] = useState('')
+  // Journal du chat IA (brief initial + affinages successifs).
   const [chatLog, setChatLog] = useState<{ role: 'user' | 'ai'; text: string }[]>([])
   const [menuArticles, setMenuArticles] = useState<Article[]>([])
   const [menuFiles, setMenuFiles] = useState<File[]>([])
@@ -477,7 +476,9 @@ export function AffichettePage() {
       setError('Choisis au moins un produit (ou importe une photo), puis décris ton affiche.')
       return
     }
+    const brief = aiPrompt.trim()
     setError(null)
+    if (brief) setChatLog((l) => [...l, { role: 'user', text: brief }])
     setAiBusy('compose')
     try {
       const files: File[] = [...menuFiles]
@@ -490,7 +491,7 @@ export function AffichettePage() {
         const blob = await r.blob()
         files.push(new File([blob], `produit-${a.id}.png`, { type: blob.type || 'image/png' }))
       }
-      const instruction = [aiPrompt.trim(), ambiancePrompt()].filter(Boolean).join('. ')
+      const instruction = [brief, ambiancePrompt()].filter(Boolean).join('. ')
       const blob =
         files.length > 0
           ? await composeImages(files, instruction || undefined, fmt.ar)
@@ -499,6 +500,8 @@ export function AffichettePage() {
       setBgMode('photo')
       setBgZoom(1)
       seedProductBlocks(products)
+      setChatLog((l) => [...l, { role: 'ai', text: 'Affiche créée ✅' }])
+      setAiPrompt('')
     } catch (e) {
       setError(errorMessage(e))
     } finally {
@@ -508,10 +511,10 @@ export function AffichettePage() {
 
   /** Mini-chat IA : affine le fond au fil des messages (retouche image→image, ou génère si pas de fond). */
   const sendChat = async () => {
-    const msg = chatInput.trim()
+    const msg = aiPrompt.trim()
     if (!msg) return
     setError(null)
-    setChatInput('')
+    setAiPrompt('')
     setChatLog((l) => [...l, { role: 'user', text: msg }])
     setAiBusy('chat')
     try {
@@ -1103,19 +1106,10 @@ export function AffichettePage() {
 
               <Divider />
 
-              {/* 3 · Brief IA + aides */}
+              {/* 3 · Décris ton affiche à l'IA (chat) */}
               <Typography variant="subtitle2" color="text.secondary">
                 3 · Décris ton affiche à l’IA
               </Typography>
-              <TextField
-                label="Ce que tu veux sur l’affiche"
-                placeholder="Ex. : mets bien en valeur le produit, appétissant, ambiance chaleureuse…"
-                multiline
-                minRows={2}
-                size="small"
-                value={aiPrompt}
-                onChange={(e) => setAiPrompt(e.target.value)}
-              />
               <Typography variant="caption" color="text.secondary">
                 Occasion :
               </Typography>
@@ -1139,31 +1133,8 @@ export function AffichettePage() {
                   />
                 ))}
               </Stack>
-              <Button
-                variant="contained"
-                startIcon={aiBusy === 'compose' ? <CircularProgress size={16} color="inherit" /> : <AutoAwesomeIcon />}
-                onClick={() => void createAffiche()}
-                disabled={aiBusy !== null}
-              >
-                Créer l’affiche (IA)
-              </Button>
-
-              <Divider />
-
-              {/* 4 · Affiner l'affiche avec l'IA (chat) */}
-              <Typography variant="subtitle2" color="text.secondary">
-                4 · Affiner avec l’IA
-              </Typography>
               {chatLog.length > 0 && (
-                <Box
-                  sx={{
-                    maxHeight: 160,
-                    overflowY: 'auto',
-                    bgcolor: 'action.hover',
-                    borderRadius: 1,
-                    p: 1,
-                  }}
-                >
+                <Box sx={{ maxHeight: 160, overflowY: 'auto', bgcolor: 'action.hover', borderRadius: 1, p: 1 }}>
                   <Stack spacing={0.5}>
                     {chatLog.map((m, i) => (
                       <Typography
@@ -1180,32 +1151,53 @@ export function AffichettePage() {
                   </Stack>
                 </Box>
               )}
-              <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+              <Stack direction="row" spacing={1} sx={{ alignItems: 'flex-end' }}>
                 <TextField
                   size="small"
                   fullWidth
-                  placeholder="Ex. : plus chaleureux, ajoute des guirlandes, fond plus sombre…"
-                  value={chatInput}
-                  onChange={(e) => setChatInput(e.target.value)}
+                  multiline
+                  maxRows={4}
+                  placeholder={
+                    bgImg
+                      ? 'Affine : plus chaleureux, grossis le prix, ajoute des guirlandes…'
+                      : 'Décris ton affiche : appétissant, met en valeur le produit…'
+                  }
+                  value={aiPrompt}
+                  onChange={(e) => setAiPrompt(e.target.value)}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && !e.shiftKey) {
                       e.preventDefault()
-                      void sendChat()
+                      if (bgImg) void sendChat()
+                      else void createAffiche()
                     }
                   }}
                   disabled={aiBusy !== null}
                 />
-                <IconButton
-                  color="primary"
-                  onClick={() => void sendChat()}
-                  disabled={aiBusy !== null || !chatInput.trim()}
-                  aria-label="Envoyer au chat IA"
+                <Button
+                  variant="contained"
+                  onClick={() => {
+                    if (bgImg) void sendChat()
+                    else void createAffiche()
+                  }}
+                  disabled={aiBusy !== null}
+                  startIcon={
+                    aiBusy !== null ? (
+                      <CircularProgress size={16} color="inherit" />
+                    ) : bgImg ? (
+                      <SendIcon />
+                    ) : (
+                      <AutoAwesomeIcon />
+                    )
+                  }
+                  sx={{ whiteSpace: 'nowrap' }}
                 >
-                  {aiBusy === 'chat' ? <CircularProgress size={18} /> : <SendIcon />}
-                </IconButton>
+                  {bgImg ? 'Envoyer' : 'Créer'}
+                </Button>
               </Stack>
               <Typography variant="caption" color="text.secondary">
-                Chaque message affine le fond actuel (ou en génère un si aucun fond). Idéal pour les menus.
+                {bgImg
+                  ? 'Chaque message affine l’affiche ; tes textes restent nets par-dessus.'
+                  : 'Décris (ou clique les aides), puis « Créer ».'}
               </Typography>
 
               <Divider />
