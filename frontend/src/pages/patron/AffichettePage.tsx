@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointer
 import { useSearchParams } from 'react-router-dom'
 import {
   Alert,
+  AppBar,
   Autocomplete,
   Box,
   Button,
@@ -9,6 +10,7 @@ import {
   CardContent,
   Chip,
   CircularProgress,
+  Dialog,
   Divider,
   IconButton,
   ListItemIcon,
@@ -16,9 +18,13 @@ import {
   MenuItem,
   Slider,
   Stack,
+  Step,
+  StepLabel,
+  Stepper,
   TextField,
   ToggleButton,
   ToggleButtonGroup,
+  Toolbar,
   Tooltip,
   Typography,
 } from '@mui/material'
@@ -34,10 +40,18 @@ import RestartAltIcon from '@mui/icons-material/RestartAlt'
 import ContentCopyIcon from '@mui/icons-material/ContentCopy'
 import FlipToFrontIcon from '@mui/icons-material/FlipToFront'
 import SendIcon from '@mui/icons-material/Send'
+import CloseIcon from '@mui/icons-material/Close'
+import PhotoCamera from '@mui/icons-material/PhotoCamera'
+import ImageIcon from '@mui/icons-material/Image'
+import InventoryIcon from '@mui/icons-material/Inventory2'
+import NavigateNextIcon from '@mui/icons-material/NavigateNext'
+import NavigateBeforeIcon from '@mui/icons-material/NavigateBefore'
+import TextFieldsIcon from '@mui/icons-material/TextFields'
+import EditIcon from '@mui/icons-material/Edit'
 import { errorMessage } from '../../api/client'
 import { getProfile, getSettings, logoUrl } from '../../api/billing'
 import { listArticles, photoUrl } from '../../api/costing'
-import { composeImages, enhanceImage } from '../../api/insights'
+import { composeImages, enhanceImage, getAdSlogans } from '../../api/insights'
 import {
   deleteCommunication,
   generateImageFromPrompt,
@@ -79,6 +93,9 @@ const AMBIANCES = [
   'Marché / étal gourmand',
   "Fond aux couleurs de l'enseigne",
 ]
+
+// Étapes de l'assistant plein écran.
+const WIZARD_STEPS = ['Source', 'Fond & IA', 'Textes', 'Export']
 
 // Légende réseaux : réseau ciblé, ton et longueur du texte à publier.
 const PLATFORMS = ['Instagram', 'Facebook']
@@ -294,6 +311,20 @@ export function AffichettePage() {
   const [archives, setArchives] = useState<CommunicationSummary[]>([])
   const [searchParams, setSearchParams] = useSearchParams()
 
+  // --- Assistant plein écran (parcours guidé) ---
+  const [wizardOpen, setWizardOpen] = useState(false)
+  const [step, setStep] = useState(0)
+  // Source : catalogue (produit/menu), import fichier, ou prise de photo (appareil).
+  const [srcMode, setSrcMode] = useState<'catalogue' | 'import' | 'photo'>('catalogue')
+  const photoInputRef = useRef<HTMLInputElement | null>(null)
+  // Couleur du fond uni (étape 2), par défaut couleur de l'enseigne (renseignée au chargement charte).
+  const [bgColor, setBgColor] = useState('#c2410c')
+  // Guides d'alignement affichés pendant le déplacement d'un texte (fractions 0..1).
+  const [guides, setGuides] = useState<{ v: number[]; h: number[] }>({ v: [], h: [] })
+  // Accroches proposées par l'IA (étape 3).
+  const [aiSlogans, setAiSlogans] = useState<string[]>([])
+  const [textBusy, setTextBusy] = useState(false)
+
   const selected = useMemo(() => blocks.find((b) => b.id === selectedId) ?? null, [blocks, selectedId])
   const fmt = FORMATS[format]
 
@@ -306,6 +337,7 @@ export function AffichettePage() {
         const c2 = safeColor(s.brandColor2, c1)
         setColors({ c1, c2 })
         setSolid(c1)
+        setBgColor(c1)
       })
       .catch(() => undefined)
     getProfile()
@@ -336,6 +368,8 @@ export function AffichettePage() {
       if (detail.afficheState) {
         restoreState(JSON.parse(detail.afficheState))
         setSavedMsg('Affiche ouverte en édition.')
+        setStep(2)
+        setWizardOpen(true)
         return
       }
     } catch {
@@ -343,9 +377,35 @@ export function AffichettePage() {
     }
     // 2) Cache local (même appareil)
     const a = savedAffiches.find((x) => x.commId === id)
-    if (a) reopenAffiche(a)
-    else setSavedMsg('Cette affiche n’a pas d’état éditable (créée avant la mise à jour).')
+    if (a) {
+      reopenAffiche(a)
+      setStep(2)
+      setWizardOpen(true)
+    } else {
+      setSavedMsg('Cette affiche n’a pas d’état éditable (créée avant la mise à jour).')
+    }
   }
+
+  /** Démarre une nouvelle affiche vierge et ouvre l'assistant à l'étape 1. */
+  const startNewAffiche = () => {
+    resetCanvas()
+    setBgImg(null)
+    setBgMode('brand')
+    setBgZoom(1)
+    setArticleId('')
+    setMenuArticles([])
+    setMenuFiles([])
+    setAiPrompt('')
+    setChatLog([])
+    setAiSlogans([])
+    setSeededProducts(false)
+    setSrcMode('catalogue')
+    setStep(0)
+    setError(null)
+    setWizardOpen(true)
+  }
+  const nextStep = () => setStep((s) => Math.min(3, s + 1))
+  const prevStep = () => setStep((s) => Math.max(0, s - 1))
 
   const refreshArchives = () => {
     listCommunications().then(setArchives).catch(() => undefined)
@@ -383,6 +443,9 @@ export function AffichettePage() {
       setAffType('produit')
       setArticleId(id)
       setSeededProducts(false)
+      setSrcMode('catalogue')
+      setStep(0)
+      setWizardOpen(true)
     }
     searchParams.delete('article')
     setSearchParams(searchParams, { replace: true })
@@ -510,10 +573,33 @@ export function AffichettePage() {
     const dx = (e.clientX - d.startX) / d.rect.width
     const dy = (e.clientY - d.startY) / d.rect.height
     if (d.mode === 'move') {
-      updateBlock(d.id, {
-        xPct: clamp01(d.b.xPct + dx),
-        yPct: clamp01(d.b.yPct + dy),
-      })
+      // Aimantation + guides d'alignement : centre, marges gauche/droite, milieu vertical.
+      const SNAP = 0.015
+      let nx = clamp01(d.b.xPct + dx)
+      let ny = clamp01(d.b.yPct + dy)
+      const w = d.b.wPct
+      const gv: number[] = []
+      const gh: number[] = []
+      const cx = nx + w / 2
+      if (Math.abs(cx - 0.5) < SNAP) {
+        nx = 0.5 - w / 2
+        gv.push(0.5)
+      } else if (Math.abs(nx - 0.06) < SNAP) {
+        nx = 0.06
+        gv.push(0.06)
+      } else if (Math.abs(nx + w - 0.94) < SNAP) {
+        nx = 0.94 - w
+        gv.push(0.94)
+      }
+      if (Math.abs(ny - 0.5) < SNAP) {
+        ny = 0.5
+        gh.push(0.5)
+      } else if (Math.abs(ny - 0.08) < SNAP) {
+        ny = 0.08
+        gh.push(0.08)
+      }
+      updateBlock(d.id, { xPct: nx, yPct: ny })
+      setGuides({ v: gv, h: gh })
     } else {
       const wPct = Math.max(0.08, Math.min(1 - d.b.xPct, d.b.wPct + dx))
       if (d.mode === 'scale') {
@@ -528,6 +614,7 @@ export function AffichettePage() {
   const onPointerUp = () => {
     clearBlockLongPress()
     drag.current = null
+    setGuides({ v: [], h: [] })
     window.removeEventListener('pointermove', onPointerMove)
     window.removeEventListener('pointerup', onPointerUp)
   }
@@ -671,6 +758,21 @@ export function AffichettePage() {
     }
   }
 
+  /** Rassemble les fichiers sources : photos importées + photos des produits choisis. */
+  const gatherFiles = async (products: Article[]): Promise<File[]> => {
+    const files: File[] = [...menuFiles]
+    for (const a of products) {
+      if (!a.photoFile) continue
+      const u = photoUrl(a.photoFile)
+      if (!u) continue
+      const r = await fetch(u)
+      if (!r.ok) continue
+      const blob = await r.blob()
+      files.push(new File([blob], `produit-${a.id}.png`, { type: blob.type || 'image/png' }))
+    }
+    return files
+  }
+
   /**
    * Crée l'affiche : met en scène les VRAIES photos des produits choisis (ou des photos importées)
    * via l'IA, ou génère un visuel de zéro si aucune photo. Puis pré-remplit les textes nom + prix.
@@ -686,16 +788,7 @@ export function AffichettePage() {
     if (brief) setChatLog((l) => [...l, { role: 'user', text: brief }])
     setAiBusy('compose')
     try {
-      const files: File[] = [...menuFiles]
-      for (const a of products) {
-        if (!a.photoFile) continue
-        const u = photoUrl(a.photoFile)
-        if (!u) continue
-        const r = await fetch(u)
-        if (!r.ok) continue
-        const blob = await r.blob()
-        files.push(new File([blob], `produit-${a.id}.png`, { type: blob.type || 'image/png' }))
-      }
+      const files = await gatherFiles(products)
       const instruction = [brief, ambiancePrompt()].filter(Boolean).join('. ')
       const blob =
         files.length > 0
@@ -711,6 +804,80 @@ export function AffichettePage() {
       setError(errorMessage(e))
     } finally {
       setAiBusy(null)
+    }
+  }
+
+  /**
+   * Étape 2 : l'IA détoure le(s) produit(s) et les pose sur un aplat UNI de la couleur choisie
+   * (par défaut la couleur de l'enseigne). Si aucune photo, on peint simplement l'aplat.
+   */
+  const detourer = async () => {
+    const products = selectedProducts()
+    setError(null)
+    const brief = aiPrompt.trim()
+    setAiBusy('compose')
+    try {
+      const files = await gatherFiles(products)
+      if (files.length === 0) {
+        // Pas de photo : fond uni exact (aucune IA).
+        setBgImg(null)
+        setSolid(bgColor)
+        setBgMode('solid')
+        setBgZoom(1)
+        seedProductBlocks(products)
+        setChatLog((l) => [...l, { role: 'ai', text: 'Fond uni appliqué. Importe une photo pour détourer un produit.' }])
+        return
+      }
+      const instruction =
+        `détoure proprement le produit et pose-le, bien centré et mis en valeur, sur un FOND `
+        + `PARFAITEMENT UNI de couleur EXACTEMENT ${bgColor} (aplat total : sans dégradé, sans texture, `
+        + `sans décor, sans ombre, sans fioriture). Ne mets rien d'autre que le produit sur cet aplat.`
+        + (brief ? ' ' + brief : '')
+      const blob = await composeImages(files, instruction, fmt.ar)
+      setBgImg(await imgFromBlob(blob))
+      setBgMode('photo')
+      setBgZoom(1)
+      seedProductBlocks(products)
+      setChatLog((l) => [...l, { role: 'ai', text: 'Produit détouré sur le fond choisi ✅' }])
+    } catch (e) {
+      setError(errorMessage(e))
+    } finally {
+      setAiBusy(null)
+    }
+  }
+
+  /** Ajoute un texte donné comme nouveau bloc, centré, et le sélectionne. */
+  const addTextBlock = (text: string) => {
+    const b = newBlock({ text, yPct: 0.5, xPct: 0.08, wPct: 0.84, fontPct: 0.06, align: 'center' })
+    setBlocks((list) => [...list, b])
+    setSelectedId(b.id)
+  }
+
+  /** Étape 3 : propose des accroches publicitaires via l'IA (produit ou sujet décrit). */
+  const generateText = async () => {
+    const a = captionArticle()
+    const name = a?.name ?? aiPrompt.trim()
+    if (!name) {
+      setError('Choisis un produit ou décris le sujet pour générer une accroche.')
+      return
+    }
+    setError(null)
+    setTextBusy(true)
+    try {
+      const res = await getAdSlogans({
+        etablissement: etab.name ?? 'boulangerie',
+        description: etab.description ?? null,
+        location: etab.address ?? null,
+        articleName: name,
+        articleDescription: a?.description ?? null,
+        priceTtc: a?.salePriceTtc ?? null,
+      })
+      setAiSlogans(res.enabled ? res.slogans : [])
+      if (!res.enabled) setError('Génération IA non disponible.')
+    } catch (e) {
+      setError(errorMessage(e))
+    } finally {
+      setTextBusy(false)
     }
   }
 
@@ -748,8 +915,9 @@ export function AffichettePage() {
   }
 
   // --- Rendu haute résolution (export) ---
-  const renderToCanvas = (): HTMLCanvasElement => {
-    const { w, h } = fmt
+  // `fmtKey` permet de rendre un autre format que celui affiché (export « toutes déclinaisons »).
+  const renderToCanvas = (fmtKey: Fmt = format): HTMLCanvasElement => {
+    const { w, h } = FORMATS[fmtKey]
     const canvas = document.createElement('canvas')
     canvas.width = w
     canvas.height = h
@@ -824,37 +992,41 @@ export function AffichettePage() {
   const canvasToBlob = (canvas: HTMLCanvasElement): Promise<Blob | null> =>
     new Promise((resolve) => canvas.toBlob((b) => resolve(b), 'image/png'))
 
-  const downloadPng = async () => {
-    const blob = await canvasToBlob(renderToCanvas())
-    if (!blob) return
+  const downloadBlob = (blob: Blob, filename: string) => {
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `affichette-${format}.png`
+    a.download = filename
     document.body.appendChild(a)
     a.click()
     a.remove()
     URL.revokeObjectURL(url)
   }
-  const downloadPdf = async () => {
-    if (!fmt.size) return // PDF réservé aux formats imprimables (A4/A5)
+
+  const downloadPng = async (fmtKey: Fmt = format) => {
+    const blob = await canvasToBlob(renderToCanvas(fmtKey))
+    if (blob) downloadBlob(blob, `affichette-${fmtKey}.png`)
+  }
+  const downloadPdf = async (fmtKey: Fmt = format) => {
+    const size = FORMATS[fmtKey].size
+    if (!size) return // PDF réservé aux formats imprimables (A4/A5)
     setError(null)
     setPdfBusy(true)
     try {
-      const dataUrl = renderToCanvas().toDataURL('image/png')
-      const blob = await buildPosterPdfBlob(dataUrl, fmt.size)
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `affichette-${format}.pdf`
-      document.body.appendChild(a)
-      a.click()
-      a.remove()
-      URL.revokeObjectURL(url)
+      const dataUrl = renderToCanvas(fmtKey).toDataURL('image/png')
+      const blob = await buildPosterPdfBlob(dataUrl, size)
+      downloadBlob(blob, `affichette-${fmtKey}.pdf`)
     } catch (e) {
       setError(errorMessage(e))
     } finally {
       setPdfBusy(false)
+    }
+  }
+  /** Exporte un PNG pour CHAQUE déclinaison (réseaux + impression). */
+  const exportAllPng = async () => {
+    for (const key of Object.keys(FORMATS) as Fmt[]) {
+      const blob = await canvasToBlob(renderToCanvas(key))
+      if (blob) downloadBlob(blob, `affichette-${key}.png`)
     }
   }
   /** Le fond BRUT (sans voile/texte) en dataURL, pour pouvoir rouvrir l'affiche sans cumuler le voile. */
@@ -1005,6 +1177,291 @@ export function AffichettePage() {
         ? { background: `linear-gradient(${colors.c1}, ${colors.c2})` }
         : {}
 
+  // Scène éditable (aperçu + manipulation des textes). Réutilisée dans plusieurs étapes.
+  const renderStage = () => (
+    <Box sx={{ display: 'flex', justifyContent: 'center', bgcolor: 'action.hover', borderRadius: 1, p: 1 }}>
+      <Box
+        ref={stageRef}
+        onPointerDown={onStagePointerDown}
+        onPointerMove={onStagePointerMove}
+        onPointerUp={clearStagePress}
+        onPointerLeave={clearStagePress}
+        onContextMenu={(e) => e.preventDefault()}
+        sx={{
+          position: 'relative',
+          width: '100%',
+          maxWidth: 460,
+          aspectRatio: `${fmt.w} / ${fmt.h}`,
+          containerType: 'inline-size',
+          overflow: 'hidden',
+          borderRadius: 1,
+          userSelect: 'none',
+          touchAction: 'none',
+          ...stageBg,
+        }}
+      >
+        {bgMode === 'photo' && bgImg && (
+          <Box
+            sx={{
+              position: 'absolute',
+              inset: 0,
+              backgroundImage: `url(${bgImg.src})`,
+              backgroundSize: 'cover',
+              backgroundPosition: 'center',
+              transform: `scale(${bgZoom})`,
+              transformOrigin: 'center',
+              pointerEvents: 'none',
+            }}
+          />
+        )}
+        {veil > 0 && (
+          <Box
+            sx={{
+              position: 'absolute',
+              inset: 0,
+              background: `linear-gradient(rgba(0,0,0,0) 35%, rgba(0,0,0,${veil}))`,
+              pointerEvents: 'none',
+            }}
+          />
+        )}
+        {showLogo && logoImg && (
+          <Box
+            component="img"
+            src={logoImg.src}
+            alt=""
+            sx={{
+              position: 'absolute',
+              top: '4%',
+              right: '5%',
+              maxWidth: '32%',
+              maxHeight: '14%',
+              objectFit: 'contain',
+              bgcolor: 'rgba(255,255,255,0.92)',
+              borderRadius: 1,
+              p: 0.5,
+              pointerEvents: 'none',
+            }}
+          />
+        )}
+        {/* Guides d'alignement (pendant le déplacement) */}
+        {guides.v.map((x, i) => (
+          <Box
+            key={`gv${i}`}
+            sx={{ position: 'absolute', left: `${x * 100}%`, top: 0, bottom: 0, width: '1px', bgcolor: '#e11d9b', pointerEvents: 'none' }}
+          />
+        ))}
+        {guides.h.map((y, i) => (
+          <Box
+            key={`gh${i}`}
+            sx={{ position: 'absolute', top: `${y * 100}%`, left: 0, right: 0, height: '1px', bgcolor: '#e11d9b', pointerEvents: 'none' }}
+          />
+        ))}
+        {blocks.map((b) => {
+          const isSel = b.id === selectedId
+          return (
+            <Box
+              key={b.id}
+              onPointerDown={(e) => {
+                if (editingId === b.id) return
+                onPointerDown(e, b.id, 'move')
+              }}
+              onDoubleClick={(e) => {
+                e.stopPropagation()
+                setSelectedId(b.id)
+                setEditingId(b.id)
+              }}
+              onContextMenu={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                setSelectedId(b.id)
+                setMenu({ x: e.clientX, y: e.clientY, id: b.id })
+              }}
+              sx={{
+                position: 'absolute',
+                left: `${b.xPct * 100}%`,
+                top: `${b.yPct * 100}%`,
+                width: `${b.wPct * 100}%`,
+                textAlign: b.align,
+                cursor: editingId === b.id ? 'text' : 'move',
+                outline: isSel ? '1.5px dashed rgba(255,255,255,0.9)' : 'none',
+                outlineOffset: 2,
+              }}
+            >
+              <Box
+                component="span"
+                ref={(el: HTMLElement | null) => {
+                  editRefs.current[b.id] = el
+                }}
+                contentEditable={editingId === b.id}
+                suppressContentEditableWarning
+                onBlur={(e) => {
+                  if (editingId !== b.id) return
+                  updateBlock(b.id, { text: e.currentTarget.textContent ?? '' })
+                  setEditingId(null)
+                }}
+                onKeyDown={(e) => {
+                  if (editingId === b.id && e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault()
+                    ;(e.currentTarget as HTMLElement).blur()
+                  }
+                }}
+                sx={{
+                  display: 'inline-block',
+                  maxWidth: '100%',
+                  color: b.color,
+                  fontFamily: b.font ?? FONT,
+                  fontWeight: b.bold ? 700 : 400,
+                  lineHeight: 1.2,
+                  whiteSpace: 'pre-wrap',
+                  outline: 'none',
+                  cursor: editingId === b.id ? 'text' : 'inherit',
+                  ...(b.bg ? { bgcolor: b.bg, borderRadius: 1, px: 0.6, py: 0.2 } : {}),
+                }}
+                style={{ fontSize: `${b.fontPct * 100}cqw` }}
+              >
+                {editingId === b.id ? undefined : b.text || ' '}
+              </Box>
+              {isSel && (
+                <>
+                  <Box
+                    onPointerDown={(e) => onPointerDown(e, b.id, 'scale')}
+                    sx={{
+                      position: 'absolute',
+                      right: -6,
+                      bottom: -6,
+                      width: 14,
+                      height: 14,
+                      borderRadius: '50%',
+                      bgcolor: 'primary.main',
+                      border: '2px solid #fff',
+                      cursor: 'nwse-resize',
+                    }}
+                  />
+                  <Box
+                    onPointerDown={(e) => onPointerDown(e, b.id, 'resize')}
+                    sx={{
+                      position: 'absolute',
+                      right: -5,
+                      top: '50%',
+                      transform: 'translateY(-50%)',
+                      width: 8,
+                      height: 22,
+                      borderRadius: 1,
+                      bgcolor: 'primary.main',
+                      border: '2px solid #fff',
+                      cursor: 'ew-resize',
+                    }}
+                  />
+                </>
+              )}
+            </Box>
+          )
+        })}
+      </Box>
+    </Box>
+  )
+
+  // Panneau d'édition du texte sélectionné (police, taille, alignement, couleurs…).
+  const renderBlockEditor = () =>
+    selected ? (
+      <>
+        <TextField
+          label="Texte"
+          value={selected.text}
+          onChange={(e) => updateBlock(selected.id, { text: e.target.value })}
+          multiline
+          minRows={2}
+          size="small"
+        />
+        <TextField
+          select
+          size="small"
+          label="Police"
+          value={selected.font ?? FONT}
+          onChange={(e) => updateBlock(selected.id, { font: e.target.value })}
+        >
+          {FONTS.map((f) => (
+            <MenuItem key={f.value} value={f.value} sx={{ fontFamily: f.value }}>
+              {f.label}
+            </MenuItem>
+          ))}
+        </TextField>
+        <Box>
+          <Typography variant="caption" color="text.secondary">
+            Taille (× {(selected.fontPct * 100).toFixed(1)})
+          </Typography>
+          <Slider
+            value={selected.fontPct}
+            onChange={(_, v) => updateBlock(selected.id, { fontPct: Array.isArray(v) ? v[0] : v })}
+            min={0.02}
+            max={0.18}
+            step={0.005}
+            size="small"
+          />
+        </Box>
+        <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
+          <ToggleButtonGroup
+            size="small"
+            exclusive
+            value={selected.align}
+            onChange={(_, v: Align | null) => v && updateBlock(selected.id, { align: v })}
+          >
+            <ToggleButton value="left">Gauche</ToggleButton>
+            <ToggleButton value="center">Centre</ToggleButton>
+            <ToggleButton value="right">Droite</ToggleButton>
+          </ToggleButtonGroup>
+          <Tooltip title="Gras">
+            <IconButton
+              size="small"
+              color={selected.bold ? 'primary' : 'default'}
+              onClick={() => updateBlock(selected.id, { bold: !selected.bold })}
+            >
+              <FormatBoldIcon />
+            </IconButton>
+          </Tooltip>
+        </Stack>
+        <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
+          <TextField
+            type="color"
+            size="small"
+            label="Couleur"
+            value={selected.color}
+            onChange={(e) => updateBlock(selected.id, { color: e.target.value })}
+            slotProps={{ inputLabel: { shrink: true } }}
+            sx={{ width: 90 }}
+          />
+          <TextField
+            type="color"
+            size="small"
+            label="Pastille"
+            value={selected.bg ?? '#000000'}
+            onChange={(e) => updateBlock(selected.id, { bg: e.target.value })}
+            slotProps={{ inputLabel: { shrink: true } }}
+            sx={{ width: 90 }}
+          />
+          {selected.bg && (
+            <Button size="small" onClick={() => updateBlock(selected.id, { bg: null })}>
+              Sans pastille
+            </Button>
+          )}
+        </Stack>
+        <Button
+          size="small"
+          color="error"
+          startIcon={<DeleteIcon />}
+          onClick={() => removeBlock(selected.id)}
+          sx={{ alignSelf: 'flex-start' }}
+        >
+          Supprimer ce texte
+        </Button>
+      </>
+    ) : (
+      <Typography variant="body2" color="text.secondary">
+        Double-clique un texte sur l’affiche pour le modifier, glisse-le pour le déplacer (des repères
+        roses apparaissent quand il est aligné). Poignée d’angle : agrandit zone et police.
+      </Typography>
+    )
+
   return (
     <>
       <PageHeader
@@ -1023,646 +1480,16 @@ export function AffichettePage() {
         </Alert>
       )}
 
-      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'minmax(0, 1fr) 340px' }, gap: 2 }}>
-        {/* Scène (aperçu éditable) */}
-        <Card>
-          <CardContent>
-            <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'center', mb: 1, flexWrap: 'wrap', gap: 1 }}>
-              <ToggleButtonGroup size="small" exclusive value={format} onChange={(_, v) => v && setFormat(v)}>
-                {(Object.keys(FORMATS) as Fmt[]).map((f) => (
-                  <ToggleButton key={f} value={f}>
-                    {FORMATS[f].label}
-                  </ToggleButton>
-                ))}
-              </ToggleButtonGroup>
-              <Stack direction="row" sx={{ gap: 1, flexWrap: 'wrap' }}>
-                <Button size="small" startIcon={<AddIcon />} onClick={addBlock}>
-                  Ajouter un texte
-                </Button>
-                <Button size="small" color="inherit" startIcon={<RestartAltIcon />} onClick={resetCanvas}>
-                  Réinitialiser
-                </Button>
-              </Stack>
-            </Stack>
+      {/* Accueil : créer + galerie des communications enregistrées. */}
+      <Button variant="contained" size="large" startIcon={<AddIcon />} onClick={startNewAffiche} sx={{ mb: 2 }}>
+        Créer une affiche
+      </Button>
 
-            <Box sx={{ display: 'flex', justifyContent: 'center', bgcolor: 'action.hover', borderRadius: 1, p: 1 }}>
-              <Box
-                ref={stageRef}
-                onPointerDown={onStagePointerDown}
-                onPointerMove={onStagePointerMove}
-                onPointerUp={clearStagePress}
-                onPointerLeave={clearStagePress}
-                onContextMenu={(e) => e.preventDefault()}
-                sx={{
-                  position: 'relative',
-                  width: '100%',
-                  maxWidth: 460,
-                  aspectRatio: `${fmt.w} / ${fmt.h}`,
-                  containerType: 'inline-size',
-                  overflow: 'hidden',
-                  borderRadius: 1,
-                  userSelect: 'none',
-                  touchAction: 'none',
-                  ...stageBg,
-                }}
-              >
-                {/* Calque photo (zoomable) */}
-                {bgMode === 'photo' && bgImg && (
-                  <Box
-                    sx={{
-                      position: 'absolute',
-                      inset: 0,
-                      backgroundImage: `url(${bgImg.src})`,
-                      backgroundSize: 'cover',
-                      backgroundPosition: 'center',
-                      transform: `scale(${bgZoom})`,
-                      transformOrigin: 'center',
-                      pointerEvents: 'none',
-                    }}
-                  />
-                )}
-                {/* Voile */}
-                {veil > 0 && (
-                  <Box
-                    sx={{
-                      position: 'absolute',
-                      inset: 0,
-                      background: `linear-gradient(rgba(0,0,0,0) 35%, rgba(0,0,0,${veil}))`,
-                      pointerEvents: 'none',
-                    }}
-                  />
-                )}
-                {/* Logo */}
-                {showLogo && logoImg && (
-                  <Box
-                    component="img"
-                    src={logoImg.src}
-                    alt=""
-                    sx={{
-                      position: 'absolute',
-                      top: '4%',
-                      right: '5%',
-                      maxWidth: '32%',
-                      maxHeight: '14%',
-                      objectFit: 'contain',
-                      bgcolor: 'rgba(255,255,255,0.92)',
-                      borderRadius: 1,
-                      p: 0.5,
-                      pointerEvents: 'none',
-                    }}
-                  />
-                )}
-                {/* Blocs */}
-                {blocks.map((b) => {
-                  const isSel = b.id === selectedId
-                  return (
-                    <Box
-                      key={b.id}
-                      onPointerDown={(e) => {
-                        if (editingId === b.id) return // en cours d'édition : on laisse taper, pas de glissement
-                        onPointerDown(e, b.id, 'move')
-                      }}
-                      onDoubleClick={(e) => {
-                        e.stopPropagation()
-                        setSelectedId(b.id)
-                        setEditingId(b.id)
-                      }}
-                      onContextMenu={(e) => {
-                        e.preventDefault()
-                        e.stopPropagation()
-                        setSelectedId(b.id)
-                        setMenu({ x: e.clientX, y: e.clientY, id: b.id })
-                      }}
-                      sx={{
-                        position: 'absolute',
-                        left: `${b.xPct * 100}%`,
-                        top: `${b.yPct * 100}%`,
-                        width: `${b.wPct * 100}%`,
-                        textAlign: b.align,
-                        cursor: editingId === b.id ? 'text' : 'move',
-                        outline: isSel ? '1.5px dashed rgba(255,255,255,0.9)' : 'none',
-                        outlineOffset: 2,
-                      }}
-                    >
-                      <Box
-                        component="span"
-                        ref={(el: HTMLElement | null) => {
-                          editRefs.current[b.id] = el
-                        }}
-                        contentEditable={editingId === b.id}
-                        suppressContentEditableWarning
-                        onBlur={(e) => {
-                          if (editingId !== b.id) return
-                          updateBlock(b.id, { text: e.currentTarget.textContent ?? '' })
-                          setEditingId(null)
-                        }}
-                        onKeyDown={(e) => {
-                          if (editingId === b.id && e.key === 'Enter' && !e.shiftKey) {
-                            e.preventDefault()
-                            ;(e.currentTarget as HTMLElement).blur()
-                          }
-                        }}
-                        sx={{
-                          display: 'inline-block',
-                          maxWidth: '100%',
-                          color: b.color,
-                          fontFamily: b.font ?? FONT,
-                          fontWeight: b.bold ? 700 : 400,
-                          lineHeight: 1.2,
-                          whiteSpace: 'pre-wrap',
-                          outline: 'none',
-                          cursor: editingId === b.id ? 'text' : 'inherit',
-                          ...(b.bg
-                            ? { bgcolor: b.bg, borderRadius: 1, px: 0.6, py: 0.2 }
-                            : {}),
-                        }}
-                        style={{ fontSize: `${b.fontPct * 100}cqw` }}
-                      >
-                        {editingId === b.id ? undefined : b.text || ' '}
-                      </Box>
-                      {isSel && (
-                        <>
-                          {/* Poignée d'angle : agrandit la zone ET la police (proportionnel). */}
-                          <Box
-                            onPointerDown={(e) => onPointerDown(e, b.id, 'scale')}
-                            sx={{
-                              position: 'absolute',
-                              right: -6,
-                              bottom: -6,
-                              width: 14,
-                              height: 14,
-                              borderRadius: '50%',
-                              bgcolor: 'primary.main',
-                              border: '2px solid #fff',
-                              cursor: 'nwse-resize',
-                            }}
-                          />
-                          {/* Poignée latérale : largeur seule (le texte se reflowe). */}
-                          <Box
-                            onPointerDown={(e) => onPointerDown(e, b.id, 'resize')}
-                            sx={{
-                              position: 'absolute',
-                              right: -5,
-                              top: '50%',
-                              transform: 'translateY(-50%)',
-                              width: 8,
-                              height: 22,
-                              borderRadius: 1,
-                              bgcolor: 'primary.main',
-                              border: '2px solid #fff',
-                              cursor: 'ew-resize',
-                            }}
-                          />
-                        </>
-                      )}
-                    </Box>
-                  )
-                })}
-              </Box>
-            </Box>
-
-            <Stack direction="row" spacing={1} sx={{ justifyContent: 'flex-end', flexWrap: 'wrap', gap: 1, mt: 2 }}>
-              <Button
-                variant="outlined"
-                startIcon={saving ? <CircularProgress size={16} /> : <SaveIcon />}
-                onClick={() => void save()}
-                disabled={saving}
-              >
-                Enregistrer
-              </Button>
-              <Button variant="outlined" startIcon={<DownloadIcon />} onClick={() => void downloadPng()}>
-                PNG
-              </Button>
-              {fmt.print && (
-                <Button
-                  variant="contained"
-                  startIcon={pdfBusy ? <CircularProgress size={16} color="inherit" /> : <PictureAsPdfIcon />}
-                  onClick={() => void downloadPdf()}
-                  disabled={pdfBusy}
-                >
-                  PDF
-                </Button>
-              )}
-            </Stack>
-          </CardContent>
-        </Card>
-
-        {/* Panneau de réglages */}
-        <Card>
-          <CardContent>
-            <Stack spacing={2}>
-              {/* 1 · Type d'affiche */}
-              <Typography variant="subtitle2" color="text.secondary">
-                1 · Que veux-tu mettre en avant ?
-              </Typography>
-              <ToggleButtonGroup
-                size="small"
-                exclusive
-                fullWidth
-                value={affType}
-                onChange={(_, v: 'produit' | 'menu' | null) => {
-                  if (!v) return
-                  setAffType(v)
-                  setSeededProducts(false)
-                }}
-              >
-                <ToggleButton value="produit">Un produit</ToggleButton>
-                <ToggleButton value="menu">Un menu (plusieurs)</ToggleButton>
-              </ToggleButtonGroup>
-
-              <Divider />
-
-              {/* 2 · Choix des produits */}
-              <Typography variant="subtitle2" color="text.secondary">
-                2 · {affType === 'menu' ? 'Choisis les produits' : 'Choisis le produit'}
-              </Typography>
-              {affType === 'produit' ? (
-                <TextField
-                  select
-                  size="small"
-                  label="Produit"
-                  value={articleId === '' ? '' : String(articleId)}
-                  onChange={(e) => {
-                    setArticleId(e.target.value === '' ? '' : Number(e.target.value))
-                    setSeededProducts(false)
-                  }}
-                >
-                  <MenuItem value="">
-                    <em>— Choisir —</em>
-                  </MenuItem>
-                  {articles.map((a) => (
-                    <MenuItem key={a.id} value={String(a.id)}>
-                      {a.code} — {a.name}
-                      {a.photoFile ? '' : ' (sans photo)'}
-                    </MenuItem>
-                  ))}
-                </TextField>
-              ) : (
-                <Autocomplete
-                  multiple
-                  size="small"
-                  options={articles}
-                  getOptionLabel={(a) => `${a.code} — ${a.name}${a.photoFile ? '' : ' (sans photo)'}`}
-                  isOptionEqualToValue={(o, v) => o.id === v.id}
-                  value={menuArticles}
-                  onChange={(_, v) => {
-                    setMenuArticles(v)
-                    setSeededProducts(false)
-                  }}
-                  renderInput={(params) => <TextField {...params} label="Produits du menu" />}
-                />
-              )}
-              <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', gap: 0.5, alignItems: 'center' }}>
-                <Button size="small" variant="text" startIcon={<UploadIcon />} onClick={() => menuFileRef.current?.click()}>
-                  Importer des photos
-                </Button>
-                {menuFiles.length > 0 && (
-                  <Typography variant="caption" color="text.secondary">
-                    {menuFiles.length} photo(s)
-                  </Typography>
-                )}
-              </Stack>
-              {menuFiles.length > 0 && (
-                <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', gap: 0.5 }}>
-                  {menuFiles.map((f, i) => (
-                    <Chip
-                      key={`${f.name}-${i}`}
-                      label={f.name}
-                      size="small"
-                      onDelete={() => setMenuFiles((list) => list.filter((_, j) => j !== i))}
-                    />
-                  ))}
-                </Stack>
-              )}
-              <input
-                ref={menuFileRef}
-                type="file"
-                accept="image/*"
-                multiple
-                hidden
-                onChange={(e) => {
-                  const list = Array.from(e.target.files ?? [])
-                  e.target.value = ''
-                  if (list.length) setMenuFiles((prev) => [...prev, ...list].slice(0, 8))
-                }}
-              />
-
-              <Divider />
-
-              {/* 3 · Décris ton affiche à l'IA (chat) */}
-              <Typography variant="subtitle2" color="text.secondary">
-                3 · Décris ton affiche à l’IA
-              </Typography>
-              <Typography variant="caption" color="text.secondary">
-                Occasion :
-              </Typography>
-              <Stack direction="row" spacing={0.5} sx={{ flexWrap: 'wrap', gap: 0.5 }}>
-                {OCCASIONS.map((o) => (
-                  <Chip key={o.label} label={o.label} size="small" variant="outlined" onClick={() => addBrief(o.text)} />
-                ))}
-              </Stack>
-              <Typography variant="caption" color="text.secondary">
-                Style de fond :
-              </Typography>
-              <Stack direction="row" spacing={0.5} sx={{ flexWrap: 'wrap', gap: 0.5 }}>
-                {AMBIANCES.map((a) => (
-                  <Chip
-                    key={a}
-                    label={a}
-                    size="small"
-                    color={ambiance === a ? 'primary' : 'default'}
-                    variant={ambiance === a ? 'filled' : 'outlined'}
-                    onClick={() => setAmbiance(a)}
-                  />
-                ))}
-              </Stack>
-              {chatLog.length > 0 && (
-                <Box sx={{ maxHeight: 160, overflowY: 'auto', bgcolor: 'action.hover', borderRadius: 1, p: 1 }}>
-                  <Stack spacing={0.5}>
-                    {chatLog.map((m, i) => (
-                      <Typography
-                        key={i}
-                        variant="caption"
-                        sx={{
-                          textAlign: m.role === 'user' ? 'right' : 'left',
-                          color: m.role === 'user' ? 'text.primary' : 'primary.main',
-                        }}
-                      >
-                        {m.role === 'user' ? `🧑 ${m.text}` : `🤖 ${m.text}`}
-                      </Typography>
-                    ))}
-                  </Stack>
-                </Box>
-              )}
-              <Stack direction="row" spacing={1} sx={{ alignItems: 'flex-end' }}>
-                <TextField
-                  size="small"
-                  fullWidth
-                  multiline
-                  maxRows={4}
-                  placeholder={
-                    aiAffine
-                      ? 'Affine : plus chaleureux, grossis le prix, ajoute des guirlandes…'
-                      : 'Décris ton affiche : appétissant, met en valeur le produit…'
-                  }
-                  value={aiPrompt}
-                  onChange={(e) => setAiPrompt(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && !e.shiftKey) {
-                      e.preventDefault()
-                      if (aiAffine) void sendChat()
-                      else void createAffiche()
-                    }
-                  }}
-                  disabled={aiBusy !== null}
-                />
-                <Button
-                  variant="contained"
-                  onClick={() => {
-                    if (aiAffine) void sendChat()
-                    else void createAffiche()
-                  }}
-                  disabled={aiBusy !== null}
-                  startIcon={
-                    aiBusy !== null ? (
-                      <CircularProgress size={16} color="inherit" />
-                    ) : aiAffine ? (
-                      <SendIcon />
-                    ) : (
-                      <AutoAwesomeIcon />
-                    )
-                  }
-                  sx={{ whiteSpace: 'nowrap' }}
-                >
-                  {aiAffine ? 'Envoyer' : 'Créer'}
-                </Button>
-              </Stack>
-              <Typography variant="caption" color="text.secondary">
-                {aiAffine
-                  ? 'Chaque message affine l’affiche ; tes textes restent nets par-dessus.'
-                  : 'Décris (ou clique les aides), puis « Créer ».'}
-              </Typography>
-
-              <Divider />
-
-              <Box>
-                <Typography variant="caption" color="text.secondary">
-                  Voile sombre (lisibilité) — {Math.round(veil * 100)}%
-                </Typography>
-                <Slider value={veil} onChange={(_, v) => setVeil(Array.isArray(v) ? v[0] : v)} min={0} max={0.8} step={0.05} size="small" />
-              </Box>
-
-              <ToggleButtonGroup
-                size="small"
-                exclusive
-                value={showLogo ? 'on' : 'off'}
-                onChange={(_, v) => v && setShowLogo(v === 'on')}
-              >
-                <ToggleButton value="on">Logo affiché</ToggleButton>
-                <ToggleButton value="off">Sans logo</ToggleButton>
-              </ToggleButtonGroup>
-
-              <Divider />
-
-              {/* Bloc sélectionné */}
-              <Typography variant="subtitle2" color="text.secondary">
-                Texte sélectionné
-              </Typography>
-              {selected ? (
-                <>
-                  <TextField
-                    label="Texte"
-                    value={selected.text}
-                    onChange={(e) => updateBlock(selected.id, { text: e.target.value })}
-                    multiline
-                    minRows={2}
-                    size="small"
-                  />
-                  <TextField
-                    select
-                    size="small"
-                    label="Police"
-                    value={selected.font ?? FONT}
-                    onChange={(e) => updateBlock(selected.id, { font: e.target.value })}
-                  >
-                    {FONTS.map((f) => (
-                      <MenuItem key={f.value} value={f.value} sx={{ fontFamily: f.value }}>
-                        {f.label}
-                      </MenuItem>
-                    ))}
-                  </TextField>
-                  <Box>
-                    <Typography variant="caption" color="text.secondary">
-                      Taille (× {(selected.fontPct * 100).toFixed(1)})
-                    </Typography>
-                    <Slider
-                      value={selected.fontPct}
-                      onChange={(_, v) => updateBlock(selected.id, { fontPct: Array.isArray(v) ? v[0] : v })}
-                      min={0.02}
-                      max={0.18}
-                      step={0.005}
-                      size="small"
-                    />
-                  </Box>
-                  <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
-                    <ToggleButtonGroup
-                      size="small"
-                      exclusive
-                      value={selected.align}
-                      onChange={(_, v: Align | null) => v && updateBlock(selected.id, { align: v })}
-                    >
-                      <ToggleButton value="left">Gauche</ToggleButton>
-                      <ToggleButton value="center">Centre</ToggleButton>
-                      <ToggleButton value="right">Droite</ToggleButton>
-                    </ToggleButtonGroup>
-                    <Tooltip title="Gras">
-                      <IconButton
-                        size="small"
-                        color={selected.bold ? 'primary' : 'default'}
-                        onClick={() => updateBlock(selected.id, { bold: !selected.bold })}
-                      >
-                        <FormatBoldIcon />
-                      </IconButton>
-                    </Tooltip>
-                  </Stack>
-                  <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
-                    <TextField
-                      type="color"
-                      size="small"
-                      label="Couleur"
-                      value={selected.color}
-                      onChange={(e) => updateBlock(selected.id, { color: e.target.value })}
-                      slotProps={{ inputLabel: { shrink: true } }}
-                      sx={{ width: 90 }}
-                    />
-                    <TextField
-                      type="color"
-                      size="small"
-                      label="Pastille"
-                      value={selected.bg ?? '#000000'}
-                      onChange={(e) => updateBlock(selected.id, { bg: e.target.value })}
-                      slotProps={{ inputLabel: { shrink: true } }}
-                      sx={{ width: 90 }}
-                    />
-                    {selected.bg && (
-                      <Button size="small" onClick={() => updateBlock(selected.id, { bg: null })}>
-                        Sans pastille
-                      </Button>
-                    )}
-                  </Stack>
-                  <Button
-                    size="small"
-                    color="error"
-                    startIcon={<DeleteIcon />}
-                    onClick={() => removeBlock(selected.id)}
-                    sx={{ alignSelf: 'flex-start' }}
-                  >
-                    Supprimer ce texte
-                  </Button>
-                </>
-              ) : (
-                <Typography variant="body2" color="text.secondary">
-                  Clique un texte sur l’affichette pour le modifier, ou « Ajouter un texte ». Appui long
-                  sur le fond : ajoute un texte ; appui long (ou clic droit) sur un texte : menu
-                  (dupliquer, supprimer…). Touche Suppr : efface le texte sélectionné. Poignée d’angle :
-                  agrandit zone et police.
-                </Typography>
-              )}
-
-              {savedAffiches.length > 0 && (
-                <>
-                  <Divider />
-                  <TextField
-                    select
-                    size="small"
-                    label="Rouvrir une affiche enregistrée"
-                    value=""
-                    onChange={(e) => {
-                      const a = savedAffiches.find((x) => x.id === e.target.value)
-                      if (a) reopenAffiche(a)
-                    }}
-                  >
-                    {savedAffiches.map((a) => (
-                      <MenuItem key={a.id} value={a.id}>
-                        {a.name || 'Affiche'}
-                      </MenuItem>
-                    ))}
-                  </TextField>
-                </>
-              )}
-            </Stack>
-          </CardContent>
-        </Card>
-      </Box>
-
-      {/* Légende réseaux : texte prêt à publier sous le visuel (Instagram / Facebook). */}
-      <Card sx={{ mt: 2 }}>
-        <CardContent>
-          <Stack spacing={2}>
-            <Typography variant="subtitle2" color="text.secondary">
-              Légende pour les réseaux
-            </Typography>
-            <Typography variant="caption" color="text.secondary" sx={{ mt: -1 }}>
-              Rédige le texte à publier sous ton visuel. Le sujet vient du chat (étape 3) et du produit
-              choisi.
-            </Typography>
-            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
-              <TextField select size="small" label="Réseau" value={platform} onChange={(e) => setPlatform(e.target.value)} sx={{ flex: 1 }}>
-                {PLATFORMS.map((p) => (
-                  <MenuItem key={p} value={p}>
-                    {p}
-                  </MenuItem>
-                ))}
-              </TextField>
-              <TextField select size="small" label="Ton" value={tone} onChange={(e) => setTone(e.target.value)} sx={{ flex: 1 }}>
-                {TONES.map((t) => (
-                  <MenuItem key={t} value={t}>
-                    {t}
-                  </MenuItem>
-                ))}
-              </TextField>
-              <TextField select size="small" label="Longueur" value={length} onChange={(e) => setLength(e.target.value)} sx={{ flex: 1 }}>
-                {LENGTHS.map((l) => (
-                  <MenuItem key={l.value} value={l.value}>
-                    {l.label}
-                  </MenuItem>
-                ))}
-              </TextField>
-            </Stack>
-            <Button
-              variant="outlined"
-              startIcon={captionLoading ? <CircularProgress size={16} color="inherit" /> : <AutoAwesomeIcon />}
-              onClick={() => void onGenerateCaption()}
-              disabled={captionLoading}
-              sx={{ alignSelf: 'flex-start' }}
-            >
-              {captionLoading ? 'Rédaction…' : 'Générer la légende'}
-            </Button>
-            {caption && (
-              <Box>
-                <TextField
-                  label="Légende (modifiable)"
-                  value={caption}
-                  onChange={(e) => setCaption(e.target.value)}
-                  multiline
-                  minRows={5}
-                  fullWidth
-                />
-                <Button size="small" startIcon={<ContentCopyIcon />} onClick={() => void copyCaption()} sx={{ mt: 1 }}>
-                  {copied ? 'Copié !' : 'Copier la légende'}
-                </Button>
-              </Box>
-            )}
-          </Stack>
-        </CardContent>
-      </Card>
-
-      {/* Communications archivées (réouvrables pour édition). */}
       {archives.length > 0 && (
-        <Card sx={{ mt: 2 }}>
+        <Card>
           <CardContent>
             <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 1.5 }}>
-              Mes communications
+              Mes affiches
             </Typography>
             <Stack divider={<Divider flexItem />} spacing={0}>
               {archives.map((c) => (
@@ -1676,7 +1503,7 @@ export function AffichettePage() {
                     </Typography>
                   </Box>
                   {c.hasAfficheState && (
-                    <Button size="small" onClick={() => void openCommunication(c.id)}>
+                    <Button size="small" startIcon={<EditIcon />} onClick={() => void openCommunication(c.id)}>
                       Éditer
                     </Button>
                   )}
@@ -1691,6 +1518,439 @@ export function AffichettePage() {
           </CardContent>
         </Card>
       )}
+
+      {/* Assistant plein écran (parcours guidé, responsive). */}
+      <Dialog fullScreen open={wizardOpen} onClose={() => setWizardOpen(false)}>
+        <AppBar position="sticky" color="default" elevation={1}>
+          <Toolbar sx={{ gap: 1 }}>
+            <IconButton edge="start" onClick={() => setWizardOpen(false)} aria-label="Fermer">
+              <CloseIcon />
+            </IconButton>
+            <Typography variant="h6" sx={{ flex: 1 }}>
+              Créer une affiche
+            </Typography>
+          </Toolbar>
+          <Box sx={{ px: 2, pb: 1, overflowX: 'auto' }}>
+            <Stepper activeStep={step} sx={{ minWidth: 480 }}>
+              {WIZARD_STEPS.map((label, i) => (
+                <Step key={label} completed={step > i}>
+                  <StepLabel>
+                    <Box component="span" onClick={() => setStep(i)} sx={{ cursor: 'pointer' }}>
+                      {label}
+                    </Box>
+                  </StepLabel>
+                </Step>
+              ))}
+            </Stepper>
+          </Box>
+        </AppBar>
+
+        <Box sx={{ p: { xs: 2, md: 3 }, pb: 12, maxWidth: 1100, mx: 'auto', width: '100%' }}>
+          {error && (
+            <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>
+              {error}
+            </Alert>
+          )}
+
+          {/* ÉTAPE 1 — Source */}
+          {step === 0 && (
+            <Stack spacing={2}>
+              <Typography variant="h6">1 · Choisis ta source</Typography>
+              <ToggleButtonGroup
+                exclusive
+                fullWidth
+                value={srcMode}
+                onChange={(_, v: 'catalogue' | 'import' | 'photo' | null) => v && setSrcMode(v)}
+                sx={{ flexWrap: 'wrap' }}
+              >
+                <ToggleButton value="catalogue">
+                  <InventoryIcon sx={{ mr: 1 }} /> Produit du catalogue
+                </ToggleButton>
+                <ToggleButton value="import">
+                  <ImageIcon sx={{ mr: 1 }} /> Importer une image
+                </ToggleButton>
+                <ToggleButton value="photo">
+                  <PhotoCamera sx={{ mr: 1 }} /> Prendre une photo
+                </ToggleButton>
+              </ToggleButtonGroup>
+
+              {srcMode === 'catalogue' && (
+                <>
+                  <ToggleButtonGroup
+                    size="small"
+                    exclusive
+                    value={affType}
+                    onChange={(_, v: 'produit' | 'menu' | null) => {
+                      if (!v) return
+                      setAffType(v)
+                      setSeededProducts(false)
+                    }}
+                  >
+                    <ToggleButton value="produit">Un produit</ToggleButton>
+                    <ToggleButton value="menu">Un menu (plusieurs)</ToggleButton>
+                  </ToggleButtonGroup>
+                  {affType === 'produit' ? (
+                    <TextField
+                      select
+                      size="small"
+                      label="Produit"
+                      value={articleId === '' ? '' : String(articleId)}
+                      onChange={(e) => {
+                        setArticleId(e.target.value === '' ? '' : Number(e.target.value))
+                        setSeededProducts(false)
+                      }}
+                    >
+                      <MenuItem value="">
+                        <em>— Choisir —</em>
+                      </MenuItem>
+                      {articles.map((a) => (
+                        <MenuItem key={a.id} value={String(a.id)}>
+                          {a.code} — {a.name}
+                          {a.photoFile ? '' : ' (sans photo)'}
+                        </MenuItem>
+                      ))}
+                    </TextField>
+                  ) : (
+                    <Autocomplete
+                      multiple
+                      size="small"
+                      options={articles}
+                      getOptionLabel={(a) => `${a.code} — ${a.name}${a.photoFile ? '' : ' (sans photo)'}`}
+                      isOptionEqualToValue={(o, v) => o.id === v.id}
+                      value={menuArticles}
+                      onChange={(_, v) => {
+                        setMenuArticles(v)
+                        setSeededProducts(false)
+                      }}
+                      renderInput={(params) => <TextField {...params} label="Produits du menu" />}
+                    />
+                  )}
+                </>
+              )}
+
+              {srcMode === 'import' && (
+                <Button variant="outlined" startIcon={<UploadIcon />} onClick={() => menuFileRef.current?.click()} sx={{ alignSelf: 'flex-start' }}>
+                  Importer une ou plusieurs images
+                </Button>
+              )}
+              {srcMode === 'photo' && (
+                <Button variant="outlined" startIcon={<PhotoCamera />} onClick={() => photoInputRef.current?.click()} sx={{ alignSelf: 'flex-start' }}>
+                  Prendre une photo
+                </Button>
+              )}
+
+              {menuFiles.length > 0 && (
+                <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', gap: 1 }}>
+                  {menuFiles.map((f, i) => (
+                    <Box key={`${f.name}-${i}`} sx={{ position: 'relative' }}>
+                      <Box
+                        component="img"
+                        src={URL.createObjectURL(f)}
+                        alt={f.name}
+                        sx={{ width: 84, height: 84, objectFit: 'cover', borderRadius: 1, border: '1px solid', borderColor: 'divider' }}
+                      />
+                      <IconButton
+                        size="small"
+                        onClick={() => setMenuFiles((list) => list.filter((_, j) => j !== i))}
+                        sx={{ position: 'absolute', top: -8, right: -8, bgcolor: 'background.paper', boxShadow: 1 }}
+                      >
+                        <CloseIcon fontSize="small" />
+                      </IconButton>
+                    </Box>
+                  ))}
+                </Stack>
+              )}
+
+              <input
+                ref={menuFileRef}
+                type="file"
+                accept="image/*"
+                multiple
+                hidden
+                onChange={(e) => {
+                  const list = Array.from(e.target.files ?? [])
+                  e.target.value = ''
+                  if (list.length) setMenuFiles((prev) => [...prev, ...list].slice(0, 8))
+                }}
+              />
+              <input
+                ref={photoInputRef}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                hidden
+                onChange={(e) => {
+                  const list = Array.from(e.target.files ?? [])
+                  e.target.value = ''
+                  if (list.length) setMenuFiles((prev) => [...prev, ...list].slice(0, 8))
+                }}
+              />
+            </Stack>
+          )}
+
+          {/* ÉTAPE 2 — Fond & IA (détourage + couleur) */}
+          {step === 1 && (
+            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'minmax(0, 1fr) 360px' }, gap: 3 }}>
+              {renderStage()}
+              <Stack spacing={2}>
+                <Typography variant="h6">2 · Améliore avec l’IA</Typography>
+                <Typography variant="caption" color="text.secondary">
+                  Couleur du fond (par défaut : couleur de l’enseigne)
+                </Typography>
+                <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
+                  {[
+                    { label: 'Enseigne', c: colors.c1 },
+                    { label: 'Secondaire', c: colors.c2 },
+                    { label: 'Blanc', c: '#ffffff' },
+                    { label: 'Noir', c: '#111111' },
+                  ].map((p) => (
+                    <Chip
+                      key={p.label}
+                      label={p.label}
+                      size="small"
+                      onClick={() => setBgColor(p.c)}
+                      variant={bgColor.toLowerCase() === p.c.toLowerCase() ? 'filled' : 'outlined'}
+                      sx={{ '& .MuiChip-label': { pl: 2.5 }, position: 'relative', '&::before': { content: '""', position: 'absolute', left: 8, width: 12, height: 12, borderRadius: '50%', bgcolor: p.c, border: '1px solid rgba(0,0,0,0.2)' } }}
+                    />
+                  ))}
+                  <TextField
+                    type="color"
+                    size="small"
+                    value={bgColor}
+                    onChange={(e) => setBgColor(e.target.value)}
+                    sx={{ width: 64 }}
+                  />
+                </Stack>
+                <Button
+                  variant="contained"
+                  startIcon={aiBusy !== null ? <CircularProgress size={16} color="inherit" /> : <AutoAwesomeIcon />}
+                  onClick={() => void detourer()}
+                  disabled={aiBusy !== null}
+                >
+                  Détourer &amp; poser sur le fond
+                </Button>
+                <Typography variant="caption" color="text.secondary">
+                  Optionnel : décris une intention, ou choisis plutôt une ambiance photo ci-dessous.
+                </Typography>
+                <Stack direction="row" spacing={0.5} sx={{ flexWrap: 'wrap', gap: 0.5 }}>
+                  {OCCASIONS.map((o) => (
+                    <Chip key={o.label} label={o.label} size="small" variant="outlined" onClick={() => addBrief(o.text)} />
+                  ))}
+                </Stack>
+                <Stack direction="row" spacing={0.5} sx={{ flexWrap: 'wrap', gap: 0.5 }}>
+                  {AMBIANCES.map((a) => (
+                    <Chip
+                      key={a}
+                      label={a}
+                      size="small"
+                      color={ambiance === a ? 'primary' : 'default'}
+                      variant={ambiance === a ? 'filled' : 'outlined'}
+                      onClick={() => setAmbiance(a)}
+                    />
+                  ))}
+                </Stack>
+                <Stack direction="row" spacing={1} sx={{ alignItems: 'flex-end' }}>
+                  <TextField
+                    size="small"
+                    fullWidth
+                    multiline
+                    maxRows={4}
+                    placeholder={aiAffine ? 'Affine : plus chaleureux, ajoute des guirlandes…' : 'Décris une ambiance photo…'}
+                    value={aiPrompt}
+                    onChange={(e) => setAiPrompt(e.target.value)}
+                    disabled={aiBusy !== null}
+                  />
+                  <Button
+                    variant="outlined"
+                    onClick={() => {
+                      if (aiAffine) void sendChat()
+                      else void createAffiche()
+                    }}
+                    disabled={aiBusy !== null}
+                    startIcon={aiBusy !== null ? <CircularProgress size={16} /> : aiAffine ? <SendIcon /> : <AutoAwesomeIcon />}
+                    sx={{ whiteSpace: 'nowrap' }}
+                  >
+                    {aiAffine ? 'Affiner' : 'Photo IA'}
+                  </Button>
+                </Stack>
+                {chatLog.length > 0 && (
+                  <Box sx={{ maxHeight: 120, overflowY: 'auto', bgcolor: 'action.hover', borderRadius: 1, p: 1 }}>
+                    <Stack spacing={0.5}>
+                      {chatLog.map((m, i) => (
+                        <Typography key={i} variant="caption" sx={{ textAlign: m.role === 'user' ? 'right' : 'left', color: m.role === 'user' ? 'text.primary' : 'primary.main' }}>
+                          {m.role === 'user' ? `🧑 ${m.text}` : `🤖 ${m.text}`}
+                        </Typography>
+                      ))}
+                    </Stack>
+                  </Box>
+                )}
+                <Divider />
+                <Box>
+                  <Typography variant="caption" color="text.secondary">
+                    Voile sombre (lisibilité) — {Math.round(veil * 100)}%
+                  </Typography>
+                  <Slider value={veil} onChange={(_, v) => setVeil(Array.isArray(v) ? v[0] : v)} min={0} max={0.8} step={0.05} size="small" />
+                </Box>
+                <ToggleButtonGroup size="small" exclusive value={showLogo ? 'on' : 'off'} onChange={(_, v) => v && setShowLogo(v === 'on')}>
+                  <ToggleButton value="on">Logo affiché</ToggleButton>
+                  <ToggleButton value="off">Sans logo</ToggleButton>
+                </ToggleButtonGroup>
+              </Stack>
+            </Box>
+          )}
+
+          {/* ÉTAPE 3 — Textes */}
+          {step === 2 && (
+            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'minmax(0, 1fr) 360px' }, gap: 3 }}>
+              {renderStage()}
+              <Stack spacing={2}>
+                <Typography variant="h6">3 · Ajoute et place tes textes</Typography>
+                <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', gap: 1 }}>
+                  <Button size="small" variant="outlined" startIcon={<AddIcon />} onClick={addBlock}>
+                    Ajouter un texte
+                  </Button>
+                  <Button size="small" color="inherit" startIcon={<RestartAltIcon />} onClick={resetCanvas}>
+                    Réinitialiser
+                  </Button>
+                </Stack>
+                <Button
+                  size="small"
+                  variant="outlined"
+                  startIcon={textBusy ? <CircularProgress size={16} /> : <AutoAwesomeIcon />}
+                  onClick={() => void generateText()}
+                  disabled={textBusy}
+                  sx={{ alignSelf: 'flex-start' }}
+                >
+                  Générer une accroche (IA)
+                </Button>
+                {aiSlogans.length > 0 && (
+                  <Stack direction="row" spacing={0.5} sx={{ flexWrap: 'wrap', gap: 0.5 }}>
+                    {aiSlogans.map((s, i) => (
+                      <Chip key={i} icon={<TextFieldsIcon />} label={s} size="small" onClick={() => addTextBlock(s)} />
+                    ))}
+                  </Stack>
+                )}
+                <Divider />
+                <Typography variant="subtitle2" color="text.secondary">
+                  Texte sélectionné
+                </Typography>
+                {renderBlockEditor()}
+              </Stack>
+            </Box>
+          )}
+
+          {/* ÉTAPE 4 — Export + légende réseaux */}
+          {step === 3 && (
+            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'minmax(0, 1fr) 360px' }, gap: 3 }}>
+              {renderStage()}
+              <Stack spacing={2}>
+                <Typography variant="h6">4 · Exporte tes déclinaisons</Typography>
+                <ToggleButtonGroup size="small" exclusive value={format} onChange={(_, v) => v && setFormat(v)} sx={{ flexWrap: 'wrap' }}>
+                  {(Object.keys(FORMATS) as Fmt[]).map((f) => (
+                    <ToggleButton key={f} value={f}>
+                      {FORMATS[f].label}
+                    </ToggleButton>
+                  ))}
+                </ToggleButtonGroup>
+                <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', gap: 1 }}>
+                  <Button variant="contained" startIcon={<DownloadIcon />} onClick={() => void exportAllPng()}>
+                    Tout exporter (PNG)
+                  </Button>
+                  <Button variant="outlined" startIcon={<DownloadIcon />} onClick={() => void downloadPng()}>
+                    PNG ({fmt.label})
+                  </Button>
+                  {fmt.print && (
+                    <Button
+                      variant="outlined"
+                      startIcon={pdfBusy ? <CircularProgress size={16} /> : <PictureAsPdfIcon />}
+                      onClick={() => void downloadPdf()}
+                      disabled={pdfBusy}
+                    >
+                      PDF ({fmt.label})
+                    </Button>
+                  )}
+                  <Button
+                    variant="outlined"
+                    startIcon={saving ? <CircularProgress size={16} /> : <SaveIcon />}
+                    onClick={() => void save()}
+                    disabled={saving}
+                  >
+                    Enregistrer
+                  </Button>
+                </Stack>
+
+                <Divider />
+                <Typography variant="subtitle2" color="text.secondary">
+                  Légende pour les réseaux
+                </Typography>
+                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
+                  <TextField select size="small" label="Réseau" value={platform} onChange={(e) => setPlatform(e.target.value)} sx={{ flex: 1 }}>
+                    {PLATFORMS.map((p) => (
+                      <MenuItem key={p} value={p}>
+                        {p}
+                      </MenuItem>
+                    ))}
+                  </TextField>
+                  <TextField select size="small" label="Ton" value={tone} onChange={(e) => setTone(e.target.value)} sx={{ flex: 1 }}>
+                    {TONES.map((t) => (
+                      <MenuItem key={t} value={t}>
+                        {t}
+                      </MenuItem>
+                    ))}
+                  </TextField>
+                  <TextField select size="small" label="Longueur" value={length} onChange={(e) => setLength(e.target.value)} sx={{ flex: 1 }}>
+                    {LENGTHS.map((l) => (
+                      <MenuItem key={l.value} value={l.value}>
+                        {l.label}
+                      </MenuItem>
+                    ))}
+                  </TextField>
+                </Stack>
+                <Button
+                  variant="outlined"
+                  startIcon={captionLoading ? <CircularProgress size={16} color="inherit" /> : <AutoAwesomeIcon />}
+                  onClick={() => void onGenerateCaption()}
+                  disabled={captionLoading}
+                  sx={{ alignSelf: 'flex-start' }}
+                >
+                  {captionLoading ? 'Rédaction…' : 'Générer la légende'}
+                </Button>
+                {caption && (
+                  <Box>
+                    <TextField label="Légende (modifiable)" value={caption} onChange={(e) => setCaption(e.target.value)} multiline minRows={5} fullWidth />
+                    <Button size="small" startIcon={<ContentCopyIcon />} onClick={() => void copyCaption()} sx={{ mt: 1 }}>
+                      {copied ? 'Copié !' : 'Copier la légende'}
+                    </Button>
+                  </Box>
+                )}
+              </Stack>
+            </Box>
+          )}
+        </Box>
+
+        {/* Barre d'actions bas : navigation entre étapes. */}
+        <AppBar position="fixed" color="default" elevation={3} sx={{ top: 'auto', bottom: 0 }}>
+          <Toolbar sx={{ justifyContent: 'space-between', gap: 1 }}>
+            <Button startIcon={<NavigateBeforeIcon />} disabled={step === 0} onClick={prevStep}>
+              Précédent
+            </Button>
+            {savedMsg && (
+              <Typography variant="caption" color="success.main" sx={{ flex: 1, textAlign: 'center' }}>
+                {savedMsg}
+              </Typography>
+            )}
+            {step < 3 ? (
+              <Button variant="contained" endIcon={<NavigateNextIcon />} onClick={nextStep}>
+                Suivant
+              </Button>
+            ) : (
+              <Button variant="contained" startIcon={<SaveIcon />} onClick={() => void save()} disabled={saving}>
+                Enregistrer
+              </Button>
+            )}
+          </Toolbar>
+        </AppBar>
+      </Dialog>
 
       {/* Menu contextuel d'un bloc (appui long tactile ou clic droit). */}
       <Menu
