@@ -574,126 +574,19 @@ export function AffichettePage() {
   }
 
   /** Traduit l'ambiance choisie en consigne pour l'IA (couleurs de l'enseigne, ardoise, bois…). */
-  // « Fond aux couleurs de l'enseigne » = aplat UNI de la couleur des paramètres (aucune IA :
-  // l'IA réinterprétait la teinte). Les autres ambiances passent en consigne au générateur d'image.
   const isBrandBg = ambiance.toLowerCase().includes('enseigne')
   const ambiancePrompt = (): string | undefined => {
-    if (isBrandBg || ambiance.startsWith('Laisser')) return undefined
+    if (ambiance.startsWith('Laisser')) return undefined
+    if (isBrandBg) {
+      // Consigne simple et directe : le produit détouré sur un aplat uni de la couleur de l'enseigne.
+      return `détoure proprement le produit et pose-le sur un FOND PARFAITEMENT UNI de la couleur de `
+        + `l'enseigne, EXACTEMENT ${colors.c1} (aplat total : sans dégradé, sans texture, sans décor, `
+        + `sans ombre, sans aucune fioriture). Ne mets rien d'autre que le produit sur cet aplat`
+    }
     return ambiance
   }
 
-  /** Applique un fond uni exact (couleur primaire de la charte), sans passer par l'IA. */
-  const applyBrandBg = () => {
-    setBgImg(null)
-    setSolid(colors.c1)
-    setBgMode('solid')
-    setBgZoom(1)
-  }
-
-  // En mode enseigne, chaque « envoi » RECRÉE (re-détoure) — l'affinage image→image de l'IA
-  // reprendrait la main sur la couleur ; on ne l'utilise donc que pour un fond photo/IA classique.
-  const aiAffine = !!bgImg && !isBrandBg
-
-  /**
-   * Chroma-key : transforme le fond MAGENTA (#FF00FF) renvoyé par l'IA en transparence, en tuant
-   * le halo magenta résiduel sur les bords. Renvoie un canevas (produit détouré sur transparent).
-   */
-  const chromaKeyMagenta = (img: HTMLImageElement): HTMLCanvasElement => {
-    const w = img.naturalWidth || img.width
-    const h = img.naturalHeight || img.height
-    const c = document.createElement('canvas')
-    c.width = w
-    c.height = h
-    const cx = c.getContext('2d')!
-    cx.drawImage(img, 0, 0)
-    try {
-      const im = cx.getImageData(0, 0, w, h)
-      const d = im.data
-      for (let i = 0; i < d.length; i += 4) {
-        const R = d[i]
-        const G = d[i + 1]
-        const B = d[i + 2]
-        // « magenta » = R et B forts, G faible. key ∈ ]0..255], 0 sinon (produit conservé).
-        const key = Math.min(R, B) - G
-        if (key > 0) {
-          const strength = Math.min(1, key / 160)
-          d[i + 3] = Math.round(d[i + 3] * (1 - strength)) // rend transparent le fond magenta
-          // Anti-spill : ramène R et B vers G pour effacer le liseré magenta des bords.
-          d[i] = Math.round(R - (R - G) * strength * 0.7)
-          d[i + 2] = Math.round(B - (B - G) * strength * 0.7)
-        }
-      }
-      cx.putImageData(im, 0, 0)
-    } catch {
-      // canvas « taint » improbable (blob same-origin) : on garde l'image telle quelle
-    }
-    return c
-  }
-
-  /** Proportion de pixels non transparents (0..1) — sert à repérer un détourage « vide ». */
-  const opaqueRatio = (img: HTMLImageElement | HTMLCanvasElement): number => {
-    const s = 64
-    const c = document.createElement('canvas')
-    c.width = s
-    c.height = s
-    const cx = c.getContext('2d')!
-    cx.clearRect(0, 0, s, s)
-    cx.drawImage(img, 0, 0, s, s)
-    try {
-      const d = cx.getImageData(0, 0, s, s).data
-      let opaque = 0
-      for (let i = 3; i < d.length; i += 4) if (d[i] > 16) opaque++
-      return opaque / (s * s)
-    } catch {
-      return 1 // canvas « taint » improbable (blob same-origin) : on suppose l'image pleine
-    }
-  }
-
-  /**
-   * Compose le fond enseigne PIXEL-EXACT : aplat de la couleur de la charte + produit(s) détouré(s)
-   * (magenta déjà retiré) posés dessus. La couleur de fond n'est jamais touchée par l'IA.
-   */
-  const composeOnBrand = (cutouts: Array<HTMLImageElement | HTMLCanvasElement>): HTMLCanvasElement => {
-    const { w, h } = fmt
-    const canvas = document.createElement('canvas')
-    canvas.width = w
-    canvas.height = h
-    const ctx = canvas.getContext('2d')!
-    ctx.fillStyle = colors.c1
-    ctx.fillRect(0, 0, w, h)
-    const pad = Math.round(w * 0.08)
-    // Zone produits : ~62 % du haut ; on laisse le bas pour les textes (nom, prix…).
-    const areaX = pad
-    const areaY = pad
-    const areaW = w - 2 * pad
-    const areaH = Math.round(h * 0.62)
-    const drawContain = (
-      img: HTMLImageElement | HTMLCanvasElement,
-      x: number,
-      y: number,
-      bw: number,
-      bh: number,
-    ) => {
-      const r = Math.min(bw / img.width, bh / img.height)
-      const iw = img.width * r
-      const ih = img.height * r
-      ctx.drawImage(img, x + (bw - iw) / 2, y + (bh - ih) / 2, iw, ih)
-    }
-    if (cutouts.length === 1) {
-      drawContain(cutouts[0], areaX, areaY, areaW, areaH)
-    } else {
-      const cols = Math.ceil(Math.sqrt(cutouts.length))
-      const rows = Math.ceil(cutouts.length / cols)
-      const cellW = areaW / cols
-      const cellH = areaH / rows
-      cutouts.forEach((img, i) => {
-        const cx = areaX + (i % cols) * cellW
-        const cy = areaY + Math.floor(i / cols) * cellH
-        drawContain(img, cx + cellW * 0.05, cy + cellH * 0.05, cellW * 0.9, cellH * 0.9)
-      })
-    }
-    return canvas
-  }
+  const aiAffine = !!bgImg
 
   /** Ajoute une intention (occasion) au brief IA, sans doublon. */
   const addBrief = (text: string) => {
@@ -790,78 +683,6 @@ export function AffichettePage() {
     }
     const brief = aiPrompt.trim()
     setError(null)
-    // Fond enseigne : la couleur est peinte localement (exacte). L'IA ne fait QUE détourer le(s)
-    // produit(s) sur transparence ; on les compose ensuite sur l'aplat. Sans photo → simple aplat.
-    if (isBrandBg) {
-      const brandFiles: File[] = [...menuFiles]
-      for (const a of products) {
-        if (!a.photoFile) continue
-        const u = photoUrl(a.photoFile)
-        if (!u) continue
-        const r = await fetch(u)
-        if (!r.ok) continue
-        const blob = await r.blob()
-        brandFiles.push(new File([blob], `produit-${a.id}.png`, { type: blob.type || 'image/png' }))
-      }
-      if (brandFiles.length === 0) {
-        applyBrandBg()
-        seedProductBlocks(products)
-        setChatLog((l) => [
-          ...l,
-          {
-            role: 'ai',
-            text:
-              'Fond aux couleurs de l’enseigne appliqué. Importe une photo (ou choisis un produit '
-              + 'avec photo) puis « Créer » pour que l’IA détoure le produit dessus.',
-          },
-        ])
-        setAiPrompt('')
-        return
-      }
-      if (brief) setChatLog((l) => [...l, { role: 'user', text: brief }])
-      setAiBusy('compose')
-      try {
-        const layers: Array<HTMLImageElement | HTMLCanvasElement> = []
-        let detourFailed = false
-        for (const f of brandFiles) {
-          const original = await imgFromBlob(f)
-          let chosen: HTMLImageElement | HTMLCanvasElement = original
-          try {
-            const raw = await imgFromBlob(await enhanceImage(f, undefined, brief || undefined, 'cutout'))
-            const keyed = chromaKeyMagenta(raw) // retire le fond magenta → produit détouré
-            // Détourage exploitable = sujet présent après key (ni quasi vide, ni fond non retiré).
-            const ratio = opaqueRatio(keyed)
-            if (ratio >= 0.03 && ratio <= 0.95) chosen = keyed
-            else detourFailed = true
-          } catch {
-            detourFailed = true // IA indisponible : on garde la photo d'origine
-          }
-          layers.push(chosen)
-        }
-        const outBlob = await canvasToBlob(composeOnBrand(layers))
-        if (!outBlob) throw new Error('Composition impossible')
-        setSolid(colors.c1)
-        setBgImg(await imgFromBlob(outBlob))
-        setBgMode('photo')
-        setBgZoom(1)
-        seedProductBlocks(products)
-        setChatLog((l) => [
-          ...l,
-          {
-            role: 'ai',
-            text: detourFailed
-              ? 'Photo posée sur le fond enseigne (détourage IA indisponible pour cette image).'
-              : 'Produit détouré sur le fond enseigne ✅',
-          },
-        ])
-        setAiPrompt('')
-      } catch (e) {
-        setError(errorMessage(e))
-      } finally {
-        setAiBusy(null)
-      }
-      return
-    }
     if (brief) setChatLog((l) => [...l, { role: 'user', text: brief }])
     setAiBusy('compose')
     try {
@@ -897,12 +718,6 @@ export function AffichettePage() {
   const sendChat = async () => {
     const msg = aiPrompt.trim()
     if (!msg) return
-    // Fond enseigne : on ne retouche pas l'image aplatie via l'IA (elle reprendrait la couleur) ;
-    // on renvoie vers « Créer » qui re-détoure proprement sans toucher au fond.
-    if (isBrandBg) {
-      void createAffiche()
-      return
-    }
     setError(null)
     setAiPrompt('')
     setChatLog((l) => [...l, { role: 'user', text: msg }])
@@ -1557,11 +1372,7 @@ export function AffichettePage() {
                     size="small"
                     color={ambiance === a ? 'primary' : 'default'}
                     variant={ambiance === a ? 'filled' : 'outlined'}
-                    onClick={() => {
-                      setAmbiance(a)
-                      // Aplat enseigne : on l'applique tout de suite (aperçu uni immédiat, sans IA).
-                      if (a.toLowerCase().includes('enseigne')) applyBrandBg()
-                    }}
+                    onClick={() => setAmbiance(a)}
                   />
                 ))}
               </Stack>
@@ -1590,11 +1401,9 @@ export function AffichettePage() {
                   multiline
                   maxRows={4}
                   placeholder={
-                    isBrandBg
-                      ? 'Importe une photo puis « Créer » : l’IA détoure le produit sur le fond enseigne.'
-                      : aiAffine
-                        ? 'Affine : plus chaleureux, grossis le prix, ajoute des guirlandes…'
-                        : 'Décris ton affiche : appétissant, met en valeur le produit…'
+                    aiAffine
+                      ? 'Affine : plus chaleureux, grossis le prix, ajoute des guirlandes…'
+                      : 'Décris ton affiche : appétissant, met en valeur le produit…'
                   }
                   value={aiPrompt}
                   onChange={(e) => setAiPrompt(e.target.value)}
@@ -1629,11 +1438,9 @@ export function AffichettePage() {
                 </Button>
               </Stack>
               <Typography variant="caption" color="text.secondary">
-                {isBrandBg
-                  ? 'Fond aux couleurs de l’enseigne : couleur exacte des paramètres, produit détouré par l’IA.'
-                  : aiAffine
-                    ? 'Chaque message affine l’affiche ; tes textes restent nets par-dessus.'
-                    : 'Décris (ou clique les aides), puis « Créer ».'}
+                {aiAffine
+                  ? 'Chaque message affine l’affiche ; tes textes restent nets par-dessus.'
+                  : 'Décris (ou clique les aides), puis « Créer ».'}
               </Typography>
 
               <Divider />
