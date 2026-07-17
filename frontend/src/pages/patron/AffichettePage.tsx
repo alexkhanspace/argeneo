@@ -1760,9 +1760,25 @@ export function AffichettePage() {
             </Typography>
           </Toolbar>
           {isMobile ? (
-            <Box sx={{ px: 2, pb: 1.5 }}>
-              <Typography variant="body2" color="text.secondary">
-                Étape {step + 1}/{WIZARD_STEPS.length} · <strong>{WIZARD_STEPS[step]}</strong>
+            <Box sx={{ px: 2, pb: 1 }}>
+              <Stack direction="row" spacing={0.75} sx={{ justifyContent: 'center', alignItems: 'center' }}>
+                {WIZARD_STEPS.map((label, i) => (
+                  <Box
+                    key={label}
+                    onClick={() => setStep(i)}
+                    sx={{
+                      width: i === step ? 20 : 8,
+                      height: 8,
+                      borderRadius: 4,
+                      cursor: 'pointer',
+                      transition: 'all .2s',
+                      bgcolor: i === step ? 'primary.main' : i < step ? 'primary.light' : 'action.disabled',
+                    }}
+                  />
+                ))}
+              </Stack>
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', textAlign: 'center', mt: 0.25 }}>
+                {WIZARD_STEPS[step]}
               </Typography>
             </Box>
           ) : (
@@ -1782,7 +1798,7 @@ export function AffichettePage() {
           )}
         </AppBar>
 
-        <Box sx={{ p: { xs: 2, md: 3 }, pb: 16, maxWidth: 1100, mx: 'auto', width: '100%' }}>
+        <Box sx={{ p: { xs: 2, md: 3 }, pb: 20, maxWidth: 1100, mx: 'auto', width: '100%' }}>
           {error && (
             <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>
               {error}
@@ -2219,7 +2235,12 @@ export function AffichettePage() {
               Précédent
             </Button>
             {savedMsg && (
-              <Typography variant="caption" color="success.main" sx={{ flex: 1, textAlign: 'center' }}>
+              <Typography
+                variant="caption"
+                color="success.main"
+                noWrap
+                sx={{ flex: 1, textAlign: 'center', minWidth: 0, px: 1 }}
+              >
                 {savedMsg}
               </Typography>
             )}
