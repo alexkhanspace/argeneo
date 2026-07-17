@@ -819,6 +819,33 @@ export function AffichettePage() {
     window.addEventListener('pointerup', onResizeUp)
   }
 
+  // --- Rotation du produit par la poignée (glisser autour du centre, angle précis au degré) ---
+  const imgRot = useRef<{ cx: number; cy: number } | null>(null)
+  const onRotMove = (e: PointerEvent) => {
+    const r = imgRot.current
+    if (!r) return
+    // Angle poignée→centre ; +90 pour que « poignée en haut » = 0°.
+    let deg = (Math.atan2(e.clientY - r.cy, e.clientX - r.cx) * 180) / Math.PI + 90
+    deg = ((Math.round(deg) + 180) % 360) - 180 // arrondi au degré, ramené dans [-180, 180]
+    // Petit aimant sur les angles remarquables (0/45/90…) à ±3°.
+    const near = Math.round(deg / 45) * 45
+    if (Math.abs(deg - near) <= 3) deg = near
+    setBgRot(deg)
+  }
+  const onRotUp = () => {
+    imgRot.current = null
+    window.removeEventListener('pointermove', onRotMove)
+    window.removeEventListener('pointerup', onRotUp)
+  }
+  const startImgRotate = (e: ReactPointerEvent) => {
+    const stage = stageRef.current
+    if (!stage) return
+    const rect = stage.getBoundingClientRect()
+    imgRot.current = { cx: rect.left + bgPosX * rect.width, cy: rect.top + bgPosY * rect.height }
+    window.addEventListener('pointermove', onRotMove)
+    window.addEventListener('pointerup', onRotUp)
+  }
+
   /** Produit mis en avant (le 1er du menu le cas échéant) — sert de contexte à la légende. */
   const captionArticle = (): Article | null =>
     affType === 'menu' ? menuArticles[0] ?? null : articles.find((a) => a.id === articleId) ?? null
@@ -1358,6 +1385,49 @@ export function AffichettePage() {
                   touchAction: 'none',
                 }}
               />
+            )}
+            {imgSel && (
+              <>
+                {/* Tige reliant la poignée de rotation au bord haut de l'image. */}
+                <Box
+                  sx={{
+                    position: 'absolute',
+                    left: '50%',
+                    top: -24,
+                    width: 2,
+                    height: 24,
+                    bgcolor: 'rgba(255,255,255,0.9)',
+                    transform: 'translateX(-50%)',
+                    pointerEvents: 'none',
+                  }}
+                />
+                <Box
+                  onPointerDown={(e) => {
+                    e.stopPropagation()
+                    startImgRotate(e)
+                  }}
+                  sx={{
+                    position: 'absolute',
+                    left: '50%',
+                    top: -34,
+                    transform: 'translateX(-50%)',
+                    width: 20,
+                    height: 20,
+                    borderRadius: '50%',
+                    bgcolor: '#fff',
+                    border: '2px solid',
+                    borderColor: 'primary.main',
+                    color: 'primary.main',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    cursor: 'grab',
+                    touchAction: 'none',
+                  }}
+                >
+                  <RotateRightIcon sx={{ fontSize: 13 }} />
+                </Box>
+              </>
             )}
           </Box>
         )}
