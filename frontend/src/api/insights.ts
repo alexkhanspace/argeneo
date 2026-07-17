@@ -110,11 +110,13 @@ export async function composeImages(
   files: File[],
   instruction?: string,
   aspectRatio?: string,
+  mode?: string,
 ): Promise<Blob> {
   const form = new FormData()
   for (const f of files) form.append('files', f)
   if (instruction) form.append('instruction', instruction)
   if (aspectRatio) form.append('aspectRatio', aspectRatio)
+  if (mode) form.append('mode', mode)
   const { data } = await api.post('/ai/compose-image', form, { responseType: 'blob' })
   return data as Blob
 }

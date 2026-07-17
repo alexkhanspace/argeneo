@@ -54,7 +54,8 @@ public class AiImageController {
     @PostMapping("/api/ai/compose-image")
     public ResponseEntity<byte[]> compose(@RequestParam("files") java.util.List<MultipartFile> files,
                                           @RequestParam(value = "instruction", required = false) String instruction,
-                                          @RequestParam(value = "aspectRatio", required = false) String aspectRatio) {
+                                          @RequestParam(value = "aspectRatio", required = false) String aspectRatio,
+                                          @RequestParam(value = "mode", required = false) String mode) {
         if (!gemini.isConfigured()) {
             throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "IA non configurée sur ce serveur");
         }
@@ -75,11 +76,27 @@ public class AiImageController {
             if (images.isEmpty()) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Photos vides");
             }
-            byte[] out = gemini.composeImages(composePrompt(instruction), images, mimes, aspect(aspectRatio));
+            String prompt = "isolate".equalsIgnoreCase(mode) ? isolatePrompt() : composePrompt(instruction);
+            byte[] out = gemini.composeImages(prompt, images, mimes, aspect(aspectRatio));
             return ResponseEntity.ok().contentType(MediaType.IMAGE_PNG).body(out);
         } catch (IOException e) {
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Lecture des fichiers impossible", e);
         }
+    }
+
+    /**
+     * Détourage sur chroma-key : isole le(s) produit(s) sur un aplat MAGENTA pur, que l'application
+     * retire ensuite pour poser le produit sur la couleur EXACTE de l'enseigne (peinte côté client).
+     */
+    private static String isolatePrompt() {
+        return "Isole le(s) produit(s) réel(s) fourni(s) et place-le(s), bien centré(s), nets et mis en "
+                + "valeur, sur un FOND PARFAITEMENT UNIFORME de MAGENTA PUR (rose-violet vif, RVB 255,0,255, "
+                + "hex #FF00FF) : un aplat total, SANS aucun dégradé, SANS texture, SANS ombre portée ni "
+                + "reflet au sol, SANS aucune autre couleur ni décor dans le fond. GARDE chaque produit "
+                + "STRICTEMENT identique (forme, couleurs, garniture, texture) — ne le remplace pas, n'en "
+                + "invente pas d'autres. Le magenta ne doit toucher QUE le fond, jamais le produit. Aucun "
+                + "texte, aucun logo, aucun filigrane / watermark ni logo/nom de banque d'images (Vecteezy, "
+                + "Shutterstock, Getty, iStock, Adobe Stock, Freepik, Depositphotos, Alamy…).";
     }
 
     private static String composePrompt(String instruction) {

@@ -27,6 +27,8 @@ import {
   Toolbar,
   Tooltip,
   Typography,
+  useMediaQuery,
+  useTheme,
 } from '@mui/material'
 import AddIcon from '@mui/icons-material/Add'
 import UploadIcon from '@mui/icons-material/Upload'
@@ -39,7 +41,6 @@ import FormatBoldIcon from '@mui/icons-material/FormatBold'
 import RestartAltIcon from '@mui/icons-material/RestartAlt'
 import ContentCopyIcon from '@mui/icons-material/ContentCopy'
 import FlipToFrontIcon from '@mui/icons-material/FlipToFront'
-import SendIcon from '@mui/icons-material/Send'
 import CloseIcon from '@mui/icons-material/Close'
 import PhotoCamera from '@mui/icons-material/PhotoCamera'
 import ImageIcon from '@mui/icons-material/Image'
@@ -51,10 +52,9 @@ import EditIcon from '@mui/icons-material/Edit'
 import { errorMessage } from '../../api/client'
 import { getProfile, getSettings, logoUrl } from '../../api/billing'
 import { listArticles, photoUrl } from '../../api/costing'
-import { composeImages, enhanceImage, getAdSlogans } from '../../api/insights'
+import { composeImages, getAdSlogans } from '../../api/insights'
 import {
   deleteCommunication,
-  generateImageFromPrompt,
   generateSocialPost,
   getCommunication,
   listCommunications,
@@ -83,17 +83,6 @@ const FORMATS: Record<
 type BgMode = 'photo' | 'brand' | 'solid'
 type Align = 'left' | 'center' | 'right'
 
-// Ambiances / styles de fond proposés à l'IA (aides cliquables).
-const AMBIANCES = [
-  'Laisser l’IA choisir',
-  'Fond ardoise élégant',
-  'Planche en bois rustique',
-  'Fond clair épuré (studio)',
-  'Table dressée lifestyle',
-  'Marché / étal gourmand',
-  "Fond aux couleurs de l'enseigne",
-]
-
 // Étapes de l'assistant plein écran.
 const WIZARD_STEPS = ['Source', 'Fond & IA', 'Textes', 'Export']
 
@@ -104,15 +93,6 @@ const LENGTHS = [
   { value: 'court', label: 'Courte' },
   { value: 'moyen', label: 'Moyenne' },
   { value: 'long', label: 'Longue' },
-]
-
-// Aides « occasion » : ajoutent une intention au brief IA.
-const OCCASIONS: { label: string; text: string }[] = [
-  { label: 'Nouveauté', text: 'annonce une NOUVEAUTÉ' },
-  { label: 'Promo', text: 'met en avant une PROMOTION' },
-  { label: 'Offre du moment', text: 'offre du moment / édition limitée' },
-  { label: 'Fête / Noël', text: 'ambiance festive de fin d’année (Noël)' },
-  { label: 'Été / fraîcheur', text: 'ambiance estivale et fraîcheur' },
 ]
 
 /** Un bloc de texte libre, positionné en fractions (0..1) de l'affichette. */
@@ -285,10 +265,6 @@ export function AffichettePage() {
   const [seededProducts, setSeededProducts] = useState(false)
   const [aiPrompt, setAiPrompt] = useState('')
   const [aiBusy, setAiBusy] = useState<null | 'retouch' | 'generate' | 'compose' | 'chat'>(null)
-  // Ambiance du fond généré (presets « comme dans Communication »).
-  const [ambiance, setAmbiance] = useState(AMBIANCES[0])
-  // Journal du chat IA (brief initial + affinages successifs).
-  const [chatLog, setChatLog] = useState<{ role: 'user' | 'ai'; text: string }[]>([])
   const [menuArticles, setMenuArticles] = useState<Article[]>([])
   const [menuFiles, setMenuFiles] = useState<File[]>([])
   const menuFileRef = useRef<HTMLInputElement | null>(null)
@@ -321,12 +297,16 @@ export function AffichettePage() {
   const [bgColor, setBgColor] = useState('#c2410c')
   // Guides d'alignement affichés pendant le déplacement d'un texte (fractions 0..1).
   const [guides, setGuides] = useState<{ v: number[]; h: number[] }>({ v: [], h: [] })
+  // Calques produit (photos importées détourées et/ou produit détouré par l'IA) posés sur la couleur.
+  const layersRef = useRef<Array<HTMLImageElement | HTMLCanvasElement>>([])
   // Accroches proposées par l'IA (étape 3).
   const [aiSlogans, setAiSlogans] = useState<string[]>([])
   const [textBusy, setTextBusy] = useState(false)
 
   const selected = useMemo(() => blocks.find((b) => b.id === selectedId) ?? null, [blocks, selectedId])
   const fmt = FORMATS[format]
+  const theme = useTheme()
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'))
 
   // Chargement charte + produits + logo.
   useEffect(() => {
@@ -396,9 +376,9 @@ export function AffichettePage() {
     setMenuArticles([])
     setMenuFiles([])
     setAiPrompt('')
-    setChatLog([])
     setAiSlogans([])
     setSeededProducts(false)
+    layersRef.current = []
     setSrcMode('catalogue')
     setStep(0)
     setError(null)
@@ -648,36 +628,95 @@ export function AffichettePage() {
     if (s && Math.hypot(e.clientX - s.x, e.clientY - s.y) > MOVE_CANCEL_PX) clearStagePress()
   }
 
-  // --- IA : brief → affiche ---
-  /** Le fond actuel (déjà sublimé/généré ou non) converti en fichier PNG pour l'IA. */
-  const bgToFile = async (): Promise<File | null> => {
-    if (!bgImg) return null
+  // --- Détourage IA + composition sur la couleur EXACTE de l'enseigne ---
+  /** Chroma-key : retire le fond MAGENTA (#FF00FF) renvoyé par l'IA → produit sur transparence. */
+  const chromaKeyMagenta = (img: HTMLImageElement): HTMLCanvasElement => {
+    const w = img.naturalWidth || img.width
+    const h = img.naturalHeight || img.height
     const c = document.createElement('canvas')
-    c.width = bgImg.naturalWidth || bgImg.width
-    c.height = bgImg.naturalHeight || bgImg.height
-    c.getContext('2d')!.drawImage(bgImg, 0, 0)
-    const blob = await new Promise<Blob | null>((r) => c.toBlob(r, 'image/png'))
-    return blob ? new File([blob], 'fond.png', { type: 'image/png' }) : null
-  }
-
-  /** Traduit l'ambiance choisie en consigne pour l'IA (couleurs de l'enseigne, ardoise, bois…). */
-  const isBrandBg = ambiance.toLowerCase().includes('enseigne')
-  const ambiancePrompt = (): string | undefined => {
-    if (ambiance.startsWith('Laisser')) return undefined
-    if (isBrandBg) {
-      // Consigne simple et directe : le produit détouré sur un aplat uni de la couleur de l'enseigne.
-      return `détoure proprement le produit et pose-le sur un FOND PARFAITEMENT UNI de la couleur de `
-        + `l'enseigne, EXACTEMENT ${colors.c1} (aplat total : sans dégradé, sans texture, sans décor, `
-        + `sans ombre, sans aucune fioriture). Ne mets rien d'autre que le produit sur cet aplat`
+    c.width = w
+    c.height = h
+    const cx = c.getContext('2d')!
+    cx.drawImage(img, 0, 0)
+    try {
+      const im = cx.getImageData(0, 0, w, h)
+      const d = im.data
+      for (let i = 0; i < d.length; i += 4) {
+        const R = d[i]
+        const G = d[i + 1]
+        const B = d[i + 2]
+        const key = Math.min(R, B) - G // magenta = R et B forts, G faible
+        if (key > 0) {
+          const s = Math.min(1, key / 160)
+          d[i + 3] = Math.round(d[i + 3] * (1 - s))
+          d[i] = Math.round(R - (R - G) * s * 0.7) // anti-halo
+          d[i + 2] = Math.round(B - (B - G) * s * 0.7)
+        }
+      }
+      cx.putImageData(im, 0, 0)
+    } catch {
+      // blob same-origin : canvas jamais « taint »
     }
-    return ambiance
+    return c
   }
 
-  const aiAffine = !!bgImg
+  /** Dessine les produits (avec alpha) sur un aplat de la couleur choisie → canevas au format courant. */
+  const composeOnColor = (layers: Array<HTMLImageElement | HTMLCanvasElement>, color: string): HTMLCanvasElement => {
+    const { w, h } = fmt
+    const canvas = document.createElement('canvas')
+    canvas.width = w
+    canvas.height = h
+    const ctx = canvas.getContext('2d')!
+    ctx.fillStyle = color
+    ctx.fillRect(0, 0, w, h)
+    const pad = Math.round(w * 0.08)
+    const ax = pad
+    const ay = pad
+    const aw = w - 2 * pad
+    const ah = Math.round(h * 0.62)
+    const draw = (img: HTMLImageElement | HTMLCanvasElement, x: number, y: number, bw: number, bh: number) => {
+      const iw0 = img instanceof HTMLCanvasElement ? img.width : img.naturalWidth || img.width
+      const ih0 = img instanceof HTMLCanvasElement ? img.height : img.naturalHeight || img.height
+      const r = Math.min(bw / iw0, bh / ih0)
+      ctx.drawImage(img, x + (bw - iw0 * r) / 2, y + (bh - ih0 * r) / 2, iw0 * r, ih0 * r)
+    }
+    if (layers.length === 1) {
+      draw(layers[0], ax, ay, aw, ah)
+    } else {
+      const cols = Math.ceil(Math.sqrt(layers.length))
+      const rows = Math.ceil(layers.length / cols)
+      const cw = aw / cols
+      const ch = ah / rows
+      layers.forEach((img, i) => draw(img, ax + (i % cols) * cw, ay + Math.floor(i / cols) * ch, cw * 0.9, ch * 0.9))
+    }
+    return canvas
+  }
 
-  /** Ajoute une intention (occasion) au brief IA, sans doublon. */
-  const addBrief = (text: string) => {
-    setAiPrompt((p) => (p.includes(text) ? p : (p.trim() ? p.trim() + '. ' : '') + text))
+  /** Recompose le fond : produits (layersRef) posés sur la couleur EXACTE (peinte par l'appli). */
+  const applyLayers = async (color: string) => {
+    const layers = layersRef.current
+    if (layers.length === 0) {
+      setBgImg(null)
+      setSolid(color)
+      setBgMode('solid')
+      setBgZoom(1)
+      return
+    }
+    const blob = await canvasToBlob(composeOnColor(layers, color))
+    if (blob) {
+      setBgImg(await imgFromBlob(blob))
+      setBgMode('photo')
+      setBgZoom(1)
+    }
+  }
+
+  /** Import (ou photo) : les images s'affichent tout de suite, posées sur la couleur du fond. */
+  const onImportFiles = async (list: File[]) => {
+    if (!list.length) return
+    setMenuFiles((prev) => [...prev, ...list].slice(0, 8))
+    const imgs = await Promise.all(list.map((f) => imgFromBlob(f)))
+    layersRef.current = [...layersRef.current, ...imgs].slice(0, 8)
+    await applyLayers(bgColor)
   }
 
   /** Produit mis en avant (le 1er du menu le cas échéant) — sert de contexte à la légende. */
@@ -688,7 +727,7 @@ export function AffichettePage() {
   const onGenerateCaption = async () => {
     const a = captionArticle()
     if (!aiPrompt.trim() && !a) {
-      setError('Décris ton affiche (chat) ou choisis un produit pour rédiger la légende.')
+      setError('Écris le sujet (étape Textes) ou choisis un produit pour rédiger la légende.')
       return
     }
     setError(null)
@@ -774,71 +813,28 @@ export function AffichettePage() {
   }
 
   /**
-   * Crée l'affiche : met en scène les VRAIES photos des produits choisis (ou des photos importées)
-   * via l'IA, ou génère un visuel de zéro si aucune photo. Puis pré-remplit les textes nom + prix.
-   */
-  const createAffiche = async () => {
-    const products = selectedProducts()
-    if (products.length === 0 && menuFiles.length === 0 && !aiPrompt.trim()) {
-      setError('Choisis au moins un produit (ou importe une photo), puis décris ton affiche.')
-      return
-    }
-    const brief = aiPrompt.trim()
-    setError(null)
-    if (brief) setChatLog((l) => [...l, { role: 'user', text: brief }])
-    setAiBusy('compose')
-    try {
-      const files = await gatherFiles(products)
-      const instruction = [brief, ambiancePrompt()].filter(Boolean).join('. ')
-      const blob =
-        files.length > 0
-          ? await composeImages(files, instruction || undefined, fmt.ar)
-          : await generateImageFromPrompt(instruction || 'affiche promotionnelle appétissante', fmt.ar)
-      setBgImg(await imgFromBlob(blob))
-      setBgMode('photo')
-      setBgZoom(1)
-      seedProductBlocks(products)
-      setChatLog((l) => [...l, { role: 'ai', text: 'Affiche créée ✅' }])
-      setAiPrompt('')
-    } catch (e) {
-      setError(errorMessage(e))
-    } finally {
-      setAiBusy(null)
-    }
-  }
-
-  /**
-   * Étape 2 : l'IA détoure le(s) produit(s) et les pose sur un aplat UNI de la couleur choisie
-   * (par défaut la couleur de l'enseigne). Si aucune photo, on peint simplement l'aplat.
+   * Détourage : l'IA isole le(s) produit(s) sur un fond MAGENTA pur, que l'appli retire (chroma-key)
+   * pour poser le produit sur la couleur EXACTE de l'enseigne — la teinte n'est jamais peinte par l'IA.
    */
   const detourer = async () => {
     const products = selectedProducts()
     setError(null)
-    const brief = aiPrompt.trim()
     setAiBusy('compose')
     try {
       const files = await gatherFiles(products)
       if (files.length === 0) {
-        // Pas de photo : fond uni exact (aucune IA).
-        setBgImg(null)
-        setSolid(bgColor)
-        setBgMode('solid')
-        setBgZoom(1)
+        layersRef.current = []
+        await applyLayers(bgColor)
         seedProductBlocks(products)
-        setChatLog((l) => [...l, { role: 'ai', text: 'Fond uni appliqué. Importe une photo pour détourer un produit.' }])
+        setSavedMsg('Fond appliqué. Importe une photo (ou choisis un produit avec photo) puis « Détourer ».')
         return
       }
-      const instruction =
-        `détoure proprement le produit et pose-le, bien centré et mis en valeur, sur un FOND `
-        + `PARFAITEMENT UNI de couleur EXACTEMENT ${bgColor} (aplat total : sans dégradé, sans texture, `
-        + `sans décor, sans ombre, sans fioriture). Ne mets rien d'autre que le produit sur cet aplat.`
-        + (brief ? ' ' + brief : '')
-      const blob = await composeImages(files, instruction, fmt.ar)
-      setBgImg(await imgFromBlob(blob))
-      setBgMode('photo')
-      setBgZoom(1)
+      // mode « isolate » : l'IA isole le produit sur un fond magenta pur (prompt dédié côté serveur).
+      const raw = await imgFromBlob(await composeImages(files, undefined, fmt.ar, 'isolate'))
+      layersRef.current = [chromaKeyMagenta(raw)]
+      await applyLayers(bgColor)
       seedProductBlocks(products)
-      setChatLog((l) => [...l, { role: 'ai', text: 'Produit détouré sur le fond choisi ✅' }])
+      setSavedMsg('Produit détouré sur le fond de l’enseigne ✅')
     } catch (e) {
       setError(errorMessage(e))
     } finally {
@@ -853,12 +849,12 @@ export function AffichettePage() {
     setSelectedId(b.id)
   }
 
-  /** Étape 3 : propose des accroches publicitaires via l'IA (produit ou sujet décrit). */
+  /** Étape 3 : propose des accroches publicitaires via l'IA (sujet saisi et/ou produit ciblé). */
   const generateText = async () => {
     const a = captionArticle()
-    const name = a?.name ?? aiPrompt.trim()
+    const name = aiPrompt.trim() || a?.name
     if (!name) {
-      setError('Choisis un produit ou décris le sujet pour générer une accroche.')
+      setError('Écris le sujet de ton affiche (ou choisis un produit) pour générer une accroche.')
       return
     }
     setError(null)
@@ -878,39 +874,6 @@ export function AffichettePage() {
       setError(errorMessage(e))
     } finally {
       setTextBusy(false)
-    }
-  }
-
-  /** Mini-chat IA : affine le fond au fil des messages (retouche image→image, ou génère si pas de fond). */
-  const sendChat = async () => {
-    const msg = aiPrompt.trim()
-    if (!msg) return
-    setError(null)
-    setAiPrompt('')
-    setChatLog((l) => [...l, { role: 'user', text: msg }])
-    setAiBusy('chat')
-    try {
-      let blob: Blob
-      if (bgMode === 'photo' && bgImg) {
-        const f = await bgToFile()
-        if (!f) throw new Error('Fond illisible')
-        // Retouche image->image : ambiance via le paramètre dédié, message en instruction, ratio A5 conservé.
-        blob = await enhanceImage(f, ambiancePrompt(), msg, 'scene', fmt.ar)
-      } else {
-        // Génération pure : pas de paramètre ambiance côté API, on le fond dans le prompt.
-        const prompt = [msg, ambiancePrompt()].filter(Boolean).join('. ')
-        blob = await generateImageFromPrompt(prompt, fmt.ar)
-        setBgZoom(1)
-      }
-      setBgImg(await imgFromBlob(blob))
-      setBgMode('photo')
-      setChatLog((l) => [...l, { role: 'ai', text: 'Fond mis à jour ✅' }])
-    } catch (e) {
-      const m = errorMessage(e)
-      setChatLog((l) => [...l, { role: 'ai', text: `⚠️ ${m}` }])
-      setError(m)
-    } finally {
-      setAiBusy(null)
     }
   }
 
@@ -1090,7 +1053,7 @@ export function AffichettePage() {
   }) => {
     setEditingId(null)
     setSelectedId(null)
-    setChatLog([])
+    layersRef.current = []
     if (s.format && s.format in FORMATS) setFormat(s.format)
     if (Array.isArray(s.blocks)) setBlocks(s.blocks)
     if (typeof s.veil === 'number') setVeil(s.veil)
@@ -1530,19 +1493,27 @@ export function AffichettePage() {
               Créer une affiche
             </Typography>
           </Toolbar>
-          <Box sx={{ px: 2, pb: 1, overflowX: 'auto' }}>
-            <Stepper activeStep={step} sx={{ minWidth: 480 }}>
-              {WIZARD_STEPS.map((label, i) => (
-                <Step key={label} completed={step > i}>
-                  <StepLabel>
-                    <Box component="span" onClick={() => setStep(i)} sx={{ cursor: 'pointer' }}>
-                      {label}
-                    </Box>
-                  </StepLabel>
-                </Step>
-              ))}
-            </Stepper>
-          </Box>
+          {isMobile ? (
+            <Box sx={{ px: 2, pb: 1.5 }}>
+              <Typography variant="body2" color="text.secondary">
+                Étape {step + 1}/{WIZARD_STEPS.length} · <strong>{WIZARD_STEPS[step]}</strong>
+              </Typography>
+            </Box>
+          ) : (
+            <Box sx={{ px: 2, pb: 1, overflowX: 'auto' }}>
+              <Stepper activeStep={step}>
+                {WIZARD_STEPS.map((label, i) => (
+                  <Step key={label} completed={step > i}>
+                    <StepLabel>
+                      <Box component="span" onClick={() => setStep(i)} sx={{ cursor: 'pointer' }}>
+                        {label}
+                      </Box>
+                    </StepLabel>
+                  </Step>
+                ))}
+              </Stepper>
+            </Box>
+          )}
         </AppBar>
 
         <Box sx={{ p: { xs: 2, md: 3 }, pb: 12, maxWidth: 1100, mx: 'auto', width: '100%' }}>
@@ -1670,7 +1641,7 @@ export function AffichettePage() {
                 onChange={(e) => {
                   const list = Array.from(e.target.files ?? [])
                   e.target.value = ''
-                  if (list.length) setMenuFiles((prev) => [...prev, ...list].slice(0, 8))
+                  void onImportFiles(list)
                 }}
               />
               <input
@@ -1682,43 +1653,33 @@ export function AffichettePage() {
                 onChange={(e) => {
                   const list = Array.from(e.target.files ?? [])
                   e.target.value = ''
-                  if (list.length) setMenuFiles((prev) => [...prev, ...list].slice(0, 8))
+                  void onImportFiles(list)
                 }}
               />
             </Stack>
           )}
 
-          {/* ÉTAPE 2 — Fond & IA (détourage + couleur) */}
+          {/* ÉTAPE 2 — Fond aux couleurs de l'enseigne + détourage IA */}
           {step === 1 && (
             <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'minmax(0, 1fr) 360px' }, gap: 3 }}>
               {renderStage()}
               <Stack spacing={2}>
-                <Typography variant="h6">2 · Améliore avec l’IA</Typography>
+                <Typography variant="h6">2 · Fond & détourage</Typography>
                 <Typography variant="caption" color="text.secondary">
-                  Couleur du fond (par défaut : couleur de l’enseigne)
+                  Fond aux couleurs de l’enseigne (modifiable) :
                 </Typography>
                 <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
-                  {[
-                    { label: 'Enseigne', c: colors.c1 },
-                    { label: 'Secondaire', c: colors.c2 },
-                    { label: 'Blanc', c: '#ffffff' },
-                    { label: 'Noir', c: '#111111' },
-                  ].map((p) => (
-                    <Chip
-                      key={p.label}
-                      label={p.label}
-                      size="small"
-                      onClick={() => setBgColor(p.c)}
-                      variant={bgColor.toLowerCase() === p.c.toLowerCase() ? 'filled' : 'outlined'}
-                      sx={{ '& .MuiChip-label': { pl: 2.5 }, position: 'relative', '&::before': { content: '""', position: 'absolute', left: 8, width: 12, height: 12, borderRadius: '50%', bgcolor: p.c, border: '1px solid rgba(0,0,0,0.2)' } }}
-                    />
-                  ))}
                   <TextField
                     type="color"
                     size="small"
+                    label="Couleur du fond"
                     value={bgColor}
-                    onChange={(e) => setBgColor(e.target.value)}
-                    sx={{ width: 64 }}
+                    onChange={(e) => {
+                      setBgColor(e.target.value)
+                      if (layersRef.current.length) void applyLayers(e.target.value)
+                    }}
+                    slotProps={{ inputLabel: { shrink: true } }}
+                    sx={{ width: 120 }}
                   />
                 </Stack>
                 <Button
@@ -1726,64 +1687,15 @@ export function AffichettePage() {
                   startIcon={aiBusy !== null ? <CircularProgress size={16} color="inherit" /> : <AutoAwesomeIcon />}
                   onClick={() => void detourer()}
                   disabled={aiBusy !== null}
+                  sx={{ alignSelf: 'flex-start' }}
                 >
-                  Détourer &amp; poser sur le fond
+                  Détourer le produit sur le fond
                 </Button>
                 <Typography variant="caption" color="text.secondary">
-                  Optionnel : décris une intention, ou choisis plutôt une ambiance photo ci-dessous.
+                  Une photo détourée (PNG transparent) importée s’affiche directement sur la couleur. Sinon
+                  « Détourer » isole le produit par IA et le pose sur la couleur exacte (jamais repeinte par
+                  l’IA).
                 </Typography>
-                <Stack direction="row" spacing={0.5} sx={{ flexWrap: 'wrap', gap: 0.5 }}>
-                  {OCCASIONS.map((o) => (
-                    <Chip key={o.label} label={o.label} size="small" variant="outlined" onClick={() => addBrief(o.text)} />
-                  ))}
-                </Stack>
-                <Stack direction="row" spacing={0.5} sx={{ flexWrap: 'wrap', gap: 0.5 }}>
-                  {AMBIANCES.map((a) => (
-                    <Chip
-                      key={a}
-                      label={a}
-                      size="small"
-                      color={ambiance === a ? 'primary' : 'default'}
-                      variant={ambiance === a ? 'filled' : 'outlined'}
-                      onClick={() => setAmbiance(a)}
-                    />
-                  ))}
-                </Stack>
-                <Stack direction="row" spacing={1} sx={{ alignItems: 'flex-end' }}>
-                  <TextField
-                    size="small"
-                    fullWidth
-                    multiline
-                    maxRows={4}
-                    placeholder={aiAffine ? 'Affine : plus chaleureux, ajoute des guirlandes…' : 'Décris une ambiance photo…'}
-                    value={aiPrompt}
-                    onChange={(e) => setAiPrompt(e.target.value)}
-                    disabled={aiBusy !== null}
-                  />
-                  <Button
-                    variant="outlined"
-                    onClick={() => {
-                      if (aiAffine) void sendChat()
-                      else void createAffiche()
-                    }}
-                    disabled={aiBusy !== null}
-                    startIcon={aiBusy !== null ? <CircularProgress size={16} /> : aiAffine ? <SendIcon /> : <AutoAwesomeIcon />}
-                    sx={{ whiteSpace: 'nowrap' }}
-                  >
-                    {aiAffine ? 'Affiner' : 'Photo IA'}
-                  </Button>
-                </Stack>
-                {chatLog.length > 0 && (
-                  <Box sx={{ maxHeight: 120, overflowY: 'auto', bgcolor: 'action.hover', borderRadius: 1, p: 1 }}>
-                    <Stack spacing={0.5}>
-                      {chatLog.map((m, i) => (
-                        <Typography key={i} variant="caption" sx={{ textAlign: m.role === 'user' ? 'right' : 'left', color: m.role === 'user' ? 'text.primary' : 'primary.main' }}>
-                          {m.role === 'user' ? `🧑 ${m.text}` : `🤖 ${m.text}`}
-                        </Typography>
-                      ))}
-                    </Stack>
-                  </Box>
-                )}
                 <Divider />
                 <Box>
                   <Typography variant="caption" color="text.secondary">
@@ -1791,10 +1703,6 @@ export function AffichettePage() {
                   </Typography>
                   <Slider value={veil} onChange={(_, v) => setVeil(Array.isArray(v) ? v[0] : v)} min={0} max={0.8} step={0.05} size="small" />
                 </Box>
-                <ToggleButtonGroup size="small" exclusive value={showLogo ? 'on' : 'off'} onChange={(_, v) => v && setShowLogo(v === 'on')}>
-                  <ToggleButton value="on">Logo affiché</ToggleButton>
-                  <ToggleButton value="off">Sans logo</ToggleButton>
-                </ToggleButtonGroup>
               </Stack>
             </Box>
           )}
@@ -1813,6 +1721,16 @@ export function AffichettePage() {
                     Réinitialiser
                   </Button>
                 </Stack>
+                <TextField
+                  size="small"
+                  fullWidth
+                  multiline
+                  maxRows={3}
+                  label="Sujet de l’affiche (pour l’IA)"
+                  placeholder="Ex. nouveauté croissant pistache à 1,90 €, offre du week-end…"
+                  value={aiPrompt}
+                  onChange={(e) => setAiPrompt(e.target.value)}
+                />
                 <Button
                   size="small"
                   variant="outlined"
@@ -1821,7 +1739,7 @@ export function AffichettePage() {
                   disabled={textBusy}
                   sx={{ alignSelf: 'flex-start' }}
                 >
-                  Générer une accroche (IA)
+                  Générer des accroches (IA)
                 </Button>
                 {aiSlogans.length > 0 && (
                   <Stack direction="row" spacing={0.5} sx={{ flexWrap: 'wrap', gap: 0.5 }}>
