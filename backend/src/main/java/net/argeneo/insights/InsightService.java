@@ -184,21 +184,37 @@ public class InsightService {
         }
         String key = keyJoiner.toString();
 
+        // Recherche web activée seulement si on connaît la localisation (sinon rien à chercher, et
+        // on évite le coût). L'IA repère alors un éventuel événement local majeur (Tour de France…).
+        boolean withSearch = notBlank(req.location());
+
         String raw = cacheGet(key);
         if (raw == null) {
             StringBuilder p = new StringBuilder(commonPreamble(req.etablissement(), req.location(),
                     req.description(), req.baseline()));
+            if (withSearch) {
+                p.append(localEventSearchNote(req.location()));
+            }
             p.append("Tu dois analyser PLUSIEURS journées ci-dessous. Pour CHAQUE journée, écris son ")
                     .append("analyse en la faisant précéder EXACTEMENT d'une ligne marqueur « ===AAAA-MM-JJ=== » ")
                     .append("(la date de la journée concernée), puis l'analyse en dessous. N'écris rien d'autre ")
-                    .append("(aucun titre, aucune autre ligne).\n\n");
+                    .append("(aucun titre, aucune autre ligne, AUCUNE URL ni citation de source).\n\n");
             for (DayItem it : items) {
                 p.append("========================================\n")
                         .append("JOURNÉE À ANALYSER : ").append(it.day().date())
                         .append(" (marqueur attendu : ===").append(it.day().date()).append("===)\n");
                 appendDayBlock(p, it.day(), it.mode(), Boolean.TRUE.equals(it.detail()));
             }
-            raw = gemini.generate(p.toString());
+            try {
+                raw = gemini.generate(p.toString(), withSearch);
+            } catch (RuntimeException ex) {
+                // Repli si la recherche web (grounding) n'est pas disponible sur le projet Vertex :
+                // on relance sans recherche pour que le cockpit fonctionne quand même.
+                if (!withSearch) {
+                    throw ex;
+                }
+                raw = gemini.generate(p.toString(), false);
+            }
             cachePut(key, raw);
         }
 
@@ -229,6 +245,22 @@ public class InsightService {
         p.append(STYLE);
         p.append(baselineRule(baseline));
         return p.toString();
+    }
+
+    /**
+     * Consigne de recherche web : repérer un événement local majeur qui ferait bouger la
+     * fréquentation à la date analysée (le grounding Google Search est activé côté client).
+     */
+    private String localEventSearchNote(String location) {
+        return "RECHERCHE D'ÉVÉNEMENT LOCAL (via la recherche web) : vérifie s'il se tient, à ou tout "
+                + "près de « " + location + " », à l'UNE des dates analysées ci-dessous, un ÉVÉNEMENT "
+                + "LOCAL MAJEUR susceptible de faire bouger la fréquentation : passage du Tour de France "
+                + "(ou autre course), braderie / vide-grenier, grand marché ou foire, festival, salon, "
+                + "match ou compétition sportive, concert, manifestation, marché de Noël, etc. Si tu "
+                + "trouves un événement CRÉDIBLE et bien DATÉ sur l'une de ces journées, intègre-le à "
+                + "l'analyse de CETTE journée : signale-le clairement et adapte la reco de préparation "
+                + "(produire/commander plus, horaires, etc.). Si tu n'as AUCUNE information fiable, "
+                + "n'invente rien et n'en parle pas. Ne cite ni URL ni source dans ta réponse.\n\n";
     }
 
     /** Consigne du mode + données du jour + notes conditionnelles + éventuel « développer ». */

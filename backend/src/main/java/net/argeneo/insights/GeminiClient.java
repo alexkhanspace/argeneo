@@ -73,22 +73,41 @@ public class GeminiClient {
 
     /** Envoie un prompt et renvoie le texte généré. */
     public String generate(String prompt) {
+        return generate(prompt, false);
+    }
+
+    /**
+     * Envoie un prompt et renvoie le texte généré.
+     *
+     * @param withSearch active le grounding Google Search (l'IA peut chercher sur le web, ex. un
+     *                   événement local — Tour de France, braderie…). Le « thinking » reste requis
+     *                   pour le raisonnement multi-étapes de la recherche, donc on ne le coupe pas ici.
+     */
+    public String generate(String prompt, boolean withSearch) {
         try {
             String token = accessToken();
             String url = "https://" + cfg.location() + "-aiplatform.googleapis.com/v1/projects/"
                     + cfg.project() + "/locations/" + cfg.location()
                     + "/publishers/google/models/" + cfg.model() + ":generateContent";
 
-            Map<String, Object> body = Map.of(
-                    "contents", List.of(Map.of(
-                            "role", "user",
-                            "parts", List.of(Map.of("text", prompt)))),
-                    "generationConfig", Map.of(
-                            "temperature", 0.7,
-                            "maxOutputTokens", 1024,
-                            // gemini-2.5-flash est un modèle « thinking » : sans ce budget à 0,
-                            // le raisonnement interne consomme les tokens et tronque la réponse.
-                            "thinkingConfig", Map.of("thinkingBudget", 0)));
+            Map<String, Object> generationConfig = new java.util.LinkedHashMap<>();
+            generationConfig.put("temperature", 0.7);
+            generationConfig.put("maxOutputTokens", withSearch ? 2048 : 1024);
+            if (!withSearch) {
+                // gemini-2.5-flash est un modèle « thinking » : sans ce budget à 0, le raisonnement
+                // interne consomme les tokens et tronque la réponse. Avec la recherche web, on laisse
+                // le modèle raisonner (sinon le grounding est inexploité).
+                generationConfig.put("thinkingConfig", Map.of("thinkingBudget", 0));
+            }
+            Map<String, Object> body = new java.util.LinkedHashMap<>();
+            body.put("contents", List.of(Map.of(
+                    "role", "user",
+                    "parts", List.of(Map.of("text", prompt)))));
+            body.put("generationConfig", generationConfig);
+            if (withSearch) {
+                // Outil de recherche Google (grounding) pour les modèles Gemini 2.x.
+                body.put("tools", List.of(Map.of("googleSearch", Map.of())));
+            }
 
             VtxResponse resp = http.post()
                     .uri(url)
