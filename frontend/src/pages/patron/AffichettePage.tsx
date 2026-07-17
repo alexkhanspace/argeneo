@@ -158,6 +158,9 @@ interface SavedAffiche {
   bgScale?: number
   bgPosX?: number
   bgPosY?: number
+  bgGradient?: boolean
+  bgColor2?: string
+  gradAngle?: number
 }
 function loadAffiches(): SavedAffiche[] {
   try {
@@ -310,6 +313,10 @@ export function AffichettePage() {
   const photoInputRef = useRef<HTMLInputElement | null>(null)
   // Couleur du fond uni (étape 2), par défaut couleur de l'enseigne (renseignée au chargement charte).
   const [bgColor, setBgColor] = useState('#c2410c')
+  // Fond en dégradé : 2e couleur + angle. `bgGradient` bascule uni ↔ dégradé.
+  const [bgGradient, setBgGradient] = useState(false)
+  const [bgColor2, setBgColor2] = useState('#9a5417')
+  const [gradAngle, setGradAngle] = useState(180)
   // Guides d'alignement affichés pendant le déplacement d'un texte (fractions 0..1).
   const [guides, setGuides] = useState<{ v: number[]; h: number[] }>({ v: [], h: [] })
   // Accroches proposées par l'IA (étape 3).
@@ -336,6 +343,7 @@ export function AffichettePage() {
         setColors({ c1, c2 })
         setSolid(c1)
         setBgColor(c1)
+        setBgColor2(c2)
       })
       .catch(() => undefined)
     getProfile()
@@ -394,6 +402,7 @@ export function AffichettePage() {
     setBgPosY(0.42)
     setBgRot(0)
     setBgFlipH(false)
+    setBgGradient(false)
     setImgSel(false)
     setArticleId('')
     setMenuArticles([])
@@ -980,14 +989,21 @@ export function AffichettePage() {
     canvas.width = w
     canvas.height = h
     const ctx = canvas.getContext('2d')!
-    // Fond de couleur (uni ou dégradé enseigne)
-    if (bgMode === 'solid') {
+    // Fond de couleur (uni, dégradé choisi, ou dégradé enseigne)
+    if (bgMode === 'solid' && !bgGradient) {
       ctx.fillStyle = solid
       ctx.fillRect(0, 0, w, h)
     } else {
-      const g = ctx.createLinearGradient(0, 0, 0, h)
-      g.addColorStop(0, colors.c1)
-      g.addColorStop(1, colors.c2)
+      // Ligne de dégradé couvrant le cadre selon l'angle (mêmes conventions que CSS linear-gradient).
+      const rad = ((bgMode === 'solid' ? gradAngle : 180) * Math.PI) / 180
+      const dx = Math.sin(rad)
+      const dy = -Math.cos(rad)
+      const half = (Math.abs(dx) * w + Math.abs(dy) * h) / 2
+      const cx = w / 2
+      const cy = h / 2
+      const g = ctx.createLinearGradient(cx - dx * half, cy - dy * half, cx + dx * half, cy + dy * half)
+      g.addColorStop(0, bgMode === 'solid' ? solid : colors.c1)
+      g.addColorStop(1, bgMode === 'solid' ? bgColor2 : colors.c2)
       ctx.fillStyle = g
       ctx.fillRect(0, 0, w, h)
     }
@@ -1133,6 +1149,9 @@ export function AffichettePage() {
       bgScale,
       bgPosX,
       bgPosY,
+      bgGradient,
+      bgColor2,
+      gradAngle,
     }
     // On garde les 6 dernières (le fond en dataURL est lourd → quota localStorage).
     // On dédoublonne par communication (réenregistrer la même affiche remplace l'ancienne).
@@ -1163,6 +1182,9 @@ export function AffichettePage() {
     bgScale?: number
     bgPosX?: number
     bgPosY?: number
+    bgGradient?: boolean
+    bgColor2?: string
+    gradAngle?: number
     caption?: string
     socialPlatform?: string
     tone?: string
@@ -1185,6 +1207,9 @@ export function AffichettePage() {
     setBgScale(typeof s.bgScale === 'number' ? s.bgScale : 0.72)
     setBgPosX(typeof s.bgPosX === 'number' ? s.bgPosX : 0.5)
     setBgPosY(typeof s.bgPosY === 'number' ? s.bgPosY : 0.42)
+    setBgGradient(!!s.bgGradient)
+    if (typeof s.bgColor2 === 'string') setBgColor2(s.bgColor2)
+    if (typeof s.gradAngle === 'number') setGradAngle(s.gradAngle)
     setImgSel(false)
     // Produit : image transparente posée sur le fond de couleur (mode 'solid' derrière).
     if (s.bgDataUrl) {
@@ -1229,6 +1254,9 @@ export function AffichettePage() {
         bgScale,
         bgPosX,
         bgPosY,
+        bgGradient,
+        bgColor2,
+        gradAngle,
         caption,
         socialPlatform: platform,
         tone,
@@ -1261,7 +1289,7 @@ export function AffichettePage() {
   // (zoomable via transform:scale) ; les fonds uni/enseigne restent directement sur la scène.
   const stageBg =
     bgMode === 'solid'
-      ? { background: solid }
+      ? { background: bgGradient ? `linear-gradient(${gradAngle}deg, ${solid}, ${bgColor2})` : solid }
       : bgMode === 'brand'
         ? { background: `linear-gradient(${colors.c1}, ${colors.c2})` }
         : {}
@@ -1903,23 +1931,61 @@ export function AffichettePage() {
               {renderStage()}
               <Stack spacing={2}>
                 <Typography variant="h6">2 · Fond & détourage</Typography>
-                <Typography variant="caption" color="text.secondary">
-                  Fond aux couleurs de l’enseigne (modifiable) :
-                </Typography>
+                <ToggleButtonGroup
+                  size="small"
+                  exclusive
+                  value={bgGradient ? 'grad' : 'uni'}
+                  onChange={(_, v) => {
+                    if (!v) return
+                    setBgGradient(v === 'grad')
+                    setBgMode('solid') // le fond choisi remplace le dégradé enseigne par défaut
+                  }}
+                >
+                  <ToggleButton value="uni">Fond uni</ToggleButton>
+                  <ToggleButton value="grad">Dégradé</ToggleButton>
+                </ToggleButtonGroup>
                 <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
                   <TextField
                     type="color"
                     size="small"
-                    label="Couleur du fond"
+                    label={bgGradient ? 'Couleur 1' : 'Couleur du fond'}
                     value={bgColor}
                     onChange={(e) => {
                       setBgColor(e.target.value)
                       setSolid(e.target.value)
+                      setBgMode('solid')
                     }}
                     slotProps={{ inputLabel: { shrink: true } }}
-                    sx={{ width: 120 }}
+                    sx={{ width: 108 }}
                   />
+                  {bgGradient && (
+                    <TextField
+                      type="color"
+                      size="small"
+                      label="Couleur 2"
+                      value={bgColor2}
+                      onChange={(e) => setBgColor2(e.target.value)}
+                      slotProps={{ inputLabel: { shrink: true } }}
+                      sx={{ width: 108 }}
+                    />
+                  )}
                 </Stack>
+                {bgGradient && (
+                  <Box>
+                    <Typography variant="caption" color="text.secondary">
+                      Sens du dégradé ({gradAngle}°)
+                    </Typography>
+                    <Slider
+                      value={gradAngle}
+                      onChange={(_, v) => setGradAngle(Array.isArray(v) ? v[0] : v)}
+                      min={0}
+                      max={360}
+                      step={15}
+                      marks={[{ value: 0 }, { value: 90 }, { value: 180 }, { value: 270 }]}
+                      size="small"
+                    />
+                  </Box>
+                )}
                 <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', gap: 1 }}>
                   <Button
                     variant="contained"
