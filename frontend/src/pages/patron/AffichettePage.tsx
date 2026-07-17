@@ -1818,9 +1818,15 @@ export function AffichettePage() {
         </Card>
       )}
 
-      {/* Assistant plein écran (parcours guidé, responsive). */}
-      <Dialog fullScreen open={wizardOpen} onClose={() => setWizardOpen(false)}>
-        <AppBar position="sticky" color="default" elevation={1}>
+      {/* Assistant plein écran (parcours guidé, responsive). Paper en colonne flex : en-tête + contenu
+          défilant + pied FIXES dans la mise en page → le footer ne recouvre jamais le contenu. */}
+      <Dialog
+        fullScreen
+        open={wizardOpen}
+        onClose={() => setWizardOpen(false)}
+        PaperProps={{ sx: { display: 'flex', flexDirection: 'column', overflow: 'hidden' } }}
+      >
+        <AppBar position="static" color="default" elevation={1} sx={{ flexShrink: 0 }}>
           <Toolbar sx={{ gap: 1 }}>
             <IconButton edge="start" onClick={() => setWizardOpen(false)} aria-label="Fermer">
               <CloseIcon />
@@ -1868,7 +1874,8 @@ export function AffichettePage() {
           )}
         </AppBar>
 
-        <Box sx={{ p: { xs: 2, md: 3 }, pb: 20, maxWidth: 1100, mx: 'auto', width: '100%' }}>
+        <Box sx={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
+        <Box sx={{ p: { xs: 2, md: 3 }, pb: 4, maxWidth: 1100, mx: 'auto', width: '100%' }}>
           {error && (
             <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>
               {error}
@@ -2297,10 +2304,11 @@ export function AffichettePage() {
             </Box>
           )}
         </Box>
+        </Box>
 
-        {/* Barre d'actions bas : navigation entre étapes. */}
-        <AppBar position="fixed" color="default" elevation={3} sx={{ top: 'auto', bottom: 0 }}>
-          <Toolbar sx={{ justifyContent: 'space-between', gap: 1 }}>
+        {/* Barre d'actions bas : ligne fixe de la mise en page (jamais par-dessus le contenu). */}
+        <AppBar position="static" color="default" elevation={3} sx={{ flexShrink: 0 }}>
+          <Toolbar sx={{ justifyContent: 'space-between', gap: 1, pb: 'env(safe-area-inset-bottom)' }}>
             <Button startIcon={<NavigateBeforeIcon />} disabled={step === 0} onClick={prevStep}>
               Précédent
             </Button>
