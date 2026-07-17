@@ -47,10 +47,22 @@ api.interceptors.request.use((config) => {
 // et si on est déjà sur /login (évite une boucle de redirection).
 api.interceptors.response.use(
   (response) => response,
-  (error) => {
+  async (error) => {
     const status = error?.response?.status
     const url: string = error?.config?.url ?? ''
     const onLogin = window.location.pathname.startsWith('/login')
+    // Corps d'erreur en Blob (réponses responseType:'blob', ex. génération d'image IA) : on le
+    // relit en JSON pour qu'errorMessage puisse afficher le message clair du serveur au lieu d'un
+    // « Request failed with status code 502 » opaque.
+    const data = error?.response?.data
+    if (data instanceof Blob) {
+      try {
+        const text = await data.text()
+        error.response.data = text ? JSON.parse(text) : undefined
+      } catch {
+        // corps non-JSON : on laisse tel quel
+      }
+    }
     if (status === 401 && !url.includes('/auth/login') && !onLogin && tokenExpired()) {
       tokenStore.clear()
       window.location.assign('/login')

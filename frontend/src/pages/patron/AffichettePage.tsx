@@ -1,5 +1,11 @@
 import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import { useSearchParams } from 'react-router-dom'
+// Polices web embarquées pour les affiches (rendu identique aperçu + export, sur tous les appareils).
+import '@fontsource/anton/400.css'
+import '@fontsource/pacifico/400.css'
+import '@fontsource/lobster/400.css'
+import '@fontsource/playfair-display/400.css'
+import '@fontsource/playfair-display/700.css'
 import {
   Alert,
   AppBar,
@@ -8,7 +14,6 @@ import {
   Button,
   Card,
   CardContent,
-  Chip,
   CircularProgress,
   Dialog,
   DialogActions,
@@ -46,12 +51,10 @@ import RestartAltIcon from '@mui/icons-material/RestartAlt'
 import ContentCopyIcon from '@mui/icons-material/ContentCopy'
 import FlipToFrontIcon from '@mui/icons-material/FlipToFront'
 import CloseIcon from '@mui/icons-material/Close'
-import PhotoCamera from '@mui/icons-material/PhotoCamera'
 import ImageIcon from '@mui/icons-material/Image'
 import InventoryIcon from '@mui/icons-material/Inventory2'
 import NavigateNextIcon from '@mui/icons-material/NavigateNext'
 import NavigateBeforeIcon from '@mui/icons-material/NavigateBefore'
-import TextFieldsIcon from '@mui/icons-material/TextFields'
 import EditIcon from '@mui/icons-material/Edit'
 import RotateLeftIcon from '@mui/icons-material/RotateLeft'
 import RotateRightIcon from '@mui/icons-material/RotateRight'
@@ -61,19 +64,22 @@ import ZoomOutIcon from '@mui/icons-material/ZoomOut'
 import { errorMessage } from '../../api/client'
 import { getProfile, getSettings, logoUrl } from '../../api/billing'
 import { listArticles, photoUrl } from '../../api/costing'
-import { composeImages, getAdSlogans } from '../../api/insights'
+import { composeImages, enhanceImage } from '../../api/insights'
 import {
   deleteCommunication,
+  generateImageFromPrompt,
   generateSocialPost,
   getCommunication,
   listCommunications,
   saveCommunication,
+  updateCommunication,
   type CommunicationSummary,
 } from '../../api/communication'
 import { listMyEtablissements } from '../../api/daily'
 import type { Article } from '../../api/types'
 import { PageHeader } from '../../components/PageHeader'
 import { buildPosterPdfBlob } from '../../pdf/buildPosterPdf'
+import { buildPosterPdfCmykBlob } from '../../pdf/buildPosterPdfCmyk'
 
 type Fmt = 'square' | 'story' | 'facebook' | 'a4' | 'a5'
 // Déclinaisons : réseaux (carré/story/facebook) + impression (A4/A5). Les textes sont en % → ils se
@@ -90,6 +96,9 @@ const FORMATS: Record<
   a5: { w: 874, h: 1240, label: 'A5', ar: '3:4', size: 'A5', print: true },
 }
 type BgMode = 'photo' | 'brand' | 'solid'
+// Style du fond personnalisé : uni, dégradé doux (0→100 %), diagonale deux tons (bascule réglable),
+// ou image générée par l'IA à partir d'une description (plein cadre).
+type BgFill = 'uni' | 'grad' | 'diag' | 'ia'
 type Align = 'left' | 'center' | 'right'
 
 // Étapes de l'assistant plein écran.
@@ -116,23 +125,71 @@ interface Block {
   bold: boolean
   align: Align
   bg: string | null // pastille de fond, ou null
+  bgFull?: boolean // pastille pleine largeur (bande sur tout le cadre) au lieu d'épouser le texte
+  bgSharp?: boolean // pastille à coins carrés (sans arrondi = « sans bordures »)
   font?: string // famille de police (défaut : FONT)
   rot?: number // rotation du texte en degrés (défaut : 0)
 }
 
 const FONT = 'Helvetica, Arial, sans-serif'
-// Familles système uniquement : elles rendent à l'identique dans l'aperçu CSS et le canvas d'export.
+// Police par défaut des nouveaux textes : « Élégante » (serif). Doit correspondre à une valeur de FONTS.
+const DEFAULT_TEXT_FONT = 'Georgia, "Times New Roman", serif'
+// Consigne d'amélioration pré-remplie par défaut (détourage & amélioration).
+const DEFAULT_IMPROVE_CTX = "Mets sur une ardoise à l'horizontale, c'est pour une pub"
+// Polices WEB embarquées (@fontsource, importées ci-dessus) : rendu identique sur tous les appareils,
+// dans l'aperçu CSS ET le canvas d'export — contrairement aux polices système (souvent absentes).
+// WEB_FONT_FAMILIES sert à les précharger pour que l'export canvas ne retombe pas sur une police système.
+const WEB_FONT_FAMILIES = ['Anton', 'Playfair Display', 'Pacifico', 'Lobster']
 const FONTS = [
   { label: 'Moderne', value: FONT },
+  { label: 'Titre fort (Anton)', value: '"Anton", Impact, sans-serif' },
+  { label: 'Chic (Playfair)', value: '"Playfair Display", Georgia, serif' },
+  { label: 'Manuscrite (Pacifico)', value: '"Pacifico", cursive' },
+  { label: 'Rétro (Lobster)', value: '"Lobster", cursive' },
   { label: 'Élégante (serif)', value: 'Georgia, "Times New Roman", serif' },
-  { label: 'Impact (titres)', value: 'Impact, "Arial Black", sans-serif' },
-  { label: 'Manuscrite', value: '"Brush Script MT", "Segoe Script", cursive' },
-  { label: 'Ardoise', value: '"Chalkboard SE", "Comic Sans MS", cursive' },
   { label: 'Machine à écrire', value: '"Courier New", Courier, monospace' },
 ]
 const clamp01 = (v: number) => Math.max(0, Math.min(1, v))
+/** Attend le chargement des polices web avant un rendu canvas (sinon l'export retombe sur une police système). */
+async function fontsReady(): Promise<void> {
+  try {
+    if (document.fonts?.ready) await document.fonts.ready
+  } catch {
+    // Pas de FontFaceSet disponible : on rend quand même (fallback système).
+  }
+}
 const safeColor = (c: string | null | undefined, fb: string) =>
   c && /^#[0-9a-fA-F]{3,8}$/.test(c) ? c : fb
+
+/** '#rrggbb' + alpha (0..1) → 'rgba(r,g,b,a)' (pour le halo, aperçu CSS et canvas identiques). */
+const hexA = (hex: string, alpha: number): string => {
+  const m = /^#?([0-9a-fA-F]{6})$/.exec((hex ?? '').trim())
+  if (!m) return `rgba(255,255,255,${alpha})`
+  const n = parseInt(m[1], 16)
+  return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`
+}
+
+/**
+ * Éclaircit une image (courbe gamma, sur place) pour compenser l'assombrissement RGB→CMJN à
+ * l'impression : le papier réfléchit (moins lumineux que l'écran) et le gamut CMJN écrase les tons
+ * foncés. gamma > 1 relève surtout les ombres/tons moyens (là où l'impression fonce le plus).
+ * gamma = 1 → aucun changement.
+ */
+function applyPrintGamma(canvas: HTMLCanvasElement, gamma: number): void {
+  if (gamma <= 1.001) return
+  const ctx = canvas.getContext('2d')!
+  const img = ctx.getImageData(0, 0, canvas.width, canvas.height)
+  const d = img.data
+  const lut = new Uint8ClampedArray(256)
+  const inv = 1 / gamma
+  for (let i = 0; i < 256; i++) lut[i] = Math.round(255 * Math.pow(i / 255, inv))
+  for (let i = 0; i < d.length; i += 4) {
+    d[i] = lut[d[i]]
+    d[i + 1] = lut[d[i + 1]]
+    d[i + 2] = lut[d[i + 2]]
+  }
+  ctx.putImageData(img, 0, 0)
+}
 
 const DRAFT_KEY = 'argeneo.affichette.draft'
 
@@ -149,6 +206,12 @@ interface SavedAffiche {
   blocks: Block[]
   veil: number
   showLogo: boolean
+  logoScale?: number
+  halo?: boolean
+  haloColor?: string
+  haloOpacity?: number
+  haloScale?: number
+  articleId?: number | null
   colors: { c1: string; c2: string }
   bgDataUrl: string | null
   bgMode?: BgMode
@@ -159,8 +222,16 @@ interface SavedAffiche {
   bgPosX?: number
   bgPosY?: number
   bgGradient?: boolean
+  bgFill?: BgFill
   bgColor2?: string
   gradAngle?: number
+  diagStart?: number
+  diagEnd?: number
+  /** Fond IA : image générée (plein cadre) en dataURL + description saisie. */
+  bgFillDataUrl?: string | null
+  bgAiPrompt?: string
+  /** Zone d'amélioration du détourage (mémorisée pour retoucher). */
+  improveCtx?: string
 }
 function loadAffiches(): SavedAffiche[] {
   try {
@@ -223,6 +294,7 @@ function newBlock(partial: Partial<Block>): Block {
     bold: true,
     align: 'center',
     bg: null,
+    font: DEFAULT_TEXT_FONT,
     ...partial,
   }
 }
@@ -274,10 +346,22 @@ export function AffichettePage() {
   const [colors, setColors] = useState({ c1: '#c2410c', c2: '#9a5417' })
   const [logoImg, setLogoImg] = useState<HTMLImageElement | null>(null)
   const [showLogo, setShowLogo] = useState(true)
+  // Taille du logo : multiplicateur appliqué de façon IDENTIQUE à l'aperçu et à l'export (défaut 150 %).
+  const [logoScale, setLogoScale] = useState(1.5)
+  // Compensation impression (PDF) : gamma d'éclaircissement pour contrer l'assombrissement CMJN.
+  // 1.0 = aucune ; ~1.18 = compensation douce par défaut. N'affecte QUE le PDF (impression), pas les PNG écran.
+  const [printGamma, setPrintGamma] = useState(1.18)
+  // Halo « spot » : dégradé radial clair CENTRÉ SUR LE PRODUIT pour le faire ressortir sur le fond.
+  const [halo, setHalo] = useState(false)
+  const [haloColor, setHaloColor] = useState('#ffffff')
+  const [haloOpacity, setHaloOpacity] = useState(0.45)
+  const [haloScale, setHaloScale] = useState(0.45)
 
   const [articles, setArticles] = useState<Article[]>([])
   const [articleId, setArticleId] = useState<number | ''>('')
 
+  // Nom de l'affiche (pour la galerie « Mes affiches ») — indépendant des textes affichés dessus.
+  const [afficheName, setAfficheName] = useState('')
   // Parcours guidé : type d'affiche (1 produit ou menu) + garde-fou anti-doublon des textes.
   const [affType, setAffType] = useState<'produit' | 'menu'>('produit')
   const [seededProducts, setSeededProducts] = useState(false)
@@ -287,6 +371,7 @@ export function AffichettePage() {
   const [menuFiles, setMenuFiles] = useState<File[]>([])
   const menuFileRef = useRef<HTMLInputElement | null>(null)
   const [pdfBusy, setPdfBusy] = useState(false)
+  const [pdfCmykBusy, setPdfCmykBusy] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [savedMsg, setSavedMsg] = useState<string | null>(null)
@@ -299,6 +384,9 @@ export function AffichettePage() {
   const [captionLoading, setCaptionLoading] = useState(false)
   const [copied, setCopied] = useState(false)
   const [etab, setEtab] = useState<{ name?: string; description?: string | null; address?: string | null }>({})
+  // Id de la communication actuellement éditée (ouverte depuis la galerie ou déjà enregistrée) :
+  // tant qu'il est renseigné, « Enregistrer » MET À JOUR cette affiche au lieu d'en créer une autre.
+  const [editCommId, setEditCommId] = useState<number | null>(null)
   // Affiches réouvrables (état éditable local).
   const [savedAffiches, setSavedAffiches] = useState<SavedAffiche[]>(() => loadAffiches())
   // Communications archivées côté serveur (réouvrables depuis n'importe quel appareil).
@@ -308,30 +396,44 @@ export function AffichettePage() {
   // --- Assistant plein écran (parcours guidé) ---
   const [wizardOpen, setWizardOpen] = useState(false)
   const [step, setStep] = useState(0)
-  // Source : catalogue (produit/menu), import fichier, ou prise de photo (appareil).
-  const [srcMode, setSrcMode] = useState<'catalogue' | 'import' | 'photo'>('catalogue')
-  const photoInputRef = useRef<HTMLInputElement | null>(null)
+  // Source : catalogue (produit/menu) ou import de fichier.
+  const [srcMode, setSrcMode] = useState<'catalogue' | 'import'>('catalogue')
   // Couleur du fond uni (étape 2), par défaut couleur de l'enseigne (renseignée au chargement charte).
   const [bgColor, setBgColor] = useState('#c2410c')
-  // Fond en dégradé : 2e couleur + angle. `bgGradient` bascule uni ↔ dégradé.
-  const [bgGradient, setBgGradient] = useState(false)
+  // Style du fond personnalisé : uni, dégradé doux, ou diagonale deux tons.
+  const [bgFill, setBgFill] = useState<BgFill>('uni')
   const [bgColor2, setBgColor2] = useState('#9a5417')
   const [gradAngle, setGradAngle] = useState(180)
+  // Diagonale : positions (%) où la 1re couleur s'arrête et où la 2e commence (bande de transition).
+  const [diagStart, setDiagStart] = useState(45)
+  const [diagEnd, setDiagEnd] = useState(55)
+  // Fond par IA : image générée (plein cadre, derrière le produit) + description saisie par l'utilisateur.
+  const [bgFillImg, setBgFillImg] = useState<HTMLImageElement | null>(null)
+  const [bgAiPrompt, setBgAiPrompt] = useState('')
+  // Retouche : consigne de modification à appliquer sur le fond IA déjà généré (itératif).
+  const [bgEditPrompt, setBgEditPrompt] = useState('')
   // Guides d'alignement affichés pendant le déplacement d'un texte (fractions 0..1).
   const [guides, setGuides] = useState<{ v: number[]; h: number[] }>({ v: [], h: [] })
   // Accroches proposées par l'IA (étape 3).
-  const [aiSlogans, setAiSlogans] = useState<string[]>([])
-  const [textBusy, setTextBusy] = useState(false)
-  // Popup « détourer avec l'IA ? » après un import, au passage à l'étape Fond.
+  // Popup « détourer & améliorer » (auto après import ou via le bouton).
   const [detourAsk, setDetourAsk] = useState(false)
-  // Popup « détourer et améliorer » : saisie d'un contexte envoyé à l'IA.
-  const [improveAsk, setImproveAsk] = useState(false)
-  const [improveCtx, setImproveCtx] = useState('')
+  // Zone d'amélioration : consigne envoyée à l'IA, pré-remplie par défaut, MÉMORISÉE (pré-remplie à la réouverture).
+  const [improveCtx, setImproveCtx] = useState(DEFAULT_IMPROVE_CTX)
 
   const selected = useMemo(() => blocks.find((b) => b.id === selectedId) ?? null, [blocks, selectedId])
   const fmt = FORMATS[format]
   const theme = useTheme()
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'))
+
+  // Précharge les polices web dès le montage : sans ça, l'export canvas peut se faire avant que la
+  // police choisie soit chargée et retomber sur une police système (aperçu ≠ PDF).
+  useEffect(() => {
+    if (!document.fonts) return
+    for (const family of WEB_FONT_FAMILIES) {
+      void document.fonts.load(`400 16px "${family}"`)
+      void document.fonts.load(`700 16px "${family}"`)
+    }
+  }, [])
 
   // Chargement charte + produits + logo.
   useEffect(() => {
@@ -367,13 +469,26 @@ export function AffichettePage() {
   }, [blocks])
 
   // Ouverture en édition d'une communication archivée (serveur d'abord, cache local en secours).
-  const openCommunication = async (id: number) => {
+  /**
+   * Ouvre une affiche archivée. `asCopy` = « utiliser comme modèle » : on garde tout (police,
+   * placement, styles…) mais SANS lier l'id → l'enregistrement crée une NOUVELLE affiche et le
+   * modèle d'origine reste intact.
+   */
+  const openCommunication = async (id: number, asCopy = false) => {
     // 1) Serveur (universel, multi-appareils)
     try {
       const detail = await getCommunication(id)
       if (detail.afficheState) {
-        restoreState(JSON.parse(detail.afficheState))
-        setSavedMsg('Affiche ouverte en édition.')
+        const state = JSON.parse(detail.afficheState)
+        // Rétro-compat : anciennes affiches sans articleId dans l'état → on reprend celui du record.
+        if (state.articleId == null && detail.articleId != null) state.articleId = detail.articleId
+        restoreState(state)
+        setEditCommId(asCopy ? null : id) // copie → non liée (création) ; sinon édition (mise à jour)
+        setSavedMsg(
+          asCopy
+            ? 'Copie ouverte à partir du modèle — enregistre-la pour créer une nouvelle affiche (le modèle est conservé).'
+            : 'Affiche ouverte en édition.',
+        )
         setStep(2)
         setWizardOpen(true)
         return
@@ -385,6 +500,10 @@ export function AffichettePage() {
     const a = savedAffiches.find((x) => x.commId === id)
     if (a) {
       reopenAffiche(a)
+      setEditCommId(asCopy ? null : id)
+      if (asCopy) {
+        setSavedMsg('Copie ouverte à partir du modèle — enregistre-la pour créer une nouvelle affiche.')
+      }
       setStep(2)
       setWizardOpen(true)
     } else {
@@ -402,13 +521,26 @@ export function AffichettePage() {
     setBgPosY(0.42)
     setBgRot(0)
     setBgFlipH(false)
-    setBgGradient(false)
+    setBgFill('uni')
+    setDiagStart(45)
+    setDiagEnd(55)
+    setBgFillImg(null)
+    setBgAiPrompt('')
+    setBgEditPrompt('')
+    setImproveCtx(DEFAULT_IMPROVE_CTX)
+    setAfficheName('')
+    setShowLogo(true)
+    setLogoScale(1.5)
+    setHalo(false)
+    setHaloColor('#ffffff')
+    setHaloOpacity(0.45)
+    setHaloScale(0.45)
+    setEditCommId(null) // nouvelle affiche → le prochain « Enregistrer » en crée bien une nouvelle
     setImgSel(false)
     setArticleId('')
     setMenuArticles([])
     setMenuFiles([])
     setAiPrompt('')
-    setAiSlogans([])
     setSeededProducts(false)
     setSrcMode('catalogue')
     setStep(0)
@@ -461,6 +593,7 @@ export function AffichettePage() {
       setArticleId(id)
       setSeededProducts(false)
       setSrcMode('catalogue')
+      setEditCommId(null) // création depuis un article → nouvelle affiche, pas une mise à jour
       setStep(0)
       setWizardOpen(true)
     }
@@ -745,6 +878,38 @@ export function AffichettePage() {
       img.src = canvas.toDataURL('image/png')
     })
 
+  /**
+   * Réduit une image (plus grand côté ≤ `maxSide` px) et la renvoie en File, pour l'upload IA :
+   * une image plein résolution dépasse la limite multipart et le serveur renvoie « Image trop lourde ».
+   * PNG conservé pour un produit détouré (alpha) ; JPEG (bien plus léger) pour une image opaque.
+   * Filet de sécurité : si un PNG reste trop lourd (image opaque détaillée), on repasse en JPEG.
+   */
+  const shrinkToFile = async (
+    src: HTMLImageElement,
+    name: string,
+    maxSide = 1280,
+    type: 'image/png' | 'image/jpeg' = 'image/jpeg',
+    quality = 0.9,
+  ): Promise<File> => {
+    const iw = src.naturalWidth || src.width
+    const ih = src.naturalHeight || src.height
+    const scale = Math.min(1, maxSide / Math.max(iw, ih))
+    const w = Math.max(1, Math.round(iw * scale))
+    const h = Math.max(1, Math.round(ih * scale))
+    const canvas = document.createElement('canvas')
+    canvas.width = w
+    canvas.height = h
+    canvas.getContext('2d')!.drawImage(src, 0, 0, w, h)
+    const toBlob = (t: string, q: number) => new Promise<Blob | null>((res) => canvas.toBlob(res, t, q))
+    const blob = await toBlob(type, quality)
+    // Un PNG opaque détaillé peut rester lourd → on bascule en JPEG (transparence perdue mais envoi garanti).
+    if (blob && type === 'image/png' && blob.size > 8_000_000) {
+      const jpg = await toBlob('image/jpeg', 0.9)
+      if (jpg) return new File([jpg], name.replace(/\.png$/i, '.jpg'), { type: 'image/jpeg' })
+    }
+    return new File([blob ?? new Blob()], name, { type })
+  }
+
   /** Pose une image PRODUIT (calque transparent déplaçable) sur le fond de couleur. */
   const placeProduct = (img: HTMLImageElement, keepTransform: boolean) => {
     setBgImg(img)
@@ -837,7 +1002,7 @@ export function AffichettePage() {
     window.removeEventListener('pointermove', onRotMove)
     window.removeEventListener('pointerup', onRotUp)
   }
-  const startImgRotate = (e: ReactPointerEvent) => {
+  const startImgRotate = (_e: ReactPointerEvent) => {
     const stage = stageRef.current
     if (!stage) return
     const rect = stage.getBoundingClientRect()
@@ -850,11 +1015,20 @@ export function AffichettePage() {
   const captionArticle = (): Article | null =>
     affType === 'menu' ? menuArticles[0] ?? null : articles.find((a) => a.id === articleId) ?? null
 
-  /** Rédige la légende réseaux (texte prêt à publier) à partir du brief et/ou du produit ciblé. */
+  /**
+   * Rédige la légende réseaux à partir des TEXTES déjà présents sur l'affiche (les blocs), enrichis
+   * d'un contexte facultatif et du produit ciblé.
+   */
   const onGenerateCaption = async () => {
     const a = captionArticle()
-    if (!aiPrompt.trim() && !a) {
-      setError('Écris le sujet (étape Textes) ou choisis un produit pour rédiger la légende.')
+    // La légende part de ce qui est écrit sur l'affiche + un éventuel contexte en plus.
+    const posterText = blocks
+      .map((b) => b.text.trim())
+      .filter(Boolean)
+      .join(' — ')
+    const brief = [posterText, aiPrompt.trim()].filter(Boolean).join('. ') || null
+    if (!brief && !a) {
+      setError('Ajoute du texte sur l’affiche (ou un contexte / un produit) pour rédiger la légende.')
       return
     }
     setError(null)
@@ -864,7 +1038,7 @@ export function AffichettePage() {
         etablissement: etab.name ?? 'boulangerie',
         description: etab.description ?? null,
         location: etab.address ?? null,
-        brief: aiPrompt.trim() || null,
+        brief,
         platform,
         tone,
         length,
@@ -924,17 +1098,21 @@ export function AffichettePage() {
     }
   }
 
-  /** Rassemble les fichiers sources : photos importées + photos des produits choisis. */
+  /** Rassemble les fichiers sources : photos importées + photos des produits choisis (toutes réduites). */
   const gatherFiles = async (products: Article[]): Promise<File[]> => {
-    const files: File[] = [...menuFiles]
+    const files: File[] = []
+    // Réduites avant l'envoi IA : une photo de téléphone plein résolution dépasse la limite
+    // multipart (12 Mo) et le serveur renvoie alors un « 401 trompeur ».
+    for (let i = 0; i < menuFiles.length; i++) {
+      files.push(await shrinkToFile(await imgFromBlob(menuFiles[i]), `import-${i}.jpg`))
+    }
     for (const a of products) {
       if (!a.photoFile) continue
       const u = photoUrl(a.photoFile)
       if (!u) continue
       const r = await fetch(u)
       if (!r.ok) continue
-      const blob = await r.blob()
-      files.push(new File([blob], `produit-${a.id}.png`, { type: blob.type || 'image/png' }))
+      files.push(await shrinkToFile(await imgFromBlob(await r.blob()), `produit-${a.id}.jpg`))
     }
     return files
   }
@@ -973,40 +1151,97 @@ export function AffichettePage() {
     }
   }
 
-  /** Ajoute un texte donné comme nouveau bloc, centré, et le sélectionne. */
-  const addTextBlock = (text: string) => {
-    const b = newBlock({ text, yPct: 0.5, xPct: 0.08, wPct: 0.84, fontPct: 0.06, align: 'center' })
-    setBlocks((list) => [...list, b])
-    setSelectedId(b.id)
-  }
-
-  /** Étape 3 : propose des accroches publicitaires via l'IA (sujet saisi et/ou produit ciblé). */
-  const generateText = async () => {
-    const a = captionArticle()
-    const name = aiPrompt.trim() || a?.name
-    if (!name) {
-      setError('Écris le sujet de ton affiche (ou choisis un produit) pour générer une accroche.')
+  /**
+   * Fond par IA : génère une image plein cadre à partir d'une description libre (texte→image).
+   * L'image devient le fond (calque du dessous) ; le produit détouré reste posé par-dessus.
+   */
+  const generateAiBackground = async () => {
+    if (!bgAiPrompt.trim()) {
+      setError('Décris le fond que tu veux (ex. « comptoir en bois chaleureux, lumière douce, arrière-plan flou »).')
       return
     }
     setError(null)
-    setTextBusy(true)
+    setAiBusy('generate')
     try {
-      const res = await getAdSlogans({
-        etablissement: etab.name ?? 'boulangerie',
-        description: etab.description ?? null,
-        location: etab.address ?? null,
-        articleName: name,
-        articleDescription: a?.description ?? null,
-        priceTtc: a?.salePriceTtc ?? null,
-      })
-      setAiSlogans(res.enabled ? res.slogans : [])
-      if (!res.enabled) setError('Génération IA non disponible.')
+      const img = await toImg(await imgFromBlob(await generateImageFromPrompt(bgAiPrompt.trim(), fmt.ar)))
+      setBgFillImg(img)
+      setBgMode('solid')
+      setBgFill('ia')
+      setSavedMsg('Fond IA généré ✅')
     } catch (e) {
       setError(errorMessage(e))
     } finally {
-      setTextBusy(false)
+      setAiBusy(null)
     }
   }
+
+  /**
+   * Fond par IA EN INTÉGRANT le produit détouré : l'IA met le produit en scène dans le décor décrit
+   * (image→image). Le produit est alors « fondu » dans l'image de fond → on retire le calque séparé.
+   */
+  const generateAiBackgroundWithProduct = async () => {
+    if (!bgImg) {
+      setError('Détoure d’abord un produit (bouton « Détourer ») pour l’intégrer au fond généré.')
+      return
+    }
+    if (!bgAiPrompt.trim()) {
+      setError('Décris le décor que tu veux autour du produit.')
+      return
+    }
+    setError(null)
+    setAiBusy('generate')
+    try {
+      // Réduit avant l'upload (PNG plein résolution → dépasse la limite multipart → « 401 trompeur »).
+      const file = await shrinkToFile(bgImg, 'produit-detoure.png', 1280, 'image/png')
+      // La description part en « ambiance » : le prompt serveur recompose le décor AUTOUR du produit.
+      const img = await toImg(await imgFromBlob(await enhanceImage(file, bgAiPrompt.trim(), undefined, undefined, fmt.ar)))
+      setBgFillImg(img)
+      setBgMode('solid')
+      setBgFill('ia')
+      // Produit désormais intégré à l'image de fond → on enlève le calque produit déplaçable (sinon doublon).
+      setBgImg(null)
+      setImgSel(false)
+      setSavedMsg('Fond IA généré avec le produit intégré ✅')
+    } catch (e) {
+      setError(errorMessage(e))
+    } finally {
+      setAiBusy(null)
+    }
+  }
+
+  /**
+   * Retouche le fond IA DÉJÀ généré : renvoie l'image courante à l'IA (image→image, mode « edit »)
+   * avec une consigne de modification, en gardant la composition. Permet d'itérer sans repartir de zéro.
+   */
+  const editAiBackground = async () => {
+    if (!bgFillImg) {
+      setError('Génère d’abord un fond IA, puis demande une modification.')
+      return
+    }
+    if (!bgEditPrompt.trim()) {
+      setError('Décris la modification (ex. « plus sombre », « ajoute des fleurs séchées »).')
+      return
+    }
+    setError(null)
+    setAiBusy('generate')
+    try {
+      // Le fond IA est opaque (pas de transparence à préserver) → JPEG, bien plus léger que le PNG.
+      const file = await shrinkToFile(bgFillImg, 'fond-ia.jpg', 1280, 'image/jpeg')
+      const img = await toImg(
+        await imgFromBlob(await enhanceImage(file, undefined, bgEditPrompt.trim(), 'edit', fmt.ar)),
+      )
+      setBgFillImg(img)
+      setBgMode('solid')
+      setBgFill('ia')
+      setBgEditPrompt('')
+      setSavedMsg('Fond retouché ✅')
+    } catch (e) {
+      setError(errorMessage(e))
+    } finally {
+      setAiBusy(null)
+    }
+  }
+
 
   // --- Rendu haute résolution (export) ---
   // `fmtKey` permet de rendre un autre format que celui affiché (export « toutes déclinaisons »).
@@ -1016,8 +1251,17 @@ export function AffichettePage() {
     canvas.width = w
     canvas.height = h
     const ctx = canvas.getContext('2d')!
-    // Fond de couleur (uni, dégradé choisi, ou dégradé enseigne)
-    if (bgMode === 'solid' && !bgGradient) {
+    // Fond : image IA plein cadre, couleur unie, dégradé, diagonale, ou dégradé enseigne.
+    if (bgMode === 'solid' && bgFill === 'ia' && bgFillImg) {
+      // Image générée par l'IA, cadrée « cover » (remplit tout le cadre, rognée si besoin).
+      const iw = bgFillImg.naturalWidth || bgFillImg.width
+      const ih = bgFillImg.naturalHeight || bgFillImg.height
+      const cover = Math.max(w / iw, h / ih)
+      const dw = iw * cover
+      const dh = ih * cover
+      ctx.drawImage(bgFillImg, (w - dw) / 2, (h - dh) / 2, dw, dh)
+    } else if (bgMode === 'solid' && (bgFill === 'uni' || bgFill === 'ia')) {
+      // 'ia' choisi mais pas encore généré → aplat neutre en attendant.
       ctx.fillStyle = solid
       ctx.fillRect(0, 0, w, h)
     } else {
@@ -1029,9 +1273,32 @@ export function AffichettePage() {
       const cx = w / 2
       const cy = h / 2
       const g = ctx.createLinearGradient(cx - dx * half, cy - dy * half, cx + dx * half, cy + dy * half)
-      g.addColorStop(0, bgMode === 'solid' ? solid : colors.c1)
-      g.addColorStop(1, bgMode === 'solid' ? bgColor2 : colors.c2)
+      const c1 = bgMode === 'solid' ? solid : colors.c1
+      const c2 = bgMode === 'solid' ? bgColor2 : colors.c2
+      if (bgMode === 'solid' && bgFill === 'diag') {
+        // Deux tons franc(s) le long de la diagonale : c1 uni jusqu'à s1, transition, c2 uni dès s2.
+        const s1 = Math.min(diagStart, diagEnd) / 100
+        const s2 = Math.max(diagStart, diagEnd) / 100
+        g.addColorStop(0, c1)
+        g.addColorStop(s1, c1)
+        g.addColorStop(s2, c2)
+        g.addColorStop(1, c2)
+      } else {
+        g.addColorStop(0, c1)
+        g.addColorStop(1, c2)
+      }
       ctx.fillStyle = g
+      ctx.fillRect(0, 0, w, h)
+    }
+    // Halo « spot » : dégradé radial clair centré sur le produit, posé sur le fond (sous le produit).
+    if (halo) {
+      const hcx = (bgImg ? bgPosX : 0.5) * w
+      const hcy = (bgImg ? bgPosY : 0.42) * h
+      const hr = Math.max(1, haloScale * w)
+      const hg = ctx.createRadialGradient(hcx, hcy, 0, hcx, hcy, hr)
+      hg.addColorStop(0, hexA(haloColor, haloOpacity))
+      hg.addColorStop(1, hexA(haloColor, 0))
+      ctx.fillStyle = hg
       ctx.fillRect(0, 0, w, h)
     }
     // Produit (calque déplaçable/pivotable), posé PAR-DESSUS le fond
@@ -1055,17 +1322,29 @@ export function AffichettePage() {
       ctx.fillStyle = grad
       ctx.fillRect(0, h * 0.35, w, h * 0.65)
     }
-    // Logo (haut-droite)
+    // Logo (haut-droite) — rendu STRICTEMENT identique à l'aperçu CSS (mêmes fractions de largeur, cqw) :
+    // la BOÎTE BLANCHE est ancrée à 5% du bord (comme content-box + top/right:5cqw), l'image est en
+    // retrait du padding, et cadrée « contain » (ratio préservé, pas d'étirement).
     if (showLogo && logoImg) {
-      const pad = Math.round(w * 0.05)
-      const lh = Math.round(w * 0.11)
-      const lw = Math.min(lh * (logoImg.width / logoImg.height), w * 0.34)
-      const lx = w - pad - lw
+      const pad = w * 0.05 // marge au bord (5cqw)
+      const bx = w * 0.015 * logoScale // padding interne horizontal (1.5cqw)
+      const by = w * 0.01 * logoScale // padding interne vertical (1cqw)
+      const ch = w * 0.11 * logoScale // hauteur de la zone image (11cqw)
+      const cwMax = w * 0.34 * logoScale // largeur max de la zone image (34cqw)
+      const contentW = Math.min(ch * (logoImg.width / logoImg.height), cwMax)
+      const boxW = contentW + bx * 2
+      const boxH = ch + by * 2
+      const boxX = w - pad - boxW
+      const boxY = pad
       ctx.fillStyle = 'rgba(255,255,255,0.92)'
       ctx.beginPath()
-      ctx.roundRect(lx - 12, pad - 8, lw + 24, lh + 16, 14)
+      ctx.roundRect(boxX, boxY, boxW, boxH, w * 0.016 * logoScale)
       ctx.fill()
-      ctx.drawImage(logoImg, lx, pad, lw, lh)
+      // « contain » : on ajuste au côté le plus contraint et on centre dans la zone de contenu.
+      const s = Math.min(contentW / logoImg.width, ch / logoImg.height)
+      const dw = logoImg.width * s
+      const dh = logoImg.height * s
+      ctx.drawImage(logoImg, boxX + bx + (contentW - dw) / 2, boxY + by + (ch - dh) / 2, dw, dh)
     }
     // Blocs de texte
     for (const b of blocks) {
@@ -1091,17 +1370,32 @@ export function AffichettePage() {
       }
       if (b.bg) {
         const p = fontSize * 0.3
-        let bx = x
-        if (b.align === 'center') bx = x + (maxW - mw) / 2
-        else if (b.align === 'right') bx = x + (maxW - mw)
+        const radius = b.bgSharp ? 0 : fontSize * 0.28
+        let rectX: number
+        let rectW: number
+        if (b.bgFull) {
+          // Pleine largeur : bande sur toute la largeur du cadre (indépendante de l'alignement).
+          rectX = x
+          rectW = maxW
+        } else {
+          let bx = x
+          if (b.align === 'center') bx = x + (maxW - mw) / 2
+          else if (b.align === 'right') bx = x + (maxW - mw)
+          rectX = bx - p
+          rectW = mw + p * 2
+        }
         ctx.fillStyle = b.bg
         ctx.beginPath()
-        ctx.roundRect(bx - p, y - p, mw + p * 2, lines.length * lineH + p * 2, fontSize * 0.28)
+        ctx.roundRect(rectX, y - p, rectW, lines.length * lineH + p * 2, radius)
         ctx.fill()
       }
       ctx.fillStyle = b.color
       ctx.textAlign = b.align
-      const tx = b.align === 'center' ? x + maxW / 2 : b.align === 'right' ? x + maxW : x
+      // Bande pleine largeur : on rentre le texte du même retrait que la pastille de l'aperçu CSS
+      // (sinon il colle au bord dans l'export alors qu'il est en retrait à l'écran).
+      const inset = b.bg && b.bgFull ? fontSize * 0.3 : 0
+      const tx =
+        b.align === 'center' ? x + maxW / 2 : b.align === 'right' ? x + maxW - inset : x + inset
       let ty = y
       for (const l of lines) {
         ctx.fillText(l, tx, ty)
@@ -1127,6 +1421,7 @@ export function AffichettePage() {
   }
 
   const downloadPng = async (fmtKey: Fmt = format) => {
+    await fontsReady()
     const blob = await canvasToBlob(renderToCanvas(fmtKey))
     if (blob) downloadBlob(blob, `affichette-${fmtKey}.png`)
   }
@@ -1136,7 +1431,11 @@ export function AffichettePage() {
     setError(null)
     setPdfBusy(true)
     try {
-      const dataUrl = renderToCanvas(fmtKey).toDataURL('image/png')
+      await fontsReady()
+      const canvas = renderToCanvas(fmtKey)
+      // Compensation impression : on éclaircit le rendu du PDF (et lui seul) pour contrer le CMJN.
+      applyPrintGamma(canvas, printGamma)
+      const dataUrl = canvas.toDataURL('image/png')
       const blob = await buildPosterPdfBlob(dataUrl, size)
       downloadBlob(blob, `affichette-${fmtKey}.pdf`)
     } catch (e) {
@@ -1145,8 +1444,28 @@ export function AffichettePage() {
       setPdfBusy(false)
     }
   }
+  /**
+   * Export PDF DeviceCMYK (test) : le visuel est stocké en CMJN, pour voir si le tirage sort plus
+   * proche de l'écran qu'avec le PDF RGB (dont la conversion CMJN est faite par l'imprimante).
+   */
+  const downloadPdfCmyk = async (fmtKey: Fmt = format) => {
+    const size = FORMATS[fmtKey].size
+    if (!size) return
+    setError(null)
+    setPdfCmykBusy(true)
+    try {
+      await fontsReady()
+      const blob = await buildPosterPdfCmykBlob(renderToCanvas(fmtKey), size, printGamma)
+      downloadBlob(blob, `affichette-${fmtKey}-cmjn.pdf`)
+    } catch (e) {
+      setError(errorMessage(e))
+    } finally {
+      setPdfCmykBusy(false)
+    }
+  }
   /** Exporte un PNG pour CHAQUE déclinaison (réseaux + impression). */
   const exportAllPng = async () => {
+    await fontsReady()
     for (const key of Object.keys(FORMATS) as Fmt[]) {
       const blob = await canvasToBlob(renderToCanvas(key))
       if (blob) downloadBlob(blob, `affichette-${key}.png`)
@@ -1167,6 +1486,12 @@ export function AffichettePage() {
       blocks,
       veil,
       showLogo,
+      logoScale,
+      halo,
+      haloColor,
+      haloOpacity,
+      haloScale,
+      articleId: articleId === '' ? null : articleId,
       colors,
       bgDataUrl: bgToDataUrl(),
       bgMode,
@@ -1176,22 +1501,34 @@ export function AffichettePage() {
       bgScale,
       bgPosX,
       bgPosY,
-      bgGradient,
+      bgFill,
+      // `bgGradient` conservé pour compat des affiches enregistrées avant l'ajout de `bgFill`.
+      bgGradient: bgFill !== 'uni',
       bgColor2,
       gradAngle,
+      diagStart,
+      diagEnd,
+      bgFillDataUrl: bgFillImg?.src ?? null,
+      bgAiPrompt,
+      improveCtx,
     }
     // On garde les 6 dernières (le fond en dataURL est lourd → quota localStorage).
     // On dédoublonne par communication (réenregistrer la même affiche remplace l'ancienne).
     let next = [entry, ...savedAffiches.filter((a) => a.commId == null || a.commId !== commId)].slice(0, 6)
+    let stored = false
     while (next.length > 0) {
       try {
         localStorage.setItem(AFFICHES_KEY, JSON.stringify(next))
+        stored = true
         break
       } catch {
         next = next.slice(0, next.length - 1) // quota dépassé : on retire la plus ancienne
       }
     }
-    setSavedAffiches(next)
+    // Si même l'entrée seule dépasse le quota (rien de stocké), on garde l'état précédent :
+    // sinon l'état React se viderait alors que localStorage garde l'ancienne liste (désync).
+    // L'affiche est de toute façon déjà sauvegardée côté serveur.
+    if (stored) setSavedAffiches(next)
   }
 
   /** Restaure un état éditable (fond BRUT + blocs + réglages) — commun au cache local et au serveur. */
@@ -1200,6 +1537,12 @@ export function AffichettePage() {
     blocks?: Block[]
     veil?: number
     showLogo?: boolean
+    logoScale?: number
+    halo?: boolean
+    haloColor?: string
+    haloOpacity?: number
+    haloScale?: number
+    articleId?: number | null
     colors?: { c1: string; c2: string }
     bgDataUrl?: string | null
     bgMode?: BgMode
@@ -1210,8 +1553,15 @@ export function AffichettePage() {
     bgPosX?: number
     bgPosY?: number
     bgGradient?: boolean
+    bgFill?: BgFill
     bgColor2?: string
     gradAngle?: number
+    diagStart?: number
+    diagEnd?: number
+    bgFillDataUrl?: string | null
+    bgAiPrompt?: string
+    improveCtx?: string
+    afficheName?: string
     caption?: string
     socialPlatform?: string
     tone?: string
@@ -1223,6 +1573,13 @@ export function AffichettePage() {
     if (Array.isArray(s.blocks)) setBlocks(s.blocks)
     if (typeof s.veil === 'number') setVeil(s.veil)
     if (typeof s.showLogo === 'boolean') setShowLogo(s.showLogo)
+    setLogoScale(typeof s.logoScale === 'number' ? s.logoScale : 1.5)
+    setHalo(!!s.halo)
+    if (typeof s.haloColor === 'string') setHaloColor(s.haloColor)
+    if (typeof s.haloOpacity === 'number') setHaloOpacity(s.haloOpacity)
+    if (typeof s.haloScale === 'number') setHaloScale(s.haloScale)
+    // Toujours défini (jamais laissé « en mémoire » d'une affiche précédente → évite un mauvais lien produit).
+    setArticleId(typeof s.articleId === 'number' ? s.articleId : '')
     if (s.colors && s.colors.c1 && s.colors.c2) setColors(s.colors)
     if (typeof s.caption === 'string') setCaption(s.caption)
     if (s.socialPlatform && PLATFORMS.includes(s.socialPlatform)) setPlatform(s.socialPlatform)
@@ -1234,9 +1591,23 @@ export function AffichettePage() {
     setBgScale(typeof s.bgScale === 'number' ? s.bgScale : 0.72)
     setBgPosX(typeof s.bgPosX === 'number' ? s.bgPosX : 0.5)
     setBgPosY(typeof s.bgPosY === 'number' ? s.bgPosY : 0.42)
-    setBgGradient(!!s.bgGradient)
+    // Repli : les affiches enregistrées avant `bgFill` ne connaissent que `bgGradient` (booléen).
+    setBgFill(s.bgFill ?? (s.bgGradient ? 'grad' : 'uni'))
     if (typeof s.bgColor2 === 'string') setBgColor2(s.bgColor2)
     if (typeof s.gradAngle === 'number') setGradAngle(s.gradAngle)
+    if (typeof s.diagStart === 'number') setDiagStart(s.diagStart)
+    if (typeof s.diagEnd === 'number') setDiagEnd(s.diagEnd)
+    setBgAiPrompt(typeof s.bgAiPrompt === 'string' ? s.bgAiPrompt : '')
+    setImproveCtx(typeof s.improveCtx === 'string' ? s.improveCtx : DEFAULT_IMPROVE_CTX)
+    setAfficheName(typeof s.afficheName === 'string' ? s.afficheName : '')
+    // Fond IA : recharge l'image générée (plein cadre) si elle a été enregistrée.
+    if (s.bgFillDataUrl) {
+      const bgi = new Image()
+      bgi.onload = () => setBgFillImg(bgi)
+      bgi.src = s.bgFillDataUrl
+    } else {
+      setBgFillImg(null)
+    }
     setImgSel(false)
     // Produit : image transparente posée sur le fond de couleur (mode 'solid' derrière).
     if (s.bgDataUrl) {
@@ -1263,15 +1634,24 @@ export function AffichettePage() {
     setSavedMsg(null)
     setSaving(true)
     try {
+      await fontsReady()
       const blob = await canvasToBlob(renderToCanvas())
-      const headline = blocks[0]?.text?.slice(0, 200) || 'Affichette'
+      // Titre affiché dans la galerie : nom personnalisé si donné, sinon 1er texte de l'affiche.
+      const headline = afficheName.trim() || blocks[0]?.text?.slice(0, 200) || 'Affichette'
       // État éditable (fond BRUT + blocs + réglages) envoyé AU SERVEUR → édition depuis n'importe où.
       const afficheState = JSON.stringify({
         v: 1,
+        afficheName,
         format,
         blocks,
         veil,
         showLogo,
+        logoScale,
+        halo,
+        haloColor,
+        haloOpacity,
+        haloScale,
+        articleId: articleId === '' ? null : articleId,
         colors,
         bgDataUrl: bgToDataUrl(),
         bgMode,
@@ -1281,30 +1661,41 @@ export function AffichettePage() {
         bgScale,
         bgPosX,
         bgPosY,
-        bgGradient,
+        bgFill,
+        bgGradient: bgFill !== 'uni', // compat des états enregistrés avant `bgFill`
         bgColor2,
         gradAngle,
+        diagStart,
+        diagEnd,
+        bgFillDataUrl: bgFillImg?.src ?? null,
+        bgAiPrompt,
+        improveCtx,
         caption,
         socialPlatform: platform,
         tone,
         length,
       })
-      const saved = await saveCommunication(
-        {
-          headline,
-          articleId: articleId === '' ? null : articleId,
-          platform: `Affichette ${fmt.label}`,
-          tone,
-          length,
-          caption: caption || null,
-          afficheState,
-        },
-        blob,
-      )
+      const input = {
+        headline,
+        articleId: articleId === '' ? null : articleId,
+        platform: `Affichette ${fmt.label}`,
+        tone,
+        length,
+        caption: caption || null,
+        afficheState,
+      }
+      // Édition d'une affiche existante → PUT (mise à jour) ; sinon POST (création).
+      const wasEditing = editCommId != null
+      const saved =
+        editCommId != null
+          ? await updateCommunication(editCommId, input, blob)
+          : await saveCommunication(input, blob)
+      // On retient l'id : ré-enregistrer dans la même session met à jour au lieu de dupliquer.
+      setEditCommId(saved.id)
       // Cache local aussi (réouverture hors-ligne / rapide via le déroulant).
       persistEditable(headline, saved.id)
       refreshArchives()
-      setSavedMsg('Affichette enregistrée (et réouvrable pour édition).')
+      setSavedMsg(wasEditing ? 'Affichette mise à jour.' : 'Affichette enregistrée (et réouvrable pour édition).')
     } catch (e) {
       setError(errorMessage(e))
     } finally {
@@ -1316,14 +1707,27 @@ export function AffichettePage() {
   // (zoomable via transform:scale) ; les fonds uni/enseigne restent directement sur la scène.
   const stageBg =
     bgMode === 'solid'
-      ? { background: bgGradient ? `linear-gradient(${gradAngle}deg, ${solid}, ${bgColor2})` : solid }
+      ? bgFill === 'ia' && bgFillImg
+        ? { backgroundImage: `url(${bgFillImg.src})`, backgroundSize: 'cover', backgroundPosition: 'center' }
+        : {
+            background:
+              bgFill === 'uni' || bgFill === 'ia'
+                ? solid
+                : bgFill === 'diag'
+                  ? `linear-gradient(${gradAngle}deg, ${solid} 0%, ${solid} ${Math.min(diagStart, diagEnd)}%, ${bgColor2} ${Math.max(diagStart, diagEnd)}%, ${bgColor2} 100%)`
+                  : `linear-gradient(${gradAngle}deg, ${solid}, ${bgColor2})`,
+          }
       : bgMode === 'brand'
         ? { background: `linear-gradient(${colors.c1}, ${colors.c2})` }
         : {}
 
   // Scène éditable (aperçu + manipulation des textes). Réutilisée dans plusieurs étapes.
   const renderStage = () => (
-    <Box sx={{ display: 'flex', justifyContent: 'center', bgcolor: 'action.hover', borderRadius: 1, p: 1 }}>
+    // alignItems: flex-start → la scène garde son ratio (aspectRatio) et ne s'étire pas verticalement
+    // quand la colonne est haute (sinon elle suit la hauteur du formulaire voisin et se déforme).
+    <Box
+      sx={{ display: 'flex', justifyContent: 'center', alignItems: 'flex-start', bgcolor: 'action.hover', borderRadius: 1, p: 1 }}
+    >
       <Box
         ref={stageRef}
         onPointerDown={onStagePointerDown}
@@ -1344,6 +1748,18 @@ export function AffichettePage() {
           ...stageBg,
         }}
       >
+        {halo && (
+          <Box
+            sx={{
+              position: 'absolute',
+              inset: 0,
+              pointerEvents: 'none',
+              background: `radial-gradient(circle ${haloScale * 100}cqw at ${(bgImg ? bgPosX : 0.5) * 100}% ${
+                (bgImg ? bgPosY : 0.42) * 100
+              }%, ${hexA(haloColor, haloOpacity)} 0%, ${hexA(haloColor, 0)} 100%)`,
+            }}
+          />
+        )}
         {bgImg && (
           <Box
             onPointerDown={(e) => {
@@ -1448,14 +1864,18 @@ export function AffichettePage() {
             alt=""
             sx={{
               position: 'absolute',
-              top: '4%',
-              right: '5%',
-              maxWidth: '32%',
-              maxHeight: '14%',
+              // Unités cqw (= % de la largeur de la scène) : dimensionnement IDENTIQUE au canvas/PDF.
+              top: '5cqw',
+              right: '5cqw',
+              height: `${11 * logoScale}cqw`,
+              maxWidth: `${34 * logoScale}cqw`,
+              width: 'auto',
               objectFit: 'contain',
+              boxSizing: 'content-box',
               bgcolor: 'rgba(255,255,255,0.92)',
-              borderRadius: 1,
-              p: 0.5,
+              borderRadius: `${1.6 * logoScale}cqw`,
+              px: `${1.5 * logoScale}cqw`,
+              py: `${1 * logoScale}cqw`,
               pointerEvents: 'none',
             }}
           />
@@ -1535,7 +1955,16 @@ export function AffichettePage() {
                   whiteSpace: 'pre-wrap',
                   outline: 'none',
                   cursor: editingId === b.id ? 'text' : 'inherit',
-                  ...(b.bg ? { bgcolor: b.bg, borderRadius: 1, px: 0.6, py: 0.2 } : {}),
+                  ...(b.bg
+                    ? {
+                        bgcolor: b.bg,
+                        borderRadius: b.bgSharp ? 0 : 1,
+                        px: 0.6,
+                        py: 0.2,
+                        // Pleine largeur : la pastille devient une bande qui remplit tout le cadre.
+                        ...(b.bgFull ? { display: 'block', width: '100%' } : {}),
+                      }
+                    : {}),
                 }}
                 style={{ fontSize: `${b.fontPct * 100}cqw` }}
               >
@@ -1744,6 +2173,24 @@ export function AffichettePage() {
             </Button>
           )}
         </Stack>
+        {selected.bg && (
+          <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
+            <Button
+              size="small"
+              variant={selected.bgFull ? 'contained' : 'outlined'}
+              onClick={() => updateBlock(selected.id, { bgFull: !selected.bgFull })}
+            >
+              Pleine largeur
+            </Button>
+            <Button
+              size="small"
+              variant={selected.bgSharp ? 'contained' : 'outlined'}
+              onClick={() => updateBlock(selected.id, { bgSharp: !selected.bgSharp })}
+            >
+              Coins carrés
+            </Button>
+          </Stack>
+        )}
         <Button
           size="small"
           color="error"
@@ -1806,6 +2253,17 @@ export function AffichettePage() {
                       Éditer
                     </Button>
                   )}
+                  {c.hasAfficheState && (
+                    <Tooltip title="Réutiliser comme modèle (police + placement) dans une nouvelle affiche">
+                      <Button
+                        size="small"
+                        startIcon={<ContentCopyIcon />}
+                        onClick={() => void openCommunication(c.id, true)}
+                      >
+                        Modèle
+                      </Button>
+                    </Tooltip>
+                  )}
                   <Tooltip title="Supprimer">
                     <IconButton size="small" color="error" onClick={() => void onDeleteArchive(c.id)}>
                       <DeleteIcon fontSize="small" />
@@ -1824,7 +2282,7 @@ export function AffichettePage() {
         fullScreen
         open={wizardOpen}
         onClose={() => setWizardOpen(false)}
-        PaperProps={{ sx: { display: 'flex', flexDirection: 'column', overflow: 'hidden' } }}
+        slotProps={{ paper: { sx: { display: 'flex', flexDirection: 'column', overflow: 'hidden' } } }}
       >
         <AppBar position="static" color="default" elevation={1} sx={{ flexShrink: 0 }}>
           <Toolbar sx={{ gap: 1 }}>
@@ -1890,7 +2348,7 @@ export function AffichettePage() {
                 exclusive
                 fullWidth
                 value={srcMode}
-                onChange={(_, v: 'catalogue' | 'import' | 'photo' | null) => v && setSrcMode(v)}
+                onChange={(_, v: 'catalogue' | 'import' | null) => v && setSrcMode(v)}
                 sx={{ flexWrap: 'wrap' }}
               >
                 <ToggleButton value="catalogue">
@@ -1898,9 +2356,6 @@ export function AffichettePage() {
                 </ToggleButton>
                 <ToggleButton value="import">
                   <ImageIcon sx={{ mr: 1 }} /> Importer une image
-                </ToggleButton>
-                <ToggleButton value="photo">
-                  <PhotoCamera sx={{ mr: 1 }} /> Prendre une photo
                 </ToggleButton>
               </ToggleButtonGroup>
 
@@ -1963,11 +2418,6 @@ export function AffichettePage() {
                   Importer une ou plusieurs images
                 </Button>
               )}
-              {srcMode === 'photo' && (
-                <Button variant="outlined" startIcon={<PhotoCamera />} onClick={() => photoInputRef.current?.click()} sx={{ alignSelf: 'flex-start' }}>
-                  Prendre une photo
-                </Button>
-              )}
 
               {menuFiles.length > 0 && (
                 <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', gap: 1 }}>
@@ -2003,70 +2453,66 @@ export function AffichettePage() {
                   void onImportFiles(list)
                 }}
               />
-              <input
-                ref={photoInputRef}
-                type="file"
-                accept="image/*"
-                capture="environment"
-                hidden
-                onChange={(e) => {
-                  const list = Array.from(e.target.files ?? [])
-                  e.target.value = ''
-                  void onImportFiles(list)
-                }}
-              />
             </Stack>
           )}
 
           {/* ÉTAPE 2 — Fond aux couleurs de l'enseigne + détourage IA */}
           {step === 1 && (
-            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'minmax(0, 1fr) 360px' }, gap: 3 }}>
+            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'minmax(0, 1fr) 360px' }, gap: 3, alignItems: 'start' }}>
               {renderStage()}
               <Stack spacing={2}>
                 <Typography variant="h6">2 · Fond & détourage</Typography>
                 <ToggleButtonGroup
                   size="small"
                   exclusive
-                  value={bgGradient ? 'grad' : 'uni'}
-                  onChange={(_, v) => {
+                  value={bgFill}
+                  onChange={(_, v: BgFill | null) => {
                     if (!v) return
-                    setBgGradient(v === 'grad')
+                    setBgFill(v)
                     setBgMode('solid') // le fond choisi remplace le dégradé enseigne par défaut
+                    // La diagonale n'a de sens qu'en biais : bascule à 135° si on est sur un angle droit.
+                    if (v === 'diag' && [0, 90, 180, 270, 360].includes(gradAngle)) setGradAngle(135)
                   }}
                 >
                   <ToggleButton value="uni">Fond uni</ToggleButton>
                   <ToggleButton value="grad">Dégradé</ToggleButton>
+                  <ToggleButton value="diag">Diagonale</ToggleButton>
+                  <ToggleButton value="ia">
+                    <AutoAwesomeIcon sx={{ mr: 0.5, fontSize: 18 }} /> IA
+                  </ToggleButton>
                 </ToggleButtonGroup>
-                <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
-                  <TextField
-                    type="color"
-                    size="small"
-                    label={bgGradient ? 'Couleur 1' : 'Couleur du fond'}
-                    value={bgColor}
-                    onChange={(e) => {
-                      setBgColor(e.target.value)
-                      setSolid(e.target.value)
-                      setBgMode('solid')
-                    }}
-                    slotProps={{ inputLabel: { shrink: true } }}
-                    sx={{ width: 108 }}
-                  />
-                  {bgGradient && (
+                {bgFill !== 'ia' && (
+                  <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
                     <TextField
                       type="color"
                       size="small"
-                      label="Couleur 2"
-                      value={bgColor2}
-                      onChange={(e) => setBgColor2(e.target.value)}
+                      label={bgFill === 'uni' ? 'Couleur du fond' : 'Couleur 1'}
+                      value={bgColor}
+                      onChange={(e) => {
+                        setBgColor(e.target.value)
+                        setSolid(e.target.value)
+                        setBgMode('solid')
+                      }}
                       slotProps={{ inputLabel: { shrink: true } }}
                       sx={{ width: 108 }}
                     />
-                  )}
-                </Stack>
-                {bgGradient && (
+                    {(bgFill === 'grad' || bgFill === 'diag') && (
+                      <TextField
+                        type="color"
+                        size="small"
+                        label="Couleur 2"
+                        value={bgColor2}
+                        onChange={(e) => setBgColor2(e.target.value)}
+                        slotProps={{ inputLabel: { shrink: true } }}
+                        sx={{ width: 108 }}
+                      />
+                    )}
+                  </Stack>
+                )}
+                {(bgFill === 'grad' || bgFill === 'diag') && (
                   <Box>
                     <Typography variant="caption" color="text.secondary">
-                      Sens du dégradé ({gradAngle}°)
+                      {bgFill === 'diag' ? 'Angle de la diagonale' : 'Sens du dégradé'} ({gradAngle}°)
                     </Typography>
                     <Slider
                       value={gradAngle}
@@ -2079,32 +2525,103 @@ export function AffichettePage() {
                     />
                   </Box>
                 )}
-                <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', gap: 1 }}>
-                  <Button
-                    variant="contained"
-                    startIcon={aiBusy !== null ? <CircularProgress size={16} color="inherit" /> : <AutoAwesomeIcon />}
-                    onClick={() => void detourer()}
-                    disabled={aiBusy !== null}
-                  >
-                    Détourer
-                  </Button>
-                  <Button
-                    variant="outlined"
-                    startIcon={<AutoAwesomeIcon />}
-                    onClick={() => {
-                      setImproveCtx('')
-                      setImproveAsk(true)
-                    }}
-                    disabled={aiBusy !== null}
-                  >
-                    Détourer &amp; améliorer la photo
-                  </Button>
-                </Stack>
-                <Typography variant="caption" color="text.secondary">
-                  « Détourer » isole le produit et le pose sur la couleur exacte (photo gardée telle quelle).
-                  « Détourer &amp; améliorer » embellit en plus la photo (lumière, couleurs, appétissant)
-                  selon le contexte que tu décris.
-                </Typography>
+                {bgFill === 'diag' && (
+                  <Box>
+                    <Typography variant="caption" color="text.secondary">
+                      Bascule des couleurs ({Math.min(diagStart, diagEnd)}% → {Math.max(diagStart, diagEnd)}%) —
+                      rapproche les curseurs pour une coupe nette, écarte-les pour un fondu.
+                    </Typography>
+                    <Slider
+                      value={[diagStart, diagEnd]}
+                      onChange={(_, v) => {
+                        if (!Array.isArray(v)) return
+                        setDiagStart(v[0])
+                        setDiagEnd(v[1])
+                      }}
+                      min={0}
+                      max={100}
+                      step={1}
+                      marks={[{ value: 50 }]}
+                      valueLabelDisplay="auto"
+                      size="small"
+                    />
+                  </Box>
+                )}
+                {bgFill === 'ia' && (
+                  <Stack spacing={1}>
+                    <TextField
+                      label="Décris le fond que tu veux"
+                      placeholder="Ex. comptoir en bois chaleureux, lumière douce du matin, arrière-plan légèrement flou"
+                      value={bgAiPrompt}
+                      onChange={(e) => setBgAiPrompt(e.target.value)}
+                      multiline
+                      minRows={2}
+                      size="small"
+                      fullWidth
+                    />
+                    <Button
+                      variant="contained"
+                      startIcon={aiBusy === 'generate' ? <CircularProgress size={16} color="inherit" /> : <AutoAwesomeIcon />}
+                      onClick={() => void generateAiBackground()}
+                      disabled={aiBusy !== null || !bgAiPrompt.trim()}
+                      sx={{ alignSelf: 'flex-start' }}
+                    >
+                      {bgFillImg ? 'Régénérer le fond' : 'Générer le fond'}
+                    </Button>
+                    {bgImg && (
+                      <Button
+                        variant="outlined"
+                        startIcon={aiBusy === 'generate' ? <CircularProgress size={16} color="inherit" /> : <AutoAwesomeIcon />}
+                        onClick={() => void generateAiBackgroundWithProduct()}
+                        disabled={aiBusy !== null || !bgAiPrompt.trim()}
+                        sx={{ alignSelf: 'flex-start' }}
+                      >
+                        Régénérer le fond avec l'image détourée
+                      </Button>
+                    )}
+                    <Typography variant="caption" color="text.secondary">
+                      « Générer le fond » crée une image à partir de ta seule description. « …avec l'image détourée »
+                      met en plus ton produit détouré en scène dans le décor décrit (il est alors intégré à l'image).
+                    </Typography>
+                    {bgFillImg && (
+                      <>
+                        <Divider sx={{ my: 0.5 }}>Retouche</Divider>
+                        <TextField
+                          label="Modifier ce fond (retouche IA)"
+                          placeholder="Ex. plus sombre, ajoute des fleurs séchées, ambiance plus chaleureuse, enlève l'arrière-plan flou"
+                          value={bgEditPrompt}
+                          onChange={(e) => setBgEditPrompt(e.target.value)}
+                          multiline
+                          minRows={2}
+                          size="small"
+                          fullWidth
+                        />
+                        <Button
+                          variant="outlined"
+                          startIcon={aiBusy === 'generate' ? <CircularProgress size={16} color="inherit" /> : <AutoAwesomeIcon />}
+                          onClick={() => void editAiBackground()}
+                          disabled={aiBusy !== null || !bgEditPrompt.trim()}
+                          sx={{ alignSelf: 'flex-start' }}
+                        >
+                          Modifier le fond
+                        </Button>
+                        <Typography variant="caption" color="text.secondary">
+                          Applique une modification à l'image déjà générée (part de cette image, garde la composition)
+                          — enchaîne les retouches pour affiner.
+                        </Typography>
+                      </>
+                    )}
+                  </Stack>
+                )}
+                <Button
+                  variant="contained"
+                  startIcon={aiBusy !== null ? <CircularProgress size={16} color="inherit" /> : <AutoAwesomeIcon />}
+                  onClick={() => setDetourAsk(true)}
+                  disabled={aiBusy !== null}
+                  sx={{ alignSelf: 'flex-start' }}
+                >
+                  Détourer &amp; améliorer la photo
+                </Button>
 
                 {bgImg && (
                   <>
@@ -2162,13 +2679,84 @@ export function AffichettePage() {
                   </Typography>
                   <Slider value={veil} onChange={(_, v) => setVeil(Array.isArray(v) ? v[0] : v)} min={0} max={0.8} step={0.05} size="small" />
                 </Box>
+                <Box>
+                  <Stack direction="row" spacing={1} sx={{ alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
+                    <Typography variant="subtitle2" color="text.secondary">
+                      Halo (spot derrière le produit)
+                    </Typography>
+                    <Button size="small" variant={halo ? 'contained' : 'outlined'} onClick={() => setHalo(!halo)}>
+                      {halo ? 'Affiché' : 'Masqué'}
+                    </Button>
+                  </Stack>
+                  {halo && (
+                    <>
+                      <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap', gap: 1, mb: 0.5 }}>
+                        <TextField
+                          type="color"
+                          size="small"
+                          label="Couleur"
+                          value={haloColor}
+                          onChange={(e) => setHaloColor(e.target.value)}
+                          slotProps={{ inputLabel: { shrink: true } }}
+                          sx={{ width: 90 }}
+                        />
+                        <Typography variant="caption" color="text.secondary">
+                          Centré sur le produit — déplace le produit pour déplacer le halo.
+                        </Typography>
+                      </Stack>
+                      <Typography variant="caption" color="text.secondary">
+                        Taille — {Math.round(haloScale * 100)}%
+                      </Typography>
+                      <Slider value={haloScale} onChange={(_, v) => setHaloScale(Array.isArray(v) ? v[0] : v)} min={0.15} max={0.9} step={0.05} size="small" />
+                      <Typography variant="caption" color="text.secondary">
+                        Intensité — {Math.round(haloOpacity * 100)}%
+                      </Typography>
+                      <Slider value={haloOpacity} onChange={(_, v) => setHaloOpacity(Array.isArray(v) ? v[0] : v)} min={0.1} max={1} step={0.05} size="small" />
+                    </>
+                  )}
+                </Box>
+                <Box>
+                  <Stack direction="row" spacing={1} sx={{ alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
+                    <Typography variant="subtitle2" color="text.secondary">
+                      Logo
+                    </Typography>
+                    <Button
+                      size="small"
+                      variant={showLogo ? 'contained' : 'outlined'}
+                      onClick={() => setShowLogo(!showLogo)}
+                    >
+                      {showLogo ? 'Affiché' : 'Masqué'}
+                    </Button>
+                  </Stack>
+                  {showLogo && logoImg && (
+                    <>
+                      <Typography variant="caption" color="text.secondary">
+                        Taille du logo — {Math.round(logoScale * 100)}%
+                      </Typography>
+                      <Slider
+                        value={logoScale}
+                        onChange={(_, v) => setLogoScale(Array.isArray(v) ? v[0] : v)}
+                        min={0.5}
+                        max={2}
+                        step={0.1}
+                        marks={[{ value: 1 }]}
+                        size="small"
+                      />
+                    </>
+                  )}
+                  {showLogo && !logoImg && (
+                    <Typography variant="caption" color="text.secondary">
+                      Aucun logo dans la charte — ajoute-le dans les réglages de l'enseigne.
+                    </Typography>
+                  )}
+                </Box>
               </Stack>
             </Box>
           )}
 
           {/* ÉTAPE 3 — Textes */}
           {step === 2 && (
-            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'minmax(0, 1fr) 360px' }, gap: 3 }}>
+            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'minmax(0, 1fr) 360px' }, gap: 3, alignItems: 'start' }}>
               {renderStage()}
               <Stack spacing={2}>
                 <Typography variant="h6">3 · Ajoute et place tes textes</Typography>
@@ -2180,34 +2768,6 @@ export function AffichettePage() {
                     Réinitialiser
                   </Button>
                 </Stack>
-                <TextField
-                  size="small"
-                  fullWidth
-                  multiline
-                  maxRows={3}
-                  label="Sujet de l’affiche (pour l’IA)"
-                  placeholder="Ex. nouveauté croissant pistache à 1,90 €, offre du week-end…"
-                  value={aiPrompt}
-                  onChange={(e) => setAiPrompt(e.target.value)}
-                />
-                <Button
-                  size="small"
-                  variant="outlined"
-                  startIcon={textBusy ? <CircularProgress size={16} /> : <AutoAwesomeIcon />}
-                  onClick={() => void generateText()}
-                  disabled={textBusy}
-                  sx={{ alignSelf: 'flex-start' }}
-                >
-                  Générer des accroches (IA)
-                </Button>
-                {aiSlogans.length > 0 && (
-                  <Stack direction="row" spacing={0.5} sx={{ flexWrap: 'wrap', gap: 0.5 }}>
-                    {aiSlogans.map((s, i) => (
-                      <Chip key={i} icon={<TextFieldsIcon />} label={s} size="small" onClick={() => addTextBlock(s)} />
-                    ))}
-                  </Stack>
-                )}
-                <Divider />
                 <Typography variant="subtitle2" color="text.secondary">
                   Texte sélectionné
                 </Typography>
@@ -2218,10 +2778,19 @@ export function AffichettePage() {
 
           {/* ÉTAPE 4 — Export + légende réseaux */}
           {step === 3 && (
-            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'minmax(0, 1fr) 360px' }, gap: 3 }}>
+            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'minmax(0, 1fr) 360px' }, gap: 3, alignItems: 'start' }}>
               {renderStage()}
               <Stack spacing={2}>
                 <Typography variant="h6">4 · Exporte tes déclinaisons</Typography>
+                <TextField
+                  size="small"
+                  fullWidth
+                  label="Nom de l’affiche"
+                  placeholder="Ex. Menu Pause fraîcheur — juillet"
+                  helperText="Sert à retrouver l’affiche dans « Mes affiches ». N’apparaît pas sur le visuel."
+                  value={afficheName}
+                  onChange={(e) => setAfficheName(e.target.value)}
+                />
                 <ToggleButtonGroup size="small" exclusive value={format} onChange={(_, v) => v && setFormat(v)} sx={{ flexWrap: 'wrap' }}>
                   {(Object.keys(FORMATS) as Fmt[]).map((f) => (
                     <ToggleButton key={f} value={f}>
@@ -2246,6 +2815,18 @@ export function AffichettePage() {
                       PDF ({fmt.label})
                     </Button>
                   )}
+                  {fmt.print && (
+                    <Tooltip title="PDF où les couleurs sont déjà en CMJN (essai pour un tirage plus fidèle)">
+                      <Button
+                        variant="outlined"
+                        startIcon={pdfCmykBusy ? <CircularProgress size={16} /> : <PictureAsPdfIcon />}
+                        onClick={() => void downloadPdfCmyk()}
+                        disabled={pdfCmykBusy}
+                      >
+                        PDF CMJN (test)
+                      </Button>
+                    </Tooltip>
+                  )}
                   <Button
                     variant="outlined"
                     startIcon={saving ? <CircularProgress size={16} /> : <SaveIcon />}
@@ -2256,32 +2837,66 @@ export function AffichettePage() {
                   </Button>
                 </Stack>
 
+                {fmt.print && (
+                  <Box>
+                    <Typography variant="caption" color="text.secondary">
+                      Compensation impression (CMJN) — {Math.round((printGamma - 1) * 100)}%
+                    </Typography>
+                    <Slider
+                      value={printGamma}
+                      onChange={(_, v) => setPrintGamma(Array.isArray(v) ? v[0] : v)}
+                      min={1}
+                      max={1.4}
+                      step={0.02}
+                      marks={[{ value: 1 }, { value: 1.18 }]}
+                      size="small"
+                    />
+                    <Typography variant="caption" color="text.secondary">
+                      Éclaircit le PDF pour contrer l'assombrissement à l'impression (0 % = aucune).
+                      N'affecte pas les PNG (écran).
+                    </Typography>
+                  </Box>
+                )}
+
                 <Divider />
                 <Typography variant="subtitle2" color="text.secondary">
                   Légende pour les réseaux
                 </Typography>
-                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
-                  <TextField select size="small" label="Réseau" value={platform} onChange={(e) => setPlatform(e.target.value)} sx={{ flex: 1 }}>
+                <Typography variant="caption" color="text.secondary">
+                  Rédigée à partir des textes présents sur l’affiche. Ajoute au besoin un contexte en plus.
+                </Typography>
+                <Stack direction="column" spacing={1.5}>
+                  <TextField select size="small" label="Réseau" value={platform} onChange={(e) => setPlatform(e.target.value)} fullWidth>
                     {PLATFORMS.map((p) => (
                       <MenuItem key={p} value={p}>
                         {p}
                       </MenuItem>
                     ))}
                   </TextField>
-                  <TextField select size="small" label="Ton" value={tone} onChange={(e) => setTone(e.target.value)} sx={{ flex: 1 }}>
+                  <TextField select size="small" label="Ton" value={tone} onChange={(e) => setTone(e.target.value)} fullWidth>
                     {TONES.map((t) => (
                       <MenuItem key={t} value={t}>
                         {t}
                       </MenuItem>
                     ))}
                   </TextField>
-                  <TextField select size="small" label="Longueur" value={length} onChange={(e) => setLength(e.target.value)} sx={{ flex: 1 }}>
+                  <TextField select size="small" label="Longueur" value={length} onChange={(e) => setLength(e.target.value)} fullWidth>
                     {LENGTHS.map((l) => (
                       <MenuItem key={l.value} value={l.value}>
                         {l.label}
                       </MenuItem>
                     ))}
                   </TextField>
+                  <TextField
+                    size="small"
+                    fullWidth
+                    multiline
+                    maxRows={3}
+                    label="Contexte en plus (facultatif)"
+                    placeholder="Ex. offre du week-end, nouveauté, événement, précision sur le produit…"
+                    value={aiPrompt}
+                    onChange={(e) => setAiPrompt(e.target.value)}
+                  />
                 </Stack>
                 <Button
                   variant="outlined"
@@ -2335,14 +2950,25 @@ export function AffichettePage() {
         </AppBar>
       </Dialog>
 
-      {/* Proposition de détourage IA après un import. */}
-      <Dialog open={detourAsk} onClose={() => setDetourAsk(false)}>
-        <DialogTitle>Détourer avec l’IA ?</DialogTitle>
+      {/* Détourer & améliorer : popup unique (ouverte auto après un import, ou via le bouton). La zone
+          d'amélioration est mémorisée → à la réouverture, la consigne précédente est déjà là. */}
+      <Dialog open={detourAsk} onClose={() => setDetourAsk(false)} fullWidth maxWidth="sm">
+        <DialogTitle>Détourer &amp; améliorer la photo</DialogTitle>
         <DialogContent>
-          <DialogContentText>
-            Veux-tu que l’IA détoure automatiquement le produit et le pose sur le fond aux couleurs de
-            l’enseigne ? (Recommandé si ta photo a un décor. Inutile si c’est déjà un PNG détouré.)
+          <DialogContentText sx={{ mb: 2 }}>
+            L’IA isole le produit, le pose sur le fond aux couleurs de l’enseigne et soigne le rendu.
+            Décris ce que tu veux mettre en valeur (facultatif) — laisse vide pour un simple détourage.
           </DialogContentText>
+          <TextField
+            autoFocus
+            fullWidth
+            multiline
+            minRows={2}
+            label="Zone d’amélioration (facultatif)"
+            placeholder="Ex. plus appétissant, lumière chaude du matin, met en valeur la garniture, effet frais…"
+            value={improveCtx}
+            onChange={(e) => setImproveCtx(e.target.value)}
+          />
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setDetourAsk(false)}>Non merci</Button>
@@ -2351,44 +2977,10 @@ export function AffichettePage() {
             startIcon={<AutoAwesomeIcon />}
             onClick={() => {
               setDetourAsk(false)
-              void detourer()
-            }}
-          >
-            Oui, détourer
-          </Button>
-        </DialogActions>
-      </Dialog>
-
-      {/* Détourer & améliorer : on demande un contexte, puis on envoie à l'IA. */}
-      <Dialog open={improveAsk} onClose={() => setImproveAsk(false)} fullWidth maxWidth="sm">
-        <DialogTitle>Détourer &amp; améliorer la photo</DialogTitle>
-        <DialogContent>
-          <DialogContentText sx={{ mb: 2 }}>
-            Décris à l’IA ce que tu veux améliorer (elle garde le produit tel quel, mais soigne le rendu).
-          </DialogContentText>
-          <TextField
-            autoFocus
-            fullWidth
-            multiline
-            minRows={2}
-            label="Contexte / consigne"
-            placeholder="Ex. plus appétissant, lumière chaude du matin, met en valeur la garniture, effet frais…"
-            value={improveCtx}
-            onChange={(e) => setImproveCtx(e.target.value)}
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setImproveAsk(false)}>Annuler</Button>
-          <Button
-            variant="contained"
-            startIcon={<AutoAwesomeIcon />}
-            disabled={!improveCtx.trim()}
-            onClick={() => {
-              setImproveAsk(false)
               void detourer(improveCtx)
             }}
           >
-            Détourer &amp; améliorer
+            Détourer
           </Button>
         </DialogActions>
       </Dialog>
