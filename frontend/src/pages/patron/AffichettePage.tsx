@@ -317,6 +317,9 @@ export function AffichettePage() {
   const [textBusy, setTextBusy] = useState(false)
   // Popup « détourer avec l'IA ? » après un import, au passage à l'étape Fond.
   const [detourAsk, setDetourAsk] = useState(false)
+  // Popup « détourer et améliorer » : saisie d'un contexte envoyé à l'IA.
+  const [improveAsk, setImproveAsk] = useState(false)
+  const [improveCtx, setImproveCtx] = useState('')
 
   const selected = useMemo(() => blocks.find((b) => b.id === selectedId) ?? null, [blocks, selectedId])
   const fmt = FORMATS[format]
@@ -874,8 +877,9 @@ export function AffichettePage() {
   /**
    * Détourage : l'IA isole le(s) produit(s) sur un fond MAGENTA pur, que l'appli retire (chroma-key)
    * pour poser le produit sur la couleur EXACTE de l'enseigne — la teinte n'est jamais peinte par l'IA.
+   * `context` non vide = « détourer ET améliorer » : l'IA embellit la photo selon la consigne saisie.
    */
-  const detourer = async () => {
+  const detourer = async (context?: string) => {
     const products = selectedProducts()
     setError(null)
     setAiBusy('compose')
@@ -889,12 +893,14 @@ export function AffichettePage() {
         setSavedMsg('Fond appliqué. Importe une photo (ou choisis un produit avec photo) puis « Détourer ».')
         return
       }
-      // mode « isolate » : l'IA isole le produit sur un fond magenta pur (prompt dédié côté serveur).
-      const raw = await imgFromBlob(await composeImages(files, undefined, fmt.ar, 'isolate'))
+      const ctx = context?.trim() || undefined
+      // mode « isolate » : l'IA isole le produit sur un fond magenta pur (prompt dédié côté serveur) ;
+      // avec un contexte, elle l'améliore aussi (lumière, couleurs, rendu appétissant).
+      const raw = await imgFromBlob(await composeImages(files, ctx, fmt.ar, 'isolate'))
       const img = await toImg(chromaKeyAuto(raw))
       placeProduct(img, !!bgImg) // garde la position/taille si un produit était déjà en place
       seedProductBlocks(products)
-      setSavedMsg('Produit détouré, posé sur le fond (déplaçable) ✅')
+      setSavedMsg(ctx ? 'Produit détouré et amélioré ✅' : 'Produit détouré, posé sur le fond (déplaçable) ✅')
     } catch (e) {
       setError(errorMessage(e))
     } finally {
@@ -1866,19 +1872,31 @@ export function AffichettePage() {
                     sx={{ width: 120 }}
                   />
                 </Stack>
-                <Button
-                  variant="contained"
-                  startIcon={aiBusy !== null ? <CircularProgress size={16} color="inherit" /> : <AutoAwesomeIcon />}
-                  onClick={() => void detourer()}
-                  disabled={aiBusy !== null}
-                  sx={{ alignSelf: 'flex-start' }}
-                >
-                  Détourer le produit sur le fond
-                </Button>
+                <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', gap: 1 }}>
+                  <Button
+                    variant="contained"
+                    startIcon={aiBusy !== null ? <CircularProgress size={16} color="inherit" /> : <AutoAwesomeIcon />}
+                    onClick={() => void detourer()}
+                    disabled={aiBusy !== null}
+                  >
+                    Détourer
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    startIcon={<AutoAwesomeIcon />}
+                    onClick={() => {
+                      setImproveCtx('')
+                      setImproveAsk(true)
+                    }}
+                    disabled={aiBusy !== null}
+                  >
+                    Détourer &amp; améliorer la photo
+                  </Button>
+                </Stack>
                 <Typography variant="caption" color="text.secondary">
-                  Une photo détourée (PNG transparent) importée s’affiche directement sur la couleur. Sinon
-                  « Détourer » isole le produit par IA et le pose sur la couleur exacte (jamais repeinte par
-                  l’IA).
+                  « Détourer » isole le produit et le pose sur la couleur exacte (photo gardée telle quelle).
+                  « Détourer &amp; améliorer » embellit en plus la photo (lumière, couleurs, appétissant)
+                  selon le contexte que tu décris.
                 </Typography>
 
                 {bgImg && (
@@ -2124,6 +2142,40 @@ export function AffichettePage() {
             }}
           >
             Oui, détourer
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Détourer & améliorer : on demande un contexte, puis on envoie à l'IA. */}
+      <Dialog open={improveAsk} onClose={() => setImproveAsk(false)} fullWidth maxWidth="sm">
+        <DialogTitle>Détourer &amp; améliorer la photo</DialogTitle>
+        <DialogContent>
+          <DialogContentText sx={{ mb: 2 }}>
+            Décris à l’IA ce que tu veux améliorer (elle garde le produit tel quel, mais soigne le rendu).
+          </DialogContentText>
+          <TextField
+            autoFocus
+            fullWidth
+            multiline
+            minRows={2}
+            label="Contexte / consigne"
+            placeholder="Ex. plus appétissant, lumière chaude du matin, met en valeur la garniture, effet frais…"
+            value={improveCtx}
+            onChange={(e) => setImproveCtx(e.target.value)}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setImproveAsk(false)}>Annuler</Button>
+          <Button
+            variant="contained"
+            startIcon={<AutoAwesomeIcon />}
+            disabled={!improveCtx.trim()}
+            onClick={() => {
+              setImproveAsk(false)
+              void detourer(improveCtx)
+            }}
+          >
+            Détourer &amp; améliorer
           </Button>
         </DialogActions>
       </Dialog>

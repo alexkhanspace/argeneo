@@ -76,7 +76,7 @@ public class AiImageController {
             if (images.isEmpty()) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Photos vides");
             }
-            String prompt = "isolate".equalsIgnoreCase(mode) ? isolatePrompt() : composePrompt(instruction);
+            String prompt = "isolate".equalsIgnoreCase(mode) ? isolatePrompt(instruction) : composePrompt(instruction);
             byte[] out = gemini.composeImages(prompt, images, mimes, aspect(aspectRatio));
             return ResponseEntity.ok().contentType(MediaType.IMAGE_PNG).body(out);
         } catch (IOException e) {
@@ -88,17 +88,30 @@ public class AiImageController {
      * Détourage sur chroma-key : isole le(s) produit(s) sur un aplat MAGENTA pur, que l'application
      * retire ensuite pour poser le produit sur la couleur EXACTE de l'enseigne (peinte côté client).
      */
-    private static String isolatePrompt() {
-        return "Isole le(s) produit(s) réel(s) fourni(s) et place-le(s), bien centré(s), nets et mis en "
+    private static String isolatePrompt(String instruction) {
+        boolean improve = instruction != null && !instruction.isBlank();
+        StringBuilder p = new StringBuilder();
+        p.append("Isole le(s) produit(s) réel(s) fourni(s) et place-le(s), bien centré(s), nets et mis en "
                 + "valeur, sur un FOND PARFAITEMENT UNIFORME de MAGENTA PUR (rose-violet vif, RVB 255,0,255, "
                 + "hex #FF00FF) : un aplat TOTAL et STRICTEMENT UNI d'un seul et même magenta sur TOUTE la "
                 + "surface du fond, SANS aucun dégradé, SANS variation de teinte, SANS texture, SANS ombre "
-                + "portée ni reflet au sol, SANS vignettage, SANS aucune autre couleur ni décor. GARDE chaque "
-                + "produit STRICTEMENT identique (forme, couleurs, garniture, texture) et dans SON ORIENTATION "
-                + "D'ORIGINE : NE le fais PAS pivoter, NE le tourne PAS, NE l'incline PAS, ne le remplace pas, "
-                + "n'en invente pas d'autres. Le magenta ne doit toucher QUE le fond, jamais le produit. Aucun "
-                + "texte, aucun logo, aucun filigrane / watermark ni logo/nom de banque d'images (Vecteezy, "
-                + "Shutterstock, Getty, iStock, Adobe Stock, Freepik, Depositphotos, Alamy…).";
+                + "portée ni reflet au sol, SANS vignettage, SANS aucune autre couleur ni décor. ");
+        if (improve) {
+            // Mode « détourer et améliorer » : on autorise l'embellissement photo + la consigne du client.
+            p.append("Tu PEUX embellir le rendu du produit (lumière plus flatteuse, meilleure netteté, "
+                    + "couleurs plus appétissantes, fraîcheur, matières et textures soignées, rendu photo "
+                    + "studio) SANS changer sa NATURE, sa FORME, sa recette ni sa garniture, et SANS le faire "
+                    + "pivoter ni l'incliner. CONSIGNE DU CLIENT (à respecter en priorité) : ")
+                    .append(instruction.trim()).append(". ");
+        } else {
+            p.append("GARDE chaque produit STRICTEMENT identique (forme, couleurs, garniture, texture) et "
+                    + "dans SON ORIENTATION D'ORIGINE : NE le fais PAS pivoter, NE le tourne PAS, NE l'incline "
+                    + "PAS, ne le remplace pas, n'en invente pas d'autres. ");
+        }
+        p.append("Le magenta ne doit toucher QUE le fond, jamais le produit. Aucun texte, aucun logo, aucun "
+                + "filigrane / watermark ni logo/nom de banque d'images (Vecteezy, Shutterstock, Getty, "
+                + "iStock, Adobe Stock, Freepik, Depositphotos, Alamy…).");
+        return p.toString();
     }
 
     private static String composePrompt(String instruction) {
