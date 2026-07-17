@@ -781,6 +781,35 @@ export function AffichettePage() {
     window.addEventListener('pointerup', onImgUp)
   }
 
+  // --- Redimensionnement du produit par la poignée d'angle (distance au centre, insensible à la rotation) ---
+  const imgResize = useRef<{ startDist: number; startScale: number } | null>(null)
+  const onResizeMove = (e: PointerEvent) => {
+    const r = imgResize.current
+    if (!r || r.startDist === 0) return
+    const stage = stageRef.current
+    if (!stage) return
+    const rect = stage.getBoundingClientRect()
+    const cx = rect.left + bgPosX * rect.width
+    const cy = rect.top + bgPosY * rect.height
+    const dist = Math.hypot(e.clientX - cx, e.clientY - cy)
+    setBgScale(Math.max(0.1, Math.min(2, +(r.startScale * (dist / r.startDist)).toFixed(3))))
+  }
+  const onResizeUp = () => {
+    imgResize.current = null
+    window.removeEventListener('pointermove', onResizeMove)
+    window.removeEventListener('pointerup', onResizeUp)
+  }
+  const startImgResize = (e: ReactPointerEvent) => {
+    const stage = stageRef.current
+    if (!stage) return
+    const rect = stage.getBoundingClientRect()
+    const cx = rect.left + bgPosX * rect.width
+    const cy = rect.top + bgPosY * rect.height
+    imgResize.current = { startDist: Math.hypot(e.clientX - cx, e.clientY - cy) || 1, startScale: bgScale }
+    window.addEventListener('pointermove', onResizeMove)
+    window.addEventListener('pointerup', onResizeUp)
+  }
+
   /** Produit mis en avant (le 1er du menu le cas échéant) — sert de contexte à la légende. */
   const captionArticle = (): Article | null =>
     affType === 'menu' ? menuArticles[0] ?? null : articles.find((a) => a.id === articleId) ?? null
@@ -1262,9 +1291,6 @@ export function AffichettePage() {
       >
         {bgImg && (
           <Box
-            component="img"
-            src={bgImg.src}
-            draggable={false}
             onPointerDown={(e) => {
               e.stopPropagation()
               setSelectedId(null)
@@ -1283,7 +1309,29 @@ export function AffichettePage() {
               touchAction: 'none',
               cursor: 'move',
             }}
-          />
+          >
+            <Box component="img" src={bgImg.src} draggable={false} sx={{ display: 'block', width: '100%', pointerEvents: 'none' }} />
+            {imgSel && (
+              <Box
+                onPointerDown={(e) => {
+                  e.stopPropagation()
+                  startImgResize(e)
+                }}
+                sx={{
+                  position: 'absolute',
+                  right: -8,
+                  bottom: -8,
+                  width: 16,
+                  height: 16,
+                  borderRadius: '50%',
+                  bgcolor: 'primary.main',
+                  border: '2px solid #fff',
+                  cursor: 'nwse-resize',
+                  touchAction: 'none',
+                }}
+              />
+            )}
+          </Box>
         )}
         {veil > 0 && (
           <Box
