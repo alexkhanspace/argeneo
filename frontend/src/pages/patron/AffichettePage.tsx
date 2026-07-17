@@ -108,6 +108,7 @@ interface Block {
   align: Align
   bg: string | null // pastille de fond, ou null
   font?: string // famille de police (défaut : FONT)
+  rot?: number // rotation du texte en degrés (défaut : 0)
 }
 
 const FONT = 'Helvetica, Arial, sans-serif'
@@ -143,6 +144,7 @@ interface SavedAffiche {
   bgDataUrl: string | null
   bgMode?: BgMode
   solid?: string
+  bgRot?: number
 }
 function loadAffiches(): SavedAffiche[] {
   try {
@@ -252,6 +254,7 @@ export function AffichettePage() {
   const [bgImg, setBgImg] = useState<HTMLImageElement | null>(null)
   const [solid, setSolid] = useState('#c2410c')
   const [bgZoom, setBgZoom] = useState(1) // zoom de la photo de fond (1 = plein cadre)
+  const [bgRot, setBgRot] = useState(0) // rotation de la photo de fond (degrés)
   const [veil, setVeil] = useState(0.35)
   const [colors, setColors] = useState({ c1: '#c2410c', c2: '#9a5417' })
   const [logoImg, setLogoImg] = useState<HTMLImageElement | null>(null)
@@ -372,6 +375,7 @@ export function AffichettePage() {
     setBgImg(null)
     setBgMode('brand')
     setBgZoom(1)
+    setBgRot(0)
     setArticleId('')
     setMenuArticles([])
     setMenuFiles([])
@@ -917,7 +921,16 @@ export function AffichettePage() {
     const ctx = canvas.getContext('2d')!
     // Fond
     if (bgMode === 'photo' && bgImg) {
-      drawCover(ctx, bgImg, w, h, bgZoom)
+      if (bgRot) {
+        ctx.save()
+        ctx.translate(w / 2, h / 2)
+        ctx.rotate((bgRot * Math.PI) / 180)
+        ctx.translate(-w / 2, -h / 2)
+        drawCover(ctx, bgImg, w, h, bgZoom)
+        ctx.restore()
+      } else {
+        drawCover(ctx, bgImg, w, h, bgZoom)
+      }
     } else if (bgMode === 'solid') {
       ctx.fillStyle = solid
       ctx.fillRect(0, 0, w, h)
@@ -960,6 +973,16 @@ export function AffichettePage() {
       const lines = wrapLines(ctx, b.text, maxW)
       let mw = 0
       for (const l of lines) mw = Math.max(mw, ctx.measureText(l).width)
+      // Rotation du bloc autour de son centre (comme l'aperçu CSS transform:rotate).
+      const rotated = !!b.rot
+      if (rotated) {
+        const cxr = x + maxW / 2
+        const cyr = y + (lines.length * lineH) / 2
+        ctx.save()
+        ctx.translate(cxr, cyr)
+        ctx.rotate(((b.rot as number) * Math.PI) / 180)
+        ctx.translate(-cxr, -cyr)
+      }
       if (b.bg) {
         const p = fontSize * 0.3
         let bx = x
@@ -978,6 +1001,7 @@ export function AffichettePage() {
         ctx.fillText(l, tx, ty)
         ty += lineH
       }
+      if (rotated) ctx.restore()
     }
     return canvas
   }
@@ -1051,6 +1075,7 @@ export function AffichettePage() {
       bgDataUrl: bgToDataUrl(),
       bgMode,
       solid,
+      bgRot,
     }
     // On garde les 6 dernières (le fond en dataURL est lourd → quota localStorage).
     // On dédoublonne par communication (réenregistrer la même affiche remplace l'ancienne).
@@ -1076,6 +1101,7 @@ export function AffichettePage() {
     bgDataUrl?: string | null
     bgMode?: BgMode
     solid?: string
+    bgRot?: number
     caption?: string
     socialPlatform?: string
     tone?: string
@@ -1094,6 +1120,7 @@ export function AffichettePage() {
     if (s.tone) setTone(s.tone)
     if (s.length) setLength(s.length)
     if (typeof s.solid === 'string') setSolid(s.solid)
+    setBgRot(typeof s.bgRot === 'number' ? s.bgRot : 0)
     if (s.bgDataUrl) {
       const img = new Image()
       img.onload = () => {
@@ -1133,6 +1160,7 @@ export function AffichettePage() {
         bgDataUrl: bgToDataUrl(),
         bgMode,
         solid,
+        bgRot,
         caption,
         socialPlatform: platform,
         tone,
@@ -1201,7 +1229,7 @@ export function AffichettePage() {
               backgroundImage: `url(${bgImg.src})`,
               backgroundSize: 'cover',
               backgroundPosition: 'center',
-              transform: `scale(${bgZoom})`,
+              transform: `rotate(${bgRot}deg) scale(${bgZoom})`,
               transformOrigin: 'center',
               pointerEvents: 'none',
             }}
@@ -1278,6 +1306,8 @@ export function AffichettePage() {
                 cursor: editingId === b.id ? 'text' : 'move',
                 outline: isSel ? '1.5px dashed rgba(255,255,255,0.9)' : 'none',
                 outlineOffset: 2,
+                transform: b.rot ? `rotate(${b.rot}deg)` : undefined,
+                transformOrigin: 'center',
               }}
             >
               <Box
@@ -1389,6 +1419,20 @@ export function AffichettePage() {
             min={0.02}
             max={0.18}
             step={0.005}
+            size="small"
+          />
+        </Box>
+        <Box>
+          <Typography variant="caption" color="text.secondary">
+            Rotation du texte ({Math.round(selected.rot ?? 0)}°)
+          </Typography>
+          <Slider
+            value={selected.rot ?? 0}
+            onChange={(_, v) => updateBlock(selected.id, { rot: Array.isArray(v) ? v[0] : v })}
+            min={-180}
+            max={180}
+            step={1}
+            marks={[{ value: 0 }]}
             size="small"
           />
         </Box>
@@ -1546,7 +1590,7 @@ export function AffichettePage() {
           )}
         </AppBar>
 
-        <Box sx={{ p: { xs: 2, md: 3 }, pb: 12, maxWidth: 1100, mx: 'auto', width: '100%' }}>
+        <Box sx={{ p: { xs: 2, md: 3 }, pb: 16, maxWidth: 1100, mx: 'auto', width: '100%' }}>
           {error && (
             <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError(null)}>
               {error}
@@ -1726,10 +1770,43 @@ export function AffichettePage() {
                   « Détourer » isole le produit par IA et le pose sur la couleur exacte (jamais repeinte par
                   l’IA).
                 </Typography>
+
+                {bgMode === 'photo' && bgImg && (
+                  <>
+                    <Divider />
+                    <Typography variant="subtitle2" color="text.secondary">
+                      Ajuster l’image
+                    </Typography>
+                    <Box>
+                      <Typography variant="caption" color="text.secondary">
+                        Agrandir (× {bgZoom.toFixed(2)})
+                      </Typography>
+                      <Slider value={bgZoom} onChange={(_, v) => setBgZoom(Array.isArray(v) ? v[0] : v)} min={1} max={3} step={0.05} size="small" />
+                    </Box>
+                    <Box>
+                      <Typography variant="caption" color="text.secondary">
+                        Rotation ({Math.round(bgRot)}°)
+                      </Typography>
+                      <Slider
+                        value={bgRot}
+                        onChange={(_, v) => setBgRot(Array.isArray(v) ? v[0] : v)}
+                        min={-180}
+                        max={180}
+                        step={1}
+                        marks={[{ value: 0 }]}
+                        size="small"
+                      />
+                    </Box>
+                  </>
+                )}
+
                 <Divider />
                 <Box>
+                  <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 0.5 }}>
+                    Lisibilité
+                  </Typography>
                   <Typography variant="caption" color="text.secondary">
-                    Voile sombre (lisibilité) — {Math.round(veil * 100)}%
+                    Voile sombre — {Math.round(veil * 100)}%
                   </Typography>
                   <Slider value={veil} onChange={(_, v) => setVeil(Array.isArray(v) ? v[0] : v)} min={0} max={0.8} step={0.05} size="small" />
                 </Box>

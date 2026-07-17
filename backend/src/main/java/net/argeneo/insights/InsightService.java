@@ -63,7 +63,9 @@ public class InsightService {
     /** Style : court et simple, comme on parle à un commerçant pressé (pas de blabla). */
     private static final String STYLE =
             "STYLE — Parle SIMPLEMENT et BRIÈVEMENT, comme à un commerçant pressé : phrases courtes, "
-            + "mots courants, AUCUN jargon, pas d'introduction ni de conclusion, droit au but.\n";
+            + "mots courants, AUCUN jargon, pas d'introduction ni de conclusion, droit au but. "
+            + "TEXTE BRUT UNIQUEMENT : n'utilise AUCUN Markdown — pas d'astérisques (* ni **), pas de "
+            + "gras, pas de titres, pas de puces « * » ou « - ». Écris en phrases normales.\n";
 
     /** Durée de vie d'une analyse en cache (ms). Les données du jour (CA, météo…) bougent peu dans la journée. */
     private static final long CACHE_TTL_MS = 3 * 60 * 60 * 1000L;
@@ -172,8 +174,17 @@ public class InsightService {
         }
         StringBuilder p = new StringBuilder(commonPreamble(req.etablissement(), req.location(),
                 req.description(), req.baseline()));
+        // Même contexte « événement local » que l'analyse groupée, pour que le détail reste cohérent
+        // (ex. le Départ du Tour de France doit apparaître aussi dans l'analyse détaillée).
+        String evts = notBlank(req.location())
+                ? localEvents(req.location(), "cette date : " + req.day().date())
+                : null;
+        if (notBlank(evts)) {
+            p.append("ÉVÉNEMENT(S) LOCAL(AUX) REPÉRÉ(S) pour cette date (recherche web, à prendre en compte "
+                    + "s'il concerne bien la commune de l'établissement) :\n").append(evts).append("\n\n");
+        }
         appendDayBlock(p, req.day(), req.mode(), detail);
-        String out = gemini.generate(p.toString());
+        String out = stripMarkdown(gemini.generate(p.toString()));
         cachePut(key, out);
         return new DayAnalysisResponse(true, props.gemini().model(), out);
     }
@@ -221,7 +232,7 @@ public class InsightService {
                         .append(" (marqueur attendu : ===").append(it.day().date()).append("===)\n");
                 appendDayBlock(p, it.day(), it.mode(), Boolean.TRUE.equals(it.detail()));
             }
-            raw = gemini.generate(p.toString());
+            raw = stripMarkdown(gemini.generate(p.toString()));
             cachePut(key, raw);
         }
 
@@ -285,6 +296,18 @@ public class InsightService {
         boolean ras = !notBlank(out) || out.trim().toUpperCase(java.util.Locale.ROOT).startsWith("RAS");
         cachePut(cacheK, ras ? "RAS" : out);
         return ras ? null : out;
+    }
+
+    /** Nettoie le Markdown que le modèle peut glisser malgré la consigne (**, puces * / -). */
+    private static String stripMarkdown(String s) {
+        if (s == null) {
+            return "";
+        }
+        return s.replace("**", "")
+                .replace("__", "")
+                .replaceAll("(?m)^[ \\t]*[*\\-•]\\s+", "") // puces en début de ligne
+                .replaceAll("[ \\t]{2,}", " ")
+                .trim();
     }
 
     /** Retire les artefacts de citation que le grounding peut injecter ([cite:…], [1], [cite_start]…). */
@@ -358,10 +381,13 @@ public class InsightService {
         }
         if (detail) {
             p.append("\nLe patron demande de DÉVELOPPER : fais une analyse plus complète, 4 à 6 phrases ")
-                    .append("(ou quelques points courts). Explique le POURQUOI (météo, événements, ")
-                    .append("fréquentation, écart éventuel vs référence) et détaille les recommandations ")
-                    .append("produit par produit. Reste clair et simple, sans jargon. Pour cette fois, ignore ")
-                    .append("la consigne de brièveté — mais respecte TOUTES les autres règles, et N'INVENTE ")
+                    .append("en TEXTE BRUT (paragraphes courts), SANS puces, SANS astérisques, SANS gras ni ")
+                    .append("titres Markdown. Explique le POURQUOI (météo, événements, fréquentation, écart ")
+                    .append("éventuel vs référence) et détaille les recommandations produit par produit. Si un ")
+                    .append("ÉVÉNEMENT LOCAL a été repéré ci-dessus, tiens-en compte de façon COHÉRENTE avec ")
+                    .append("le reste (ne dis pas « samedi normal » si tu annonces par ailleurs une forte ")
+                    .append("affluence). Reste clair et simple, sans jargon. Pour cette fois, ignore la ")
+                    .append("consigne de brièveté — mais respecte TOUTES les autres règles, et N'INVENTE ")
                     .append("toujours AUCUN chiffre.\n");
         }
     }
