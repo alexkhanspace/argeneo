@@ -71,15 +71,15 @@ function formatEur(value: number | null | undefined): string {
   })
 }
 
-/** Petite flèche de progression du CA d'un jour vs le même jour de semaine l'an dernier. */
-function DayTrend({ delta }: { delta: number | null }) {
+/** Petite flèche de progression du CA d'un jour vs l'an dernier (base au choix). */
+function DayTrend({ delta, label }: { delta: number | null; label: string }) {
   if (delta == null) return null
   const flat = Math.abs(delta) < 2
   const up = delta >= 0
   const Icon = flat ? TrendingFlatIcon : up ? TrendingUpIcon : TrendingDownIcon
   const color = flat ? 'text.disabled' : up ? 'success.main' : 'error.main'
   return (
-    <Tooltip title={`vs même jour l'an dernier : ${up && !flat ? '+' : ''}${delta.toFixed(0)} %`}>
+    <Tooltip title={`${label} : ${up && !flat ? '+' : ''}${delta.toFixed(0)} %`}>
       <Stack direction="row" sx={{ alignItems: 'center', color, gap: 0.1, flexShrink: 0 }}>
         <Icon sx={{ fontSize: '0.95rem' }} />
         <Typography
@@ -94,14 +94,23 @@ function DayTrend({ delta }: { delta: number | null }) {
   )
 }
 
-/** Progression d'un jour vs le même jour de semaine N-1 (J-364), ou null si incomparable. */
+/**
+ * Progression d'un jour vs l'an dernier, selon la base choisie :
+ * - 'n1_equiv' : même JOUR de semaine (J-364) ;
+ * - 'n1_date'  : même DATE calendaire (année - 1).
+ * null si incomparable.
+ */
 function dayTrendPct(
   entries: Record<string, DailyEntry>,
   prevEntries: Record<string, DailyEntry>,
   date: Date,
+  mode: 'n1_equiv' | 'n1_date',
 ): number | null {
   const iso = toISODate(date)
-  const prevIso = toISODate(addDays(date, -364))
+  const prevIso =
+    mode === 'n1_date'
+      ? toISODate(new Date(date.getFullYear() - 1, date.getMonth(), date.getDate()))
+      : toISODate(addDays(date, -364))
   const cur = entries[iso]?.revenue ?? null
   const prev = prevEntries[prevIso]?.revenue ?? null
   return cur != null && prev != null && prev > 0 ? ((cur - prev) / prev) * 100 : null
@@ -305,6 +314,12 @@ export function DailyPage() {
   const agendaTargetRef = useRef<HTMLDivElement | null>(null)
   // Base de calcul des % de l'IA — réglage global (engrenage du header).
   const { baseline } = useSettings()
+  // Base de comparaison des flèches du calendrier (indépendante) : jour équivalent ↔ date à date.
+  const [calCompare, setCalCompare] = useState<'n1_equiv' | 'n1_date'>(
+    baseline === 'n1_date' ? 'n1_date' : 'n1_equiv',
+  )
+  const calCompareLabel =
+    calCompare === 'n1_date' ? 'vs même date l’an dernier' : 'vs même jour l’an dernier'
   const [muslimDays, setMuslimDays] = useState<Record<string, string>>({})
   const [jewishDays, setJewishDays] = useState<Record<string, string>>({})
 
@@ -913,7 +928,19 @@ export function DailyPage() {
               <Box component="span" sx={{ display: 'inline-block', width: 10, height: 10, bgcolor: 'rgba(21, 101, 192, 0.12)', border: '1px solid', borderColor: '#1565c0', mr: 0.5, verticalAlign: 'middle' }} />
               Fête / événement
             </Typography>
-            <Typography variant="caption">ℹ️ comparaison AR-1 / AA-1</Typography>
+            <Stack direction="row" sx={{ alignItems: 'center', gap: 0.75, ml: { sm: 'auto' } }}>
+              <Typography variant="caption">Comparer les flèches :</Typography>
+              <ToggleButtonGroup
+                size="small"
+                exclusive
+                value={calCompare}
+                onChange={(_, v: 'n1_equiv' | 'n1_date' | null) => v && setCalCompare(v)}
+                sx={{ '& .MuiToggleButton-root': { py: 0.1, px: 1, textTransform: 'none', fontSize: '0.7rem' } }}
+              >
+                <ToggleButton value="n1_equiv">Jour équivalent</ToggleButton>
+                <ToggleButton value="n1_date">Date à date</ToggleButton>
+              </ToggleButtonGroup>
+            </Stack>
           </Stack>
 
           {selectedEtab &&
@@ -1033,7 +1060,7 @@ export function DailyPage() {
                     ) : entry ? (
                       <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: 'primary.main' }} />
                     ) : null}
-                    <DayTrend delta={dayTrendPct(entries, prevEntries, new Date(year, month, d))} />
+                    <DayTrend delta={dayTrendPct(entries, prevEntries, new Date(year, month, d), calCompare)} label={calCompareLabel} />
                     {iaAdvice[iso] && (
                       <Box
                         component="span"
@@ -1218,7 +1245,7 @@ export function DailyPage() {
                       ) : entry ? (
                         <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: 'primary.main' }} />
                       ) : null}
-                      <DayTrend delta={dayTrendPct(entries, prevEntries, new Date(year, month, d))} />
+                      <DayTrend delta={dayTrendPct(entries, prevEntries, new Date(year, month, d), calCompare)} label={calCompareLabel} />
                     </Stack>
                     <Stack direction="row" sx={{ alignItems: 'center', gap: 0.25 }}>
                       {iaAdvice[iso] && (

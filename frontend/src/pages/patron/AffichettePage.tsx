@@ -629,8 +629,13 @@ export function AffichettePage() {
   }
 
   // --- Détourage IA + composition sur la couleur EXACTE de l'enseigne ---
-  /** Chroma-key : retire le fond MAGENTA (#FF00FF) renvoyé par l'IA → produit sur transparence. */
-  const chromaKeyMagenta = (img: HTMLImageElement): HTMLCanvasElement => {
+  /**
+   * Chroma-key AUTO : au lieu de supposer un magenta parfait (souvent mal rendu → rectangle résiduel),
+   * on ÉCHANTILLONNE la couleur réelle du fond aux 4 coins (le produit est centré, les coins = fond)
+   * et on rend transparents les pixels proches de cette couleur. Robuste quelle que soit la teinte
+   * choisie par l'IA. Puis on pose le produit sur la couleur exacte de l'enseigne.
+   */
+  const chromaKeyAuto = (img: HTMLImageElement): HTMLCanvasElement => {
     const w = img.naturalWidth || img.width
     const h = img.naturalHeight || img.height
     const c = document.createElement('canvas')
@@ -641,16 +646,41 @@ export function AffichettePage() {
     try {
       const im = cx.getImageData(0, 0, w, h)
       const d = im.data
+      // Couleur de fond = moyenne d'un petit carré à chaque coin.
+      const s = Math.max(4, Math.round(Math.min(w, h) * 0.03))
+      let br = 0
+      let bg = 0
+      let bb = 0
+      let n = 0
+      const corners = [
+        [0, 0],
+        [w - s, 0],
+        [0, h - s],
+        [w - s, h - s],
+      ]
+      for (const [ox, oy] of corners) {
+        for (let y = 0; y < s; y++) {
+          for (let x = 0; x < s; x++) {
+            const idx = ((oy + y) * w + (ox + x)) * 4
+            br += d[idx]
+            bg += d[idx + 1]
+            bb += d[idx + 2]
+            n++
+          }
+        }
+      }
+      br /= n
+      bg /= n
+      bb /= n
+      // Tolérance : plein transparent en deçà de IN, opaque au-delà de OUT (dégradé = bords nets).
+      const IN = 42
+      const OUT = 100
       for (let i = 0; i < d.length; i += 4) {
-        const R = d[i]
-        const G = d[i + 1]
-        const B = d[i + 2]
-        const key = Math.min(R, B) - G // magenta = R et B forts, G faible
-        if (key > 0) {
-          const s = Math.min(1, key / 160)
-          d[i + 3] = Math.round(d[i + 3] * (1 - s))
-          d[i] = Math.round(R - (R - G) * s * 0.7) // anti-halo
-          d[i + 2] = Math.round(B - (B - G) * s * 0.7)
+        const dist = Math.hypot(d[i] - br, d[i + 1] - bg, d[i + 2] - bb)
+        if (dist <= IN) {
+          d[i + 3] = 0
+        } else if (dist < OUT) {
+          d[i + 3] = Math.round(d[i + 3] * ((dist - IN) / (OUT - IN)))
         }
       }
       cx.putImageData(im, 0, 0)
@@ -831,7 +861,7 @@ export function AffichettePage() {
       }
       // mode « isolate » : l'IA isole le produit sur un fond magenta pur (prompt dédié côté serveur).
       const raw = await imgFromBlob(await composeImages(files, undefined, fmt.ar, 'isolate'))
-      layersRef.current = [chromaKeyMagenta(raw)]
+      layersRef.current = [chromaKeyAuto(raw)]
       await applyLayers(bgColor)
       seedProductBlocks(products)
       setSavedMsg('Produit détouré sur le fond de l’enseigne ✅')

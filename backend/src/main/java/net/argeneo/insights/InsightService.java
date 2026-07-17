@@ -123,6 +123,17 @@ public class InsightService {
         p.append(EVENTS_NOTE);
         p.append(STYLE);
         p.append(baselineRule(req.baseline()));
+        // Événements locaux repérés par recherche web sur la période (appel séparé, non ancré ici).
+        if (notBlank(req.location()) && !req.days().isEmpty()) {
+            String first = req.days().stream().map(DayContext::date).min(String::compareTo).orElse(null);
+            String last = req.days().stream().map(DayContext::date).max(String::compareTo).orElse(null);
+            String evts = first != null ? localEvents(req.location(), "la période du " + first + " au " + last) : null;
+            if (notBlank(evts)) {
+                p.append("ÉVÉNEMENTS LOCAUX REPÉRÉS (recherche web, commune de l'établissement uniquement) — ")
+                        .append("rattache-les à la bonne date et n'en tiens compte que dans la commune :\n")
+                        .append(evts).append("\n\n");
+            }
+        }
         p.append("Analyse les jours ci-dessous et donne un conseil de PRODUCTION / APPROVISIONNEMENT ")
                 .append("UNIQUEMENT pour les jours à enjeu (fête, météo marquante, écart de CA vs an dernier).\n")
                 .append("RAPPEL IMPORTANT — un JOUR FÉRIÉ ou une FÊTE n'implique PAS forcément une hausse : ")
@@ -184,37 +195,33 @@ public class InsightService {
         }
         String key = keyJoiner.toString();
 
-        // Recherche web activée seulement si on connaît la localisation (sinon rien à chercher, et
-        // on évite le coût). L'IA repère alors un éventuel événement local majeur (Tour de France…).
-        boolean withSearch = notBlank(req.location());
-
         String raw = cacheGet(key);
         if (raw == null) {
             StringBuilder p = new StringBuilder(commonPreamble(req.etablissement(), req.location(),
                     req.description(), req.baseline()));
-            if (withSearch) {
-                p.append(localEventSearchNote(req.location()));
+            // Événements locaux repérés par recherche web (appel SÉPARÉ) → injectés comme contexte ;
+            // l'analyse elle-même reste NON ancrée pour garder le format strict (marqueurs de dates).
+            String evts = notBlank(req.location())
+                    ? localEvents(req.location(), "ces dates précises : " + items.stream()
+                            .map(it -> it.day().date())
+                            .collect(java.util.stream.Collectors.joining(", ")))
+                    : null;
+            if (notBlank(evts)) {
+                p.append("ÉVÉNEMENTS LOCAUX REPÉRÉS (recherche web) — rattache chacun à la BONNE date ")
+                        .append("ci-dessous et n'en tiens compte QUE s'il est bien dans la commune de ")
+                        .append("l'établissement (ignore toute autre ville) :\n").append(evts).append("\n\n");
             }
             p.append("Tu dois analyser PLUSIEURS journées ci-dessous. Pour CHAQUE journée, écris son ")
                     .append("analyse en la faisant précéder EXACTEMENT d'une ligne marqueur « ===AAAA-MM-JJ=== » ")
                     .append("(la date de la journée concernée), puis l'analyse en dessous. N'écris rien d'autre ")
-                    .append("(aucun titre, aucune autre ligne, AUCUNE URL ni citation de source).\n\n");
+                    .append("(aucun titre, aucune autre ligne, AUCUNE URL ni citation ni crochet).\n\n");
             for (DayItem it : items) {
                 p.append("========================================\n")
                         .append("JOURNÉE À ANALYSER : ").append(it.day().date())
                         .append(" (marqueur attendu : ===").append(it.day().date()).append("===)\n");
                 appendDayBlock(p, it.day(), it.mode(), Boolean.TRUE.equals(it.detail()));
             }
-            try {
-                raw = gemini.generate(p.toString(), withSearch);
-            } catch (RuntimeException ex) {
-                // Repli si la recherche web (grounding) n'est pas disponible sur le projet Vertex :
-                // on relance sans recherche pour que le cockpit fonctionne quand même.
-                if (!withSearch) {
-                    throw ex;
-                }
-                raw = gemini.generate(p.toString(), false);
-            }
+            raw = gemini.generate(p.toString());
             cachePut(key, raw);
         }
 
@@ -248,19 +255,49 @@ public class InsightService {
     }
 
     /**
-     * Consigne de recherche web : repérer un événement local majeur qui ferait bouger la
-     * fréquentation à la date analysée (le grounding Google Search est activé côté client).
+     * Recherche web (grounding) des événements locaux MAJEURS aux dates/période données, STRICTEMENT
+     * dans la commune de l'établissement. Appel SÉPARÉ : l'analyse principale reste non ancrée pour
+     * conserver un format strict (marqueurs de dates) et éviter les artefacts de citation. Résultat
+     * mis en cache. Renvoie un court texte « date : événement (ville) », ou null si rien / indisponible.
      */
-    private String localEventSearchNote(String location) {
-        return "RECHERCHE D'ÉVÉNEMENT LOCAL (via la recherche web) : vérifie s'il se tient, à ou tout "
-                + "près de « " + location + " », à l'UNE des dates analysées ci-dessous, un ÉVÉNEMENT "
-                + "LOCAL MAJEUR susceptible de faire bouger la fréquentation : passage du Tour de France "
-                + "(ou autre course), braderie / vide-grenier, grand marché ou foire, festival, salon, "
-                + "match ou compétition sportive, concert, manifestation, marché de Noël, etc. Si tu "
-                + "trouves un événement CRÉDIBLE et bien DATÉ sur l'une de ces journées, intègre-le à "
-                + "l'analyse de CETTE journée : signale-le clairement et adapte la reco de préparation "
-                + "(produire/commander plus, horaires, etc.). Si tu n'as AUCUNE information fiable, "
-                + "n'invente rien et n'en parle pas. Ne cite ni URL ni source dans ta réponse.\n\n";
+    private String localEvents(String location, String datesClause) {
+        String cacheK = "evt[" + location + "|" + datesClause + "]";
+        String cached = cacheGet(cacheK);
+        if (cached != null) {
+            return "RAS".equals(cached) ? null : cached;
+        }
+        String q = "Recherche web. Un commerce de bouche est situé à : " + location + ".\n"
+                + "Pour " + datesClause + ", indique s'il se tient, DANS LA MÊME COMMUNE (même ville) que "
+                + "l'établissement — et NON dans une autre ville ni une commune voisine —, un ÉVÉNEMENT "
+                + "LOCAL MAJEUR qui ferait nettement bouger la fréquentation d'un commerce de bouche : "
+                + "passage du Tour de France (ou autre course), braderie / vide-grenier, festival, foire, "
+                + "grand marché, salon, match, concert, manifestation, marché de Noël… Réponds UNIQUEMENT "
+                + "par des lignes « AAAA-MM-JJ : <événement bref> (ville) », en précisant TOUJOURS la ville. "
+                + "N'inclus un événement QUE si sa ville est EXACTEMENT celle de l'établissement. Si aucune "
+                + "de ces dates n'a d'événement fiable dans la commune, réponds EXACTEMENT « RAS ». "
+                + "N'invente rien ; aucune URL, aucune source, aucun crochet.";
+        String out;
+        try {
+            out = stripCitations(gemini.generate(q, true));
+        } catch (RuntimeException ex) {
+            return null; // grounding indisponible → pas d'événements, le cockpit fonctionne quand même
+        }
+        boolean ras = !notBlank(out) || out.trim().toUpperCase(java.util.Locale.ROOT).startsWith("RAS");
+        cachePut(cacheK, ras ? "RAS" : out);
+        return ras ? null : out;
+    }
+
+    /** Retire les artefacts de citation que le grounding peut injecter ([cite:…], [1], [cite_start]…). */
+    private static String stripCitations(String s) {
+        if (s == null) {
+            return "";
+        }
+        return s.replaceAll("\\[cite:[^\\]]*\\]", "")
+                .replace("[cite_start]", "")
+                .replace("[cite:", "")
+                .replaceAll("\\[\\d+(\\s*,\\s*\\d+)*\\]", "")
+                .replaceAll("[ \\t]{2,}", " ")
+                .trim();
     }
 
     /** Consigne du mode + données du jour + notes conditionnelles + éventuel « développer ». */

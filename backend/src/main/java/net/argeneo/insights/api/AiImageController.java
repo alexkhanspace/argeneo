@@ -91,10 +91,12 @@ public class AiImageController {
     private static String isolatePrompt() {
         return "Isole le(s) produit(s) réel(s) fourni(s) et place-le(s), bien centré(s), nets et mis en "
                 + "valeur, sur un FOND PARFAITEMENT UNIFORME de MAGENTA PUR (rose-violet vif, RVB 255,0,255, "
-                + "hex #FF00FF) : un aplat total, SANS aucun dégradé, SANS texture, SANS ombre portée ni "
-                + "reflet au sol, SANS aucune autre couleur ni décor dans le fond. GARDE chaque produit "
-                + "STRICTEMENT identique (forme, couleurs, garniture, texture) — ne le remplace pas, n'en "
-                + "invente pas d'autres. Le magenta ne doit toucher QUE le fond, jamais le produit. Aucun "
+                + "hex #FF00FF) : un aplat TOTAL et STRICTEMENT UNI d'un seul et même magenta sur TOUTE la "
+                + "surface du fond, SANS aucun dégradé, SANS variation de teinte, SANS texture, SANS ombre "
+                + "portée ni reflet au sol, SANS vignettage, SANS aucune autre couleur ni décor. GARDE chaque "
+                + "produit STRICTEMENT identique (forme, couleurs, garniture, texture) et dans SON ORIENTATION "
+                + "D'ORIGINE : NE le fais PAS pivoter, NE le tourne PAS, NE l'incline PAS, ne le remplace pas, "
+                + "n'en invente pas d'autres. Le magenta ne doit toucher QUE le fond, jamais le produit. Aucun "
                 + "texte, aucun logo, aucun filigrane / watermark ni logo/nom de banque d'images (Vecteezy, "
                 + "Shutterstock, Getty, iStock, Adobe Stock, Freepik, Depositphotos, Alamy…).";
     }
