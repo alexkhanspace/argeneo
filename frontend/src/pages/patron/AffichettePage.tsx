@@ -155,7 +155,9 @@ interface SavedAffiche {
   solid?: string
   bgRot?: number
   bgFlipH?: boolean
-  bgZoom?: number
+  bgScale?: number
+  bgPosX?: number
+  bgPosY?: number
 }
 function loadAffiches(): SavedAffiche[] {
   try {
@@ -185,13 +187,6 @@ function loadImage(url: string | null): Promise<HTMLImageElement | null> {
     .then((r) => (r.ok ? r.blob() : Promise.reject(new Error('img'))))
     .then(imgFromBlob)
     .catch(() => null)
-}
-function drawCover(ctx: CanvasRenderingContext2D, img: HTMLImageElement, w: number, h: number, zoom = 1) {
-  // `zoom` (≥ 1) agrandit la photo autour du centre — identique au transform:scale de l'aperçu CSS.
-  const r = Math.max(w / img.width, h / img.height) * zoom
-  const iw = img.width * r
-  const ih = img.height * r
-  ctx.drawImage(img, (w - iw) / 2, (h - ih) / 2, iw, ih)
 }
 function wrapLines(ctx: CanvasRenderingContext2D, text: string, maxW: number): string[] {
   const out: string[] = []
@@ -262,12 +257,16 @@ export function AffichettePage() {
   const [menu, setMenu] = useState<{ x: number; y: number; id: string } | null>(null)
 
   const [bgMode, setBgMode] = useState<BgMode>('brand')
+  // Le produit détouré/importé est un CALQUE indépendant (image transparente) posé sur le fond de
+  // couleur : on peut le déplacer, l'agrandir, le pivoter et le mettre en miroir sans toucher au fond.
   const [bgImg, setBgImg] = useState<HTMLImageElement | null>(null)
   const [solid, setSolid] = useState('#c2410c')
-  const [bgZoom, setBgZoom] = useState(1) // zoom de la photo de fond (1 = plein cadre)
-  const [bgRot, setBgRot] = useState(0) // rotation de la photo de fond (degrés)
-  const [bgFlipH, setBgFlipH] = useState(false) // miroir horizontal de la photo
-  const [imgSel, setImgSel] = useState(false) // photo sélectionnée sur le canevas (barre d'outils)
+  const [bgScale, setBgScale] = useState(0.72) // largeur du produit en fraction de la largeur du canevas
+  const [bgPosX, setBgPosX] = useState(0.5) // centre X du produit (0..1)
+  const [bgPosY, setBgPosY] = useState(0.42) // centre Y du produit (0..1)
+  const [bgRot, setBgRot] = useState(0) // rotation du produit (degrés)
+  const [bgFlipH, setBgFlipH] = useState(false) // miroir horizontal du produit
+  const [imgSel, setImgSel] = useState(false) // produit sélectionné sur le canevas (barre d'outils)
   const [veil, setVeil] = useState(0.35)
   const [colors, setColors] = useState({ c1: '#c2410c', c2: '#9a5417' })
   const [logoImg, setLogoImg] = useState<HTMLImageElement | null>(null)
@@ -313,8 +312,6 @@ export function AffichettePage() {
   const [bgColor, setBgColor] = useState('#c2410c')
   // Guides d'alignement affichés pendant le déplacement d'un texte (fractions 0..1).
   const [guides, setGuides] = useState<{ v: number[]; h: number[] }>({ v: [], h: [] })
-  // Calques produit (photos importées détourées et/ou produit détouré par l'IA) posés sur la couleur.
-  const layersRef = useRef<Array<HTMLImageElement | HTMLCanvasElement>>([])
   // Accroches proposées par l'IA (étape 3).
   const [aiSlogans, setAiSlogans] = useState<string[]>([])
   const [textBusy, setTextBusy] = useState(false)
@@ -389,7 +386,9 @@ export function AffichettePage() {
     resetCanvas()
     setBgImg(null)
     setBgMode('brand')
-    setBgZoom(1)
+    setBgScale(0.72)
+    setBgPosX(0.5)
+    setBgPosY(0.42)
     setBgRot(0)
     setBgFlipH(false)
     setImgSel(false)
@@ -399,7 +398,6 @@ export function AffichettePage() {
     setAiPrompt('')
     setAiSlogans([])
     setSeededProducts(false)
-    layersRef.current = []
     setSrcMode('catalogue')
     setStep(0)
     setError(null)
@@ -409,7 +407,7 @@ export function AffichettePage() {
   const prevStep = () => setStep((s) => Math.max(0, s - 1))
   // « Suivant » : après un import (photo), on propose le détourage IA en arrivant à l'étape Fond.
   const handleNext = () => {
-    const askDetour = step === 0 && menuFiles.length > 0 && bgMode === 'photo'
+    const askDetour = step === 0 && menuFiles.length > 0 && bgImg != null
     nextStep()
     if (askDetour) setDetourAsk(true)
   }
@@ -717,63 +715,67 @@ export function AffichettePage() {
     return c
   }
 
-  /** Dessine les produits (avec alpha) sur un aplat de la couleur choisie → canevas au format courant. */
-  const composeOnColor = (layers: Array<HTMLImageElement | HTMLCanvasElement>, color: string): HTMLCanvasElement => {
-    const { w, h } = fmt
-    const canvas = document.createElement('canvas')
-    canvas.width = w
-    canvas.height = h
-    const ctx = canvas.getContext('2d')!
-    ctx.fillStyle = color
-    ctx.fillRect(0, 0, w, h)
-    const pad = Math.round(w * 0.08)
-    const ax = pad
-    const ay = pad
-    const aw = w - 2 * pad
-    const ah = Math.round(h * 0.62)
-    const draw = (img: HTMLImageElement | HTMLCanvasElement, x: number, y: number, bw: number, bh: number) => {
-      const iw0 = img instanceof HTMLCanvasElement ? img.width : img.naturalWidth || img.width
-      const ih0 = img instanceof HTMLCanvasElement ? img.height : img.naturalHeight || img.height
-      const r = Math.min(bw / iw0, bh / ih0)
-      ctx.drawImage(img, x + (bw - iw0 * r) / 2, y + (bh - ih0 * r) / 2, iw0 * r, ih0 * r)
-    }
-    if (layers.length === 1) {
-      draw(layers[0], ax, ay, aw, ah)
-    } else {
-      const cols = Math.ceil(Math.sqrt(layers.length))
-      const rows = Math.ceil(layers.length / cols)
-      const cw = aw / cols
-      const ch = ah / rows
-      layers.forEach((img, i) => draw(img, ax + (i % cols) * cw, ay + Math.floor(i / cols) * ch, cw * 0.9, ch * 0.9))
-    }
-    return canvas
-  }
+  /** Convertit une image/canvas en HTMLImageElement dont la source est un dataURL (persistable, alpha conservé). */
+  const toImg = (src: HTMLImageElement | HTMLCanvasElement): Promise<HTMLImageElement> =>
+    new Promise((res, rej) => {
+      let canvas: HTMLCanvasElement
+      if (src instanceof HTMLCanvasElement) {
+        canvas = src
+      } else {
+        canvas = document.createElement('canvas')
+        canvas.width = src.naturalWidth || src.width
+        canvas.height = src.naturalHeight || src.height
+        canvas.getContext('2d')!.drawImage(src, 0, 0)
+      }
+      const img = new Image()
+      img.onload = () => res(img)
+      img.onerror = rej
+      img.src = canvas.toDataURL('image/png')
+    })
 
-  /** Recompose le fond : produits (layersRef) posés sur la couleur EXACTE (peinte par l'appli). */
-  const applyLayers = async (color: string) => {
-    const layers = layersRef.current
-    if (layers.length === 0) {
-      setBgImg(null)
-      setSolid(color)
-      setBgMode('solid')
-      setBgZoom(1)
-      return
-    }
-    const blob = await canvasToBlob(composeOnColor(layers, color))
-    if (blob) {
-      setBgImg(await imgFromBlob(blob))
-      setBgMode('photo')
-      setBgZoom(1)
+  /** Pose une image PRODUIT (calque transparent déplaçable) sur le fond de couleur. */
+  const placeProduct = (img: HTMLImageElement, keepTransform: boolean) => {
+    setBgImg(img)
+    setBgMode('solid')
+    setSolid(bgColor)
+    if (!keepTransform) {
+      setBgScale(0.72)
+      setBgPosX(0.5)
+      setBgPosY(0.42)
+      setBgRot(0)
+      setBgFlipH(false)
     }
   }
 
-  /** Import (ou photo) : les images s'affichent tout de suite, posées sur la couleur du fond. */
+  /** Import (ou photo) : la 1re image devient le produit, posée directement sur la couleur du fond. */
   const onImportFiles = async (list: File[]) => {
     if (!list.length) return
     setMenuFiles((prev) => [...prev, ...list].slice(0, 8))
-    const imgs = await Promise.all(list.map((f) => imgFromBlob(f)))
-    layersRef.current = [...layersRef.current, ...imgs].slice(0, 8)
-    await applyLayers(bgColor)
+    const img = await toImg(await imgFromBlob(list[0]))
+    placeProduct(img, false)
+  }
+
+  // --- Déplacement du produit sur le canevas (glisser l'image) ---
+  const imgDrag = useRef<{ startX: number; startY: number; rect: DOMRect; cx: number; cy: number } | null>(null)
+  const onImgMove = (e: PointerEvent) => {
+    const d = imgDrag.current
+    if (!d) return
+    const dx = (e.clientX - d.startX) / d.rect.width
+    const dy = (e.clientY - d.startY) / d.rect.height
+    setBgPosX(clamp01(d.cx + dx))
+    setBgPosY(clamp01(d.cy + dy))
+  }
+  const onImgUp = () => {
+    imgDrag.current = null
+    window.removeEventListener('pointermove', onImgMove)
+    window.removeEventListener('pointerup', onImgUp)
+  }
+  const startImgDrag = (e: ReactPointerEvent) => {
+    const stage = stageRef.current
+    if (!stage) return
+    imgDrag.current = { startX: e.clientX, startY: e.clientY, rect: stage.getBoundingClientRect(), cx: bgPosX, cy: bgPosY }
+    window.addEventListener('pointermove', onImgMove)
+    window.addEventListener('pointerup', onImgUp)
   }
 
   /** Produit mis en avant (le 1er du menu le cas échéant) — sert de contexte à la légende. */
@@ -880,18 +882,19 @@ export function AffichettePage() {
     try {
       const files = await gatherFiles(products)
       if (files.length === 0) {
-        layersRef.current = []
-        await applyLayers(bgColor)
+        setBgImg(null)
+        setBgMode('solid')
+        setSolid(bgColor)
         seedProductBlocks(products)
         setSavedMsg('Fond appliqué. Importe une photo (ou choisis un produit avec photo) puis « Détourer ».')
         return
       }
       // mode « isolate » : l'IA isole le produit sur un fond magenta pur (prompt dédié côté serveur).
       const raw = await imgFromBlob(await composeImages(files, undefined, fmt.ar, 'isolate'))
-      layersRef.current = [chromaKeyAuto(raw)]
-      await applyLayers(bgColor)
+      const img = await toImg(chromaKeyAuto(raw))
+      placeProduct(img, !!bgImg) // garde la position/taille si un produit était déjà en place
       seedProductBlocks(products)
-      setSavedMsg('Produit détouré sur le fond de l’enseigne ✅')
+      setSavedMsg('Produit détouré, posé sur le fond (déplaçable) ✅')
     } catch (e) {
       setError(errorMessage(e))
     } finally {
@@ -942,20 +945,8 @@ export function AffichettePage() {
     canvas.width = w
     canvas.height = h
     const ctx = canvas.getContext('2d')!
-    // Fond
-    if (bgMode === 'photo' && bgImg) {
-      if (bgRot || bgFlipH) {
-        ctx.save()
-        ctx.translate(w / 2, h / 2)
-        if (bgRot) ctx.rotate((bgRot * Math.PI) / 180)
-        if (bgFlipH) ctx.scale(-1, 1)
-        ctx.translate(-w / 2, -h / 2)
-        drawCover(ctx, bgImg, w, h, bgZoom)
-        ctx.restore()
-      } else {
-        drawCover(ctx, bgImg, w, h, bgZoom)
-      }
-    } else if (bgMode === 'solid') {
+    // Fond de couleur (uni ou dégradé enseigne)
+    if (bgMode === 'solid') {
       ctx.fillStyle = solid
       ctx.fillRect(0, 0, w, h)
     } else {
@@ -964,6 +955,19 @@ export function AffichettePage() {
       g.addColorStop(1, colors.c2)
       ctx.fillStyle = g
       ctx.fillRect(0, 0, w, h)
+    }
+    // Produit (calque déplaçable/pivotable), posé PAR-DESSUS le fond
+    if (bgImg) {
+      const iw = bgImg.naturalWidth || bgImg.width
+      const ih = bgImg.naturalHeight || bgImg.height
+      const dw = bgScale * w
+      const dh = dw * (ih / iw)
+      ctx.save()
+      ctx.translate(bgPosX * w, bgPosY * h)
+      if (bgRot) ctx.rotate((bgRot * Math.PI) / 180)
+      if (bgFlipH) ctx.scale(-1, 1)
+      ctx.drawImage(bgImg, -dw / 2, -dh / 2, dw, dh)
+      ctx.restore()
     }
     // Voile bas pour lisibilité
     if (veil > 0) {
@@ -1071,18 +1075,8 @@ export function AffichettePage() {
     }
   }
   /** Le fond BRUT (sans voile/texte) en dataURL, pour pouvoir rouvrir l'affiche sans cumuler le voile. */
-  const bgToDataUrl = (): string | null => {
-    if (!bgImg) return null
-    const c = document.createElement('canvas')
-    c.width = bgImg.naturalWidth || bgImg.width
-    c.height = bgImg.naturalHeight || bgImg.height
-    c.getContext('2d')!.drawImage(bgImg, 0, 0)
-    try {
-      return c.toDataURL('image/png')
-    } catch {
-      return null
-    }
-  }
+  // Le produit est déjà stocké en dataURL (toImg) → réutilisable tel quel pour la sauvegarde.
+  const bgToDataUrl = (): string | null => bgImg?.src ?? null
 
   /** Enregistre l'état ÉDITABLE (fond brut + blocs + réglages) pour réouverture ultérieure. */
   const persistEditable = (name: string, commId: number | null) => {
@@ -1101,7 +1095,9 @@ export function AffichettePage() {
       solid,
       bgRot,
       bgFlipH,
-      bgZoom,
+      bgScale,
+      bgPosX,
+      bgPosY,
     }
     // On garde les 6 dernières (le fond en dataURL est lourd → quota localStorage).
     // On dédoublonne par communication (réenregistrer la même affiche remplace l'ancienne).
@@ -1129,7 +1125,9 @@ export function AffichettePage() {
     solid?: string
     bgRot?: number
     bgFlipH?: boolean
-    bgZoom?: number
+    bgScale?: number
+    bgPosX?: number
+    bgPosY?: number
     caption?: string
     socialPlatform?: string
     tone?: string
@@ -1137,7 +1135,6 @@ export function AffichettePage() {
   }) => {
     setEditingId(null)
     setSelectedId(null)
-    layersRef.current = []
     if (s.format && s.format in FORMATS) setFormat(s.format)
     if (Array.isArray(s.blocks)) setBlocks(s.blocks)
     if (typeof s.veil === 'number') setVeil(s.veil)
@@ -1150,17 +1147,19 @@ export function AffichettePage() {
     if (typeof s.solid === 'string') setSolid(s.solid)
     setBgRot(typeof s.bgRot === 'number' ? s.bgRot : 0)
     setBgFlipH(!!s.bgFlipH)
+    setBgScale(typeof s.bgScale === 'number' ? s.bgScale : 0.72)
+    setBgPosX(typeof s.bgPosX === 'number' ? s.bgPosX : 0.5)
+    setBgPosY(typeof s.bgPosY === 'number' ? s.bgPosY : 0.42)
     setImgSel(false)
+    // Produit : image transparente posée sur le fond de couleur (mode 'solid' derrière).
     if (s.bgDataUrl) {
       const img = new Image()
       img.onload = () => {
         setBgImg(img)
-        setBgMode('photo')
-        setBgZoom(typeof s.bgZoom === 'number' ? s.bgZoom : 1)
+        setBgMode(s.bgMode === 'brand' ? 'brand' : 'solid')
       }
       img.src = s.bgDataUrl
     } else {
-      // Fond sans photo : on restitue l'aplat (uni enseigne) ou le dégradé selon le mode enregistré.
       setBgImg(null)
       setBgMode(s.bgMode === 'solid' ? 'solid' : 'brand')
     }
@@ -1192,7 +1191,9 @@ export function AffichettePage() {
         solid,
         bgRot,
         bgFlipH,
-        bgZoom,
+        bgScale,
+        bgPosX,
+        bgPosY,
         caption,
         socialPlatform: platform,
         tone,
@@ -1253,24 +1254,28 @@ export function AffichettePage() {
           ...stageBg,
         }}
       >
-        {bgMode === 'photo' && bgImg && (
+        {bgImg && (
           <Box
+            component="img"
+            src={bgImg.src}
+            draggable={false}
             onPointerDown={(e) => {
               e.stopPropagation()
               setSelectedId(null)
               setImgSel(true)
+              startImgDrag(e)
             }}
             sx={{
               position: 'absolute',
-              inset: 0,
-              backgroundImage: `url(${bgImg.src})`,
-              backgroundSize: 'cover',
-              backgroundPosition: 'center',
-              transform: `rotate(${bgRot}deg) scaleX(${bgFlipH ? -bgZoom : bgZoom}) scaleY(${bgZoom})`,
+              left: `${bgPosX * 100}%`,
+              top: `${bgPosY * 100}%`,
+              width: `${bgScale * 100}%`,
+              transform: `translate(-50%, -50%) rotate(${bgRot}deg) scaleX(${bgFlipH ? -1 : 1})`,
               transformOrigin: 'center',
               outline: imgSel ? '2px solid rgba(255,255,255,0.9)' : 'none',
-              outlineOffset: -2,
-              cursor: 'pointer',
+              outlineOffset: 2,
+              touchAction: 'none',
+              cursor: 'move',
             }}
           />
         )}
@@ -1420,8 +1425,8 @@ export function AffichettePage() {
             </Box>
           )
         })}
-        {/* Barre d'outils flottante quand la PHOTO est sélectionnée (clic sur l'image). */}
-        {imgSel && bgMode === 'photo' && bgImg && (
+        {/* Barre d'outils flottante quand le PRODUIT est sélectionné (clic sur l'image). */}
+        {imgSel && bgImg && (
           <Stack
             direction="row"
             spacing={0.5}
@@ -1455,12 +1460,12 @@ export function AffichettePage() {
               </IconButton>
             </Tooltip>
             <Tooltip title="Agrandir">
-              <IconButton size="small" onClick={() => setBgZoom((z) => Math.min(3, +(z + 0.15).toFixed(2)))}>
+              <IconButton size="small" onClick={() => setBgScale((z) => Math.min(1.6, +(z + 0.08).toFixed(2)))}>
                 <ZoomInIcon fontSize="small" />
               </IconButton>
             </Tooltip>
             <Tooltip title="Réduire">
-              <IconButton size="small" onClick={() => setBgZoom((z) => Math.max(1, +(z - 0.15).toFixed(2)))}>
+              <IconButton size="small" onClick={() => setBgScale((z) => Math.max(0.15, +(z - 0.08).toFixed(2)))}>
                 <ZoomOutIcon fontSize="small" />
               </IconButton>
             </Tooltip>
@@ -1469,7 +1474,9 @@ export function AffichettePage() {
                 size="small"
                 onClick={() => {
                   setBgRot(0)
-                  setBgZoom(1)
+                  setBgScale(0.72)
+                  setBgPosX(0.5)
+                  setBgPosY(0.42)
                   setBgFlipH(false)
                 }}
               >
@@ -1853,7 +1860,7 @@ export function AffichettePage() {
                     value={bgColor}
                     onChange={(e) => {
                       setBgColor(e.target.value)
-                      if (layersRef.current.length) void applyLayers(e.target.value)
+                      setSolid(e.target.value)
                     }}
                     slotProps={{ inputLabel: { shrink: true } }}
                     sx={{ width: 120 }}
@@ -1874,11 +1881,11 @@ export function AffichettePage() {
                   l’IA).
                 </Typography>
 
-                {bgMode === 'photo' && bgImg && (
+                {bgImg && (
                   <>
                     <Divider />
                     <Typography variant="subtitle2" color="text.secondary">
-                      Ajuster l’image (ou tape la photo sur l’aperçu)
+                      Ajuster le produit (glisse-le sur l’aperçu pour le déplacer)
                     </Typography>
                     <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', gap: 1 }}>
                       <Tooltip title="Pivoter à gauche">
@@ -1899,9 +1906,9 @@ export function AffichettePage() {
                     </Stack>
                     <Box>
                       <Typography variant="caption" color="text.secondary">
-                        Agrandir (× {bgZoom.toFixed(2)})
+                        Taille (× {bgScale.toFixed(2)})
                       </Typography>
-                      <Slider value={bgZoom} onChange={(_, v) => setBgZoom(Array.isArray(v) ? v[0] : v)} min={1} max={3} step={0.05} size="small" />
+                      <Slider value={bgScale} onChange={(_, v) => setBgScale(Array.isArray(v) ? v[0] : v)} min={0.15} max={1.6} step={0.02} size="small" />
                     </Box>
                     <Box>
                       <Typography variant="caption" color="text.secondary">
