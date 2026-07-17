@@ -11,6 +11,10 @@ import {
   Chip,
   CircularProgress,
   Dialog,
+  DialogActions,
+  DialogContent,
+  DialogContentText,
+  DialogTitle,
   Divider,
   IconButton,
   ListItemIcon,
@@ -49,6 +53,11 @@ import NavigateNextIcon from '@mui/icons-material/NavigateNext'
 import NavigateBeforeIcon from '@mui/icons-material/NavigateBefore'
 import TextFieldsIcon from '@mui/icons-material/TextFields'
 import EditIcon from '@mui/icons-material/Edit'
+import RotateLeftIcon from '@mui/icons-material/RotateLeft'
+import RotateRightIcon from '@mui/icons-material/RotateRight'
+import FlipIcon from '@mui/icons-material/Flip'
+import ZoomInIcon from '@mui/icons-material/ZoomIn'
+import ZoomOutIcon from '@mui/icons-material/ZoomOut'
 import { errorMessage } from '../../api/client'
 import { getProfile, getSettings, logoUrl } from '../../api/billing'
 import { listArticles, photoUrl } from '../../api/costing'
@@ -145,6 +154,8 @@ interface SavedAffiche {
   bgMode?: BgMode
   solid?: string
   bgRot?: number
+  bgFlipH?: boolean
+  bgZoom?: number
 }
 function loadAffiches(): SavedAffiche[] {
   try {
@@ -255,6 +266,8 @@ export function AffichettePage() {
   const [solid, setSolid] = useState('#c2410c')
   const [bgZoom, setBgZoom] = useState(1) // zoom de la photo de fond (1 = plein cadre)
   const [bgRot, setBgRot] = useState(0) // rotation de la photo de fond (degrés)
+  const [bgFlipH, setBgFlipH] = useState(false) // miroir horizontal de la photo
+  const [imgSel, setImgSel] = useState(false) // photo sélectionnée sur le canevas (barre d'outils)
   const [veil, setVeil] = useState(0.35)
   const [colors, setColors] = useState({ c1: '#c2410c', c2: '#9a5417' })
   const [logoImg, setLogoImg] = useState<HTMLImageElement | null>(null)
@@ -305,6 +318,8 @@ export function AffichettePage() {
   // Accroches proposées par l'IA (étape 3).
   const [aiSlogans, setAiSlogans] = useState<string[]>([])
   const [textBusy, setTextBusy] = useState(false)
+  // Popup « détourer avec l'IA ? » après un import, au passage à l'étape Fond.
+  const [detourAsk, setDetourAsk] = useState(false)
 
   const selected = useMemo(() => blocks.find((b) => b.id === selectedId) ?? null, [blocks, selectedId])
   const fmt = FORMATS[format]
@@ -376,6 +391,8 @@ export function AffichettePage() {
     setBgMode('brand')
     setBgZoom(1)
     setBgRot(0)
+    setBgFlipH(false)
+    setImgSel(false)
     setArticleId('')
     setMenuArticles([])
     setMenuFiles([])
@@ -390,6 +407,12 @@ export function AffichettePage() {
   }
   const nextStep = () => setStep((s) => Math.min(3, s + 1))
   const prevStep = () => setStep((s) => Math.max(0, s - 1))
+  // « Suivant » : après un import (photo), on propose le détourage IA en arrivant à l'étape Fond.
+  const handleNext = () => {
+    const askDetour = step === 0 && menuFiles.length > 0 && bgMode === 'photo'
+    nextStep()
+    if (askDetour) setDetourAsk(true)
+  }
 
   const refreshArchives = () => {
     listCommunications().then(setArchives).catch(() => undefined)
@@ -921,10 +944,11 @@ export function AffichettePage() {
     const ctx = canvas.getContext('2d')!
     // Fond
     if (bgMode === 'photo' && bgImg) {
-      if (bgRot) {
+      if (bgRot || bgFlipH) {
         ctx.save()
         ctx.translate(w / 2, h / 2)
-        ctx.rotate((bgRot * Math.PI) / 180)
+        if (bgRot) ctx.rotate((bgRot * Math.PI) / 180)
+        if (bgFlipH) ctx.scale(-1, 1)
         ctx.translate(-w / 2, -h / 2)
         drawCover(ctx, bgImg, w, h, bgZoom)
         ctx.restore()
@@ -1076,6 +1100,8 @@ export function AffichettePage() {
       bgMode,
       solid,
       bgRot,
+      bgFlipH,
+      bgZoom,
     }
     // On garde les 6 dernières (le fond en dataURL est lourd → quota localStorage).
     // On dédoublonne par communication (réenregistrer la même affiche remplace l'ancienne).
@@ -1102,6 +1128,8 @@ export function AffichettePage() {
     bgMode?: BgMode
     solid?: string
     bgRot?: number
+    bgFlipH?: boolean
+    bgZoom?: number
     caption?: string
     socialPlatform?: string
     tone?: string
@@ -1121,12 +1149,14 @@ export function AffichettePage() {
     if (s.length) setLength(s.length)
     if (typeof s.solid === 'string') setSolid(s.solid)
     setBgRot(typeof s.bgRot === 'number' ? s.bgRot : 0)
+    setBgFlipH(!!s.bgFlipH)
+    setImgSel(false)
     if (s.bgDataUrl) {
       const img = new Image()
       img.onload = () => {
         setBgImg(img)
         setBgMode('photo')
-        setBgZoom(1)
+        setBgZoom(typeof s.bgZoom === 'number' ? s.bgZoom : 1)
       }
       img.src = s.bgDataUrl
     } else {
@@ -1161,6 +1191,8 @@ export function AffichettePage() {
         bgMode,
         solid,
         bgRot,
+        bgFlipH,
+        bgZoom,
         caption,
         socialPlatform: platform,
         tone,
@@ -1223,15 +1255,22 @@ export function AffichettePage() {
       >
         {bgMode === 'photo' && bgImg && (
           <Box
+            onPointerDown={(e) => {
+              e.stopPropagation()
+              setSelectedId(null)
+              setImgSel(true)
+            }}
             sx={{
               position: 'absolute',
               inset: 0,
               backgroundImage: `url(${bgImg.src})`,
               backgroundSize: 'cover',
               backgroundPosition: 'center',
-              transform: `rotate(${bgRot}deg) scale(${bgZoom})`,
+              transform: `rotate(${bgRot}deg) scaleX(${bgFlipH ? -bgZoom : bgZoom}) scaleY(${bgZoom})`,
               transformOrigin: 'center',
-              pointerEvents: 'none',
+              outline: imgSel ? '2px solid rgba(255,255,255,0.9)' : 'none',
+              outlineOffset: -2,
+              cursor: 'pointer',
             }}
           />
         )}
@@ -1284,6 +1323,7 @@ export function AffichettePage() {
               key={b.id}
               onPointerDown={(e) => {
                 if (editingId === b.id) return
+                setImgSel(false)
                 onPointerDown(e, b.id, 'move')
               }}
               onDoubleClick={(e) => {
@@ -1380,6 +1420,69 @@ export function AffichettePage() {
             </Box>
           )
         })}
+        {/* Barre d'outils flottante quand la PHOTO est sélectionnée (clic sur l'image). */}
+        {imgSel && bgMode === 'photo' && bgImg && (
+          <Stack
+            direction="row"
+            spacing={0.5}
+            onPointerDown={(e) => e.stopPropagation()}
+            sx={{
+              position: 'absolute',
+              top: 6,
+              left: '50%',
+              transform: 'translateX(-50%)',
+              bgcolor: 'rgba(0,0,0,0.62)',
+              borderRadius: 2,
+              px: 0.5,
+              py: 0.25,
+              zIndex: 5,
+              '& .MuiIconButton-root': { color: '#fff' },
+            }}
+          >
+            <Tooltip title="Pivoter à gauche">
+              <IconButton size="small" onClick={() => setBgRot((r) => r - 90)}>
+                <RotateLeftIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+            <Tooltip title="Pivoter à droite">
+              <IconButton size="small" onClick={() => setBgRot((r) => r + 90)}>
+                <RotateRightIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+            <Tooltip title="Miroir">
+              <IconButton size="small" onClick={() => setBgFlipH((f) => !f)}>
+                <FlipIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+            <Tooltip title="Agrandir">
+              <IconButton size="small" onClick={() => setBgZoom((z) => Math.min(3, +(z + 0.15).toFixed(2)))}>
+                <ZoomInIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+            <Tooltip title="Réduire">
+              <IconButton size="small" onClick={() => setBgZoom((z) => Math.max(1, +(z - 0.15).toFixed(2)))}>
+                <ZoomOutIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+            <Tooltip title="Réinitialiser">
+              <IconButton
+                size="small"
+                onClick={() => {
+                  setBgRot(0)
+                  setBgZoom(1)
+                  setBgFlipH(false)
+                }}
+              >
+                <RestartAltIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+            <Tooltip title="Fermer">
+              <IconButton size="small" onClick={() => setImgSel(false)}>
+                <CloseIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          </Stack>
+        )}
       </Box>
     </Box>
   )
@@ -1775,8 +1878,25 @@ export function AffichettePage() {
                   <>
                     <Divider />
                     <Typography variant="subtitle2" color="text.secondary">
-                      Ajuster l’image
+                      Ajuster l’image (ou tape la photo sur l’aperçu)
                     </Typography>
+                    <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap', gap: 1 }}>
+                      <Tooltip title="Pivoter à gauche">
+                        <IconButton size="small" onClick={() => setBgRot((r) => r - 90)}>
+                          <RotateLeftIcon />
+                        </IconButton>
+                      </Tooltip>
+                      <Tooltip title="Pivoter à droite">
+                        <IconButton size="small" onClick={() => setBgRot((r) => r + 90)}>
+                          <RotateRightIcon />
+                        </IconButton>
+                      </Tooltip>
+                      <Tooltip title="Miroir">
+                        <IconButton size="small" color={bgFlipH ? 'primary' : 'default'} onClick={() => setBgFlipH((f) => !f)}>
+                          <FlipIcon />
+                        </IconButton>
+                      </Tooltip>
+                    </Stack>
                     <Box>
                       <Typography variant="caption" color="text.secondary">
                         Agrandir (× {bgZoom.toFixed(2)})
@@ -1965,7 +2085,7 @@ export function AffichettePage() {
               </Typography>
             )}
             {step < 3 ? (
-              <Button variant="contained" endIcon={<NavigateNextIcon />} onClick={nextStep}>
+              <Button variant="contained" endIcon={<NavigateNextIcon />} onClick={handleNext}>
                 Suivant
               </Button>
             ) : (
@@ -1975,6 +2095,30 @@ export function AffichettePage() {
             )}
           </Toolbar>
         </AppBar>
+      </Dialog>
+
+      {/* Proposition de détourage IA après un import. */}
+      <Dialog open={detourAsk} onClose={() => setDetourAsk(false)}>
+        <DialogTitle>Détourer avec l’IA ?</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            Veux-tu que l’IA détoure automatiquement le produit et le pose sur le fond aux couleurs de
+            l’enseigne ? (Recommandé si ta photo a un décor. Inutile si c’est déjà un PNG détouré.)
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDetourAsk(false)}>Non merci</Button>
+          <Button
+            variant="contained"
+            startIcon={<AutoAwesomeIcon />}
+            onClick={() => {
+              setDetourAsk(false)
+              void detourer()
+            }}
+          >
+            Oui, détourer
+          </Button>
+        </DialogActions>
       </Dialog>
 
       {/* Menu contextuel d'un bloc (appui long tactile ou clic droit). */}
