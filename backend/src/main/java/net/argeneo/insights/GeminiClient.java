@@ -56,6 +56,15 @@ public class GeminiClient {
     private record InlineResponse(List<InlineCandidate> candidates) {
     }
 
+    // Sans cette directive finale, les prompts longs (finissant sur des contraintes « aucun texte/
+    // watermark… ») poussent gemini-2.5-flash-image à répondre PAR DU TEXTE au lieu d'une image.
+    // Ajoutée à tous les appels image, elle rend la génération quasi systématique.
+    private static final String IMAGE_ONLY_DIRECTIVE =
+            " IMPÉRATIF : réponds directement par l'IMAGE générée, ne réponds jamais par du texte.";
+
+    // Filet de sécurité si le modèle renvoie quand même du texte seul (transitoire) : on réessaie.
+    private static final int IMAGE_ATTEMPTS = 5;
+
     private final ArgeneoProperties.Gemini cfg;
     private final RestClient http = RestClient.create();
     private volatile GoogleCredentials credentials;
@@ -189,30 +198,10 @@ public class GeminiClient {
             Map<String, Object> body = Map.of(
                     "contents", List.of(Map.of(
                             "role", "user",
-                            "parts", List.of(Map.of("text", prompt)))),
+                            "parts", List.of(Map.of("text", prompt + IMAGE_ONLY_DIRECTIVE)))),
                     "generationConfig", generationConfig);
 
-            InlineResponse resp = http.post()
-                    .uri(url)
-                    .header("Authorization", "Bearer " + token)
-                    .header("Content-Type", "application/json")
-                    .body(body)
-                    .retrieve()
-                    .body(InlineResponse.class);
-
-            if (resp != null && resp.candidates() != null) {
-                for (InlineCandidate c : resp.candidates()) {
-                    if (c.content() == null || c.content().parts() == null) {
-                        continue;
-                    }
-                    for (InlinePart p : c.content().parts()) {
-                        if (p.inlineData() != null && p.inlineData().data() != null) {
-                            return java.util.Base64.getDecoder().decode(p.inlineData().data());
-                        }
-                    }
-                }
-            }
-            throw new IllegalStateException("Gemini n'a renvoyé aucune image");
+            return postImageWithRetry(url, token, body);
         } catch (Exception e) {
             throw new IllegalStateException("Appel Vertex/Gemini image (texte) échoué : " + e.getMessage(), e);
         }
@@ -226,6 +215,54 @@ public class GeminiClient {
             config.put("imageConfig", Map.of("aspectRatio", aspectRatio));
         }
         return config;
+    }
+
+    /**
+     * POST {@code generateContent} qui RÉESSAIE tant qu'aucune image n'est renvoyée : le modèle
+     * répond parfois du texte seul (pas d'erreur, juste pas d'image). On retente {@link #IMAGE_ATTEMPTS}
+     * fois ; en dernier recours on propage la dernière erreur d'appel, ou « aucune image ».
+     */
+    private byte[] postImageWithRetry(String url, String token, Map<String, Object> body) {
+        RuntimeException lastError = null;
+        for (int attempt = 1; attempt <= IMAGE_ATTEMPTS; attempt++) {
+            try {
+                InlineResponse resp = http.post()
+                        .uri(url)
+                        .header("Authorization", "Bearer " + token)
+                        .header("Content-Type", "application/json")
+                        .body(body)
+                        .retrieve()
+                        .body(InlineResponse.class);
+                byte[] img = firstInlineImage(resp);
+                if (img != null) {
+                    return img;
+                }
+                lastError = null; // appel abouti mais sans image (texte seul) → on retente
+            } catch (RuntimeException e) {
+                lastError = e; // erreur réseau/API : souvent transitoire → on retente aussi
+            }
+        }
+        if (lastError != null) {
+            throw lastError;
+        }
+        throw new IllegalStateException("Gemini n'a renvoyé aucune image");
+    }
+
+    /** Renvoie les octets de la 1re image (inlineData) trouvée dans la réponse, ou {@code null}. */
+    private static byte[] firstInlineImage(InlineResponse resp) {
+        if (resp != null && resp.candidates() != null) {
+            for (InlineCandidate c : resp.candidates()) {
+                if (c.content() == null || c.content().parts() == null) {
+                    continue;
+                }
+                for (InlinePart p : c.content().parts()) {
+                    if (p.inlineData() != null && p.inlineData().data() != null) {
+                        return java.util.Base64.getDecoder().decode(p.inlineData().data());
+                    }
+                }
+            }
+        }
+        return null;
     }
 
     /** Édite/transforme une image existante à partir d'une consigne (Gemini image). */
@@ -243,31 +280,11 @@ public class GeminiClient {
                     "contents", List.of(Map.of(
                             "role", "user",
                             "parts", List.of(
-                                    Map.of("text", prompt),
+                                    Map.of("text", prompt + IMAGE_ONLY_DIRECTIVE),
                                     Map.of("inlineData", Map.of("mimeType", inputMime, "data", b64))))),
                     "generationConfig", imageGenConfig(aspectRatio));
 
-            InlineResponse resp = http.post()
-                    .uri(url)
-                    .header("Authorization", "Bearer " + token)
-                    .header("Content-Type", "application/json")
-                    .body(body)
-                    .retrieve()
-                    .body(InlineResponse.class);
-
-            if (resp != null && resp.candidates() != null) {
-                for (InlineCandidate c : resp.candidates()) {
-                    if (c.content() == null || c.content().parts() == null) {
-                        continue;
-                    }
-                    for (InlinePart p : c.content().parts()) {
-                        if (p.inlineData() != null && p.inlineData().data() != null) {
-                            return java.util.Base64.getDecoder().decode(p.inlineData().data());
-                        }
-                    }
-                }
-            }
-            throw new IllegalStateException("Gemini n'a renvoyé aucune image");
+            return postImageWithRetry(url, token, body);
         } catch (Exception e) {
             throw new IllegalStateException("Appel Vertex/Gemini image échoué : " + e.getMessage(), e);
         }
@@ -288,7 +305,7 @@ public class GeminiClient {
                     + "/publishers/google/models/" + model + ":generateContent";
 
             List<Map<String, Object>> parts = new java.util.ArrayList<>();
-            parts.add(Map.of("text", prompt));
+            parts.add(Map.of("text", prompt + IMAGE_ONLY_DIRECTIVE));
             for (int i = 0; i < images.size(); i++) {
                 String b64 = java.util.Base64.getEncoder().encodeToString(images.get(i));
                 parts.add(Map.of("inlineData", Map.of("mimeType", mimes.get(i), "data", b64)));
@@ -297,27 +314,7 @@ public class GeminiClient {
                     "contents", List.of(Map.of("role", "user", "parts", parts)),
                     "generationConfig", imageGenConfig(aspectRatio));
 
-            InlineResponse resp = http.post()
-                    .uri(url)
-                    .header("Authorization", "Bearer " + token)
-                    .header("Content-Type", "application/json")
-                    .body(body)
-                    .retrieve()
-                    .body(InlineResponse.class);
-
-            if (resp != null && resp.candidates() != null) {
-                for (InlineCandidate c : resp.candidates()) {
-                    if (c.content() == null || c.content().parts() == null) {
-                        continue;
-                    }
-                    for (InlinePart p : c.content().parts()) {
-                        if (p.inlineData() != null && p.inlineData().data() != null) {
-                            return java.util.Base64.getDecoder().decode(p.inlineData().data());
-                        }
-                    }
-                }
-            }
-            throw new IllegalStateException("Gemini n'a renvoyé aucune image");
+            return postImageWithRetry(url, token, body);
         } catch (Exception e) {
             throw new IllegalStateException("Appel Vertex/Gemini image (composition) échoué : " + e.getMessage(), e);
         }

@@ -201,7 +201,13 @@ public class AiImageController {
 
     private static String buildPrompt(String ambiance, String instruction, String mode) {
         StringBuilder p = new StringBuilder();
-        if ("scene".equalsIgnoreCase(mode)) {
+        if ("edit".equalsIgnoreCase(mode)) {
+            // Retouche : on part de l'image DÉJÀ générée et on n'applique QUE la modification demandée,
+            // sans repartir de zéro (composition/style/cadrage conservés).
+            p.append("Pars de l'image fournie et applique UNIQUEMENT la modification demandée ci-dessous. "
+                    + "CONSERVE la composition générale, le style, les couleurs et le cadrage existants — "
+                    + "ne régénère pas une image différente, ne repars pas de zéro, ne change que ce qui est demandé. ");
+        } else if ("scene".equalsIgnoreCase(mode)) {
             // Mode Communication : photo d'événement/scène (personnes, objets) à préserver fidèlement.
             p.append("Transforme cette photo en VISUEL DE COMMUNICATION soigné pour un commerce de bouche artisanal ")
                     .append("française. GARDE FIDÈLEMENT la scène : les personnes, les objets et l'action présents ")

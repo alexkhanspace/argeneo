@@ -13,6 +13,8 @@ import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import org.springframework.web.server.ResponseStatusException;
 
 /** Traduction des exceptions en réponses JSON homogènes. */
 @RestControllerAdvice
@@ -69,6 +71,37 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(IllegalArgumentException.class)
     ResponseEntity<ApiError> handleIllegalArgument(IllegalArgumentException ex) {
         return build(HttpStatus.BAD_REQUEST, ex.getMessage(), null);
+    }
+
+    // Sans ces gestionnaires, l'exception remonte au conteneur → re-dispatch vers /error, qui
+    // repasse par le filtre JWT et renvoie un « 401 trompeur » (voir aussi le commentaire multipart
+    // dans application.yml). On traduit donc explicitement ces cas en statut clair.
+
+    /** Renvoyé par les contrôleurs (ex. IA non configurée = 503, fichier vide = 400). */
+    @ExceptionHandler(ResponseStatusException.class)
+    ResponseEntity<ApiError> handleResponseStatus(ResponseStatusException ex) {
+        HttpStatus status = HttpStatus.resolve(ex.getStatusCode().value());
+        if (status == null) {
+            status = HttpStatus.INTERNAL_SERVER_ERROR;
+        }
+        return build(status, ex.getReason() != null ? ex.getReason() : status.getReasonPhrase(), null);
+    }
+
+    /** Upload trop lourd (photo plein format) : 413 explicite plutôt qu'un 401 trompeur. */
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    ResponseEntity<ApiError> handleUploadSize(MaxUploadSizeExceededException ex) {
+        return build(HttpStatus.PAYLOAD_TOO_LARGE,
+                "Image trop lourde pour l'envoi. Réduis-la (ou reprends une photo) puis réessaie.", null);
+    }
+
+    /**
+     * Échecs applicatifs internes, notamment l'IA (Vertex/Gemini) qui n'a pas renvoyé d'image
+     * après plusieurs tentatives : 502 explicite (upstream) au lieu d'un 401 trompeur.
+     */
+    @ExceptionHandler(IllegalStateException.class)
+    ResponseEntity<ApiError> handleIllegalState(IllegalStateException ex) {
+        return build(HttpStatus.BAD_GATEWAY,
+                "Le générateur IA n'a pas répondu d'image cette fois. Réessaie dans un instant.", ex.getMessage());
     }
 
     private ResponseEntity<ApiError> build(HttpStatus status, String message, Object details) {

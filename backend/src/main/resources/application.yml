@@ -2,12 +2,14 @@ spring:
   application:
     name: argeneo-backend
 
-  # Upload de fichiers (photos d'articles, logo) : la valeur par défaut (1 Mo) est
-  # trop basse — une photo de téléphone dépasse et l'erreur ressort en 401 trompeur.
+  # Upload de fichiers (photos d'articles, logo, images IA) : la valeur par défaut (1 Mo) est trop
+  # basse — une photo de téléphone dépasse. Le front réduit déjà les images avant l'envoi IA ; ces
+  # limites larges sont un filet de sécurité (dépassement = 413 clair, plus de 401 trompeur).
+  # request-size > file-size pour couvrir les envois multi-photos (compose « menu »).
   servlet:
     multipart:
-      max-file-size: 12MB
-      max-request-size: 15MB
+      max-file-size: 25MB
+      max-request-size: 40MB
 
   datasource:
     url: jdbc:postgresql://localhost:5432/argeneo
