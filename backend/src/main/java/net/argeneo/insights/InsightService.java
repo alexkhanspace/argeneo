@@ -308,7 +308,7 @@ public class InsightService {
      * est conservée (tolérance), une ligne dont la ville diffère de l'adresse est écartée.
      */
     private static String filterEventsByTown(String events, String location) {
-        if (!notBlank(events)) {
+        if (events == null || events.isBlank()) {
             return events;
         }
         String loc = normalizeTown(location);
