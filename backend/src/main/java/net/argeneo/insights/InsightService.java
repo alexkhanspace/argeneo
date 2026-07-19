@@ -293,9 +293,56 @@ public class InsightService {
         } catch (RuntimeException ex) {
             return null; // grounding indisponible → pas d'événements, le cockpit fonctionne quand même
         }
+        // Filtre déterministe : le modèle attribue parfois à la commune de l'établissement un événement
+        // d'une AUTRE ville (ex. « braderie (Colmar) » pour un commerce de Mulhouse). On ne garde donc que
+        // les lignes dont la « (ville) » apparaît réellement dans l'adresse de l'établissement.
+        out = filterEventsByTown(out, location);
         boolean ras = !notBlank(out) || out.trim().toUpperCase(java.util.Locale.ROOT).startsWith("RAS");
         cachePut(cacheK, ras ? "RAS" : out);
         return ras ? null : out;
+    }
+
+    /**
+     * Ne conserve que les lignes d'événement dont la « (ville) » finale correspond à la commune de
+     * l'établissement (comparaison insensible à la casse et aux accents). Une ligne sans « (ville) »
+     * est conservée (tolérance), une ligne dont la ville diffère de l'adresse est écartée.
+     */
+    private static String filterEventsByTown(String events, String location) {
+        if (!notBlank(events)) {
+            return events;
+        }
+        String loc = normalizeTown(location);
+        StringBuilder kept = new StringBuilder();
+        for (String line : events.split("\\r?\\n")) {
+            String trimmed = line.trim();
+            if (trimmed.isEmpty()) {
+                continue;
+            }
+            java.util.regex.Matcher m = java.util.regex.Pattern
+                    .compile("\\(([^()]+)\\)\\s*$").matcher(trimmed);
+            if (m.find()) {
+                String ville = normalizeTown(m.group(1));
+                // ville présente mais absente de l'adresse → événement d'une autre commune : on écarte.
+                if (!ville.isEmpty() && !loc.contains(ville)) {
+                    continue;
+                }
+            }
+            if (kept.length() > 0) {
+                kept.append('\n');
+            }
+            kept.append(trimmed);
+        }
+        return kept.toString().trim();
+    }
+
+    /** Minuscule + suppression des accents pour comparer des noms de ville de façon robuste. */
+    private static String normalizeTown(String s) {
+        if (s == null) {
+            return "";
+        }
+        String n = java.text.Normalizer.normalize(s, java.text.Normalizer.Form.NFD)
+                .replaceAll("\\p{M}+", "");
+        return n.toLowerCase(java.util.Locale.ROOT).trim();
     }
 
     /** Nettoie le Markdown que le modèle peut glisser malgré la consigne (**, puces * / -). */
