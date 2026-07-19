@@ -553,6 +553,20 @@ export function DailyPage() {
     if (c && t) c.scrollTop = t.offsetTop
   }, [isMobile, year, month, weather, entries])
 
+  // Libellé des pertes : casse par article ET/OU perte saisie en valeur (€). Sans l'un ou l'autre,
+  // on affichait « — » alors qu'une perte en euros était bien saisie.
+  const lossLabel = (e?: DailyEntry): string => {
+    if (!e) return '—'
+    const parts: string[] = []
+    if (e.losses && e.losses.length > 0) {
+      parts.push(e.losses.map((l) => `${l.articleName} ×${l.quantity}`).join(', '))
+    }
+    if (e.lossAmount != null && e.lossAmount > 0) {
+      parts.push(formatEur(e.lossAmount))
+    }
+    return parts.length > 0 ? parts.join(' · ') : '—'
+  }
+
   // Bloc de comparaison (un jour de l'an dernier) pour le popover.
   const renderCompare = (label: string, iso: string | null) => {
     const e = iso ? prevEntries[iso] : undefined
@@ -580,10 +594,7 @@ export function DailyPage() {
             : ''}
         </Typography>
         <Typography variant="body2" color="text.secondary">
-          Perte :{' '}
-          {e?.losses && e.losses.length > 0
-            ? e.losses.map((l) => `${l.articleName} ×${l.quantity}`).join(', ')
-            : '—'}
+          Perte : {lossLabel(e)}
         </Typography>
         {e?.noteProd && (
           <Typography variant="caption" sx={{ display: 'block' }}>
@@ -1387,6 +1398,28 @@ export function DailyPage() {
                     Rien à signaler.
                   </Typography>
                 )}
+              </Box>
+            )
+          })()}
+
+          {/* Chiffres saisis pour LE jour cliqué (CA, clients, perte) — ce qui manquait dans le popover. */}
+          {cmpIso && (() => {
+            const e = entries[cmpIso]
+            return (
+              <Box sx={{ pb: 1 }}>
+                <Typography variant="caption" color="primary" sx={{ fontWeight: 700 }}>
+                  Saisie du jour
+                </Typography>
+                <Typography variant="body2">CA : {formatEur(e?.revenue)}</Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Clients : {e?.clientCount ?? '—'}
+                  {e?.revenue != null && e?.clientCount != null && e.clientCount > 0
+                    ? ` — ticket moyen ${formatEur(e.revenue / e.clientCount)}`
+                    : ''}
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Perte : {lossLabel(e)}
+                </Typography>
               </Box>
             )
           })()}
