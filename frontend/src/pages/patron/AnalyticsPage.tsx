@@ -190,6 +190,39 @@ function PeriodChart({ sub }: { sub: BucketSeries }) {
   )
 }
 
+/** Évolution des pertes valorisées (€) sur la période choisie, sous-unité par sous-unité, N vs N-1. */
+function LossChart({ sub }: { sub: BucketSeries }) {
+  if (sub.empty) return null
+  const total = sub.lossCur.reduce((s, v) => s + v, 0) + sub.lossPrev.reduce((s, v) => s + v, 0)
+  const title = sub.title.replace(/^CA /, 'Pertes ')
+  return (
+    <Panel title={title} full>
+      {total === 0 ? (
+        <Typography color="text.secondary">Aucune perte sur la période.</Typography>
+      ) : sub.kind === 'line' ? (
+        <CompareLine
+          labels={sub.labels}
+          cur={sub.lossCur}
+          prev={sub.lossPrev}
+          curLabel={sub.curLabel}
+          prevLabel={sub.prevLabel}
+          area
+          height={300}
+        />
+      ) : (
+        <CompareBar
+          labels={sub.labels}
+          cur={sub.lossCur}
+          prev={sub.lossPrev}
+          curLabel={sub.curLabel}
+          prevLabel={sub.prevLabel}
+          height={300}
+        />
+      )}
+    </Panel>
+  )
+}
+
 const grid2 = {
   display: 'grid',
   gridTemplateColumns: { xs: '1fr', md: 'repeat(2, 1fr)' },
@@ -266,16 +299,18 @@ export function AnalyticsPage() {
     return entries.filter((e) => keep.has(weekdayMon0(e.date)))
   }, [entries, includedDays])
 
+  // Carte des prix de vente (valorisation des pertes par article). Partagée agrégat + séries.
+  const price = useMemo(() => priceMap(articles), [articles])
+
   // Agrégat de la période active (bucket choisi OU plage libre) → les KPI collent au sélecteur.
   const bucketAgg = useMemo(() => {
-    const price = priceMap(articles)
     const { from, to } =
       periodMode === 'libre' ? { from: freeFrom, to: freeTo } : bucketRange(gran, refKey, TODAY)
     return aggregate(
       fEntries.filter((e) => e.date >= from && e.date <= to),
       price,
     )
-  }, [fEntries, articles, gran, refKey, periodMode, freeFrom, freeTo])
+  }, [fEntries, price, gran, refKey, periodMode, freeFrom, freeTo])
 
   // Séries N vs N-1 : fenêtre glissante (vue d'ensemble) + détail interne de la période.
   const cmp = useMemo(
@@ -283,12 +318,12 @@ export function AnalyticsPage() {
     [fEntries, gran, refKey, compareMode, includedDays],
   )
   const navSub = useMemo(
-    () => buildBucketSeries(fEntries, gran, refKey, compareMode, includedDays),
-    [fEntries, gran, refKey, compareMode, includedDays],
+    () => buildBucketSeries(fEntries, gran, refKey, compareMode, includedDays, price),
+    [fEntries, gran, refKey, compareMode, includedDays, price],
   )
   const free = useMemo(
-    () => buildFreeSeries(fEntries, freeFrom, freeTo, compareMode, includedDays),
-    [fEntries, freeFrom, freeTo, compareMode, includedDays],
+    () => buildFreeSeries(fEntries, freeFrom, freeTo, compareMode, includedDays, price),
+    [fEntries, freeFrom, freeTo, compareMode, includedDays, price],
   )
   // Détail jour par jour + base de l'écart % : selon le mode de période.
   const sub = periodMode === 'libre' ? free.sub : navSub
@@ -513,6 +548,7 @@ export function AnalyticsPage() {
       <SectionTitle title="Détail de la période" hint="Évolution interne et analyse des pertes sur la période choisie, vs N-1." />
       <Box sx={grid2}>
         <PeriodChart sub={sub} />
+        <LossChart sub={sub} />
         <WidgetPanel type="loss_pie" ctx={ctx} />
         <WidgetPanel type="table_loss" ctx={ctx} />
         <WidgetPanel type="table_best" ctx={ctx} full />

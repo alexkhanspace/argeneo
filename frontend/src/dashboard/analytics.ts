@@ -84,6 +84,16 @@ export function priceMap(articles: Article[]): Map<number, number> {
   return m
 }
 
+/**
+ * Pertes valorisées (€ TTC) d'une saisie quotidienne : perte saisie directement en valeur
+ * (lossAmount) + pertes par article (quantité × prix de vente). Sert au graphe des pertes.
+ */
+export function lossOf(e: DailyEntry, price: Map<number, number>): number {
+  let v = e.lossAmount ?? 0
+  for (const l of e.losses ?? []) v += l.quantity * (price.get(l.articleId) ?? 0)
+  return v
+}
+
 /** Agrège la saisie quotidienne d'une période (CA, clients, ticket, pertes valorisées…). */
 export function aggregate(entries: DailyEntry[], price: Map<number, number>): Agg {
   const days = entries.filter((e) => e.revenue != null)

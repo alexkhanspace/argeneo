@@ -1,5 +1,5 @@
 import type { DailyEntry } from '../api/types'
-import { MONTHS_SHORT, WEEKDAYS, type Comparison } from './analytics'
+import { lossOf, MONTHS_SHORT, WEEKDAYS, type Comparison } from './analytics'
 
 export type Gran = 'jour' | 'semaine' | 'mois' | 'annee'
 
@@ -234,6 +234,10 @@ export interface BucketSeries {
   caCur: number[]
   /** CA de la même période l'an dernier (N-1). */
   caPrev: number[]
+  /** Pertes valorisées (€) de la période choisie, mêmes sous-unités que caCur. */
+  lossCur: number[]
+  /** Pertes valorisées (€) de la même période N-1. */
+  lossPrev: number[]
   curLabel: string
   prevLabel: string
   title: string
@@ -252,10 +256,16 @@ export function buildBucketSeries(
   refKey: string,
   mode: CompareMode = 'date',
   included: number[] = [0, 1, 2, 3, 4, 5, 6],
+  price: Map<number, number> = new Map(),
 ): BucketSeries {
   const caByDate = new Map<string, number>()
-  for (const e of entries) caByDate.set(e.date, (caByDate.get(e.date) ?? 0) + (e.revenue ?? 0))
+  const lossByDate = new Map<string, number>()
+  for (const e of entries) {
+    caByDate.set(e.date, (caByDate.get(e.date) ?? 0) + (e.revenue ?? 0))
+    lossByDate.set(e.date, (lossByDate.get(e.date) ?? 0) + lossOf(e, price))
+  }
   const ca = (iso: string) => Math.round(caByDate.get(iso) ?? 0)
+  const loss = (iso: string) => Math.round(lossByDate.get(iso) ?? 0)
   const includedSet = new Set(included)
 
   if (g === 'mois') {
@@ -264,6 +274,8 @@ export function buildBucketSeries(
     const labels: string[] = []
     const caCur: number[] = []
     const caPrev: number[] = []
+    const lossCur: number[] = []
+    const lossPrev: number[] = []
     for (let d = 1; d <= days; d++) {
       const dd = pad(d)
       const cur = `${y}-${pad(m)}-${dd}`
@@ -274,9 +286,11 @@ export function buildBucketSeries(
       labels.push(String(d))
       caCur.push(ca(cur))
       caPrev.push(ca(prev))
+      lossCur.push(loss(cur))
+      lossPrev.push(loss(prev))
     }
     return {
-      kind: 'line', labels, caCur, caPrev,
+      kind: 'line', labels, caCur, caPrev, lossCur, lossPrev,
       curLabel: String(y), prevLabel: String(y - 1),
       title: `CA par jour — ${refLabel('mois', refKey)}`,
       empty: false,
@@ -287,15 +301,23 @@ export function buildBucketSeries(
     const y = Number(refKey)
     const cur = Array(12).fill(0)
     const prev = Array(12).fill(0)
+    const lCur = Array(12).fill(0)
+    const lPrev = Array(12).fill(0)
     for (const e of entries) {
       const yr = Number(e.date.slice(0, 4))
       const mo = Number(e.date.slice(5, 7)) - 1
-      if (yr === y) cur[mo] += e.revenue ?? 0
-      else if (yr === y - 1) prev[mo] += e.revenue ?? 0
+      if (yr === y) {
+        cur[mo] += e.revenue ?? 0
+        lCur[mo] += lossOf(e, price)
+      } else if (yr === y - 1) {
+        prev[mo] += e.revenue ?? 0
+        lPrev[mo] += lossOf(e, price)
+      }
     }
     return {
       kind: 'bar', labels: [...MONTHS_SHORT],
       caCur: cur.map((v) => Math.round(v)), caPrev: prev.map((v) => Math.round(v)),
+      lossCur: lCur.map((v) => Math.round(v)), lossPrev: lPrev.map((v) => Math.round(v)),
       curLabel: String(y), prevLabel: String(y - 1),
       title: `CA par mois — ${y}`,
       empty: false,
@@ -308,14 +330,18 @@ export function buildBucketSeries(
     const labels: string[] = []
     const caCur: number[] = []
     const caPrev: number[] = []
+    const lossCur: number[] = []
+    const lossPrev: number[] = []
     for (let i = 0; i < 7; i++) {
       if (!includedSet.has(i)) continue // jour de semaine exclu → retiré du graphe
       labels.push(WEEKDAYS[i])
       caCur.push(ca(addDays(refKey, i)))
       caPrev.push(ca(addDays(prevMon, i)))
+      lossCur.push(loss(addDays(refKey, i)))
+      lossPrev.push(loss(addDays(prevMon, i)))
     }
     return {
-      kind: 'bar', labels, caCur, caPrev,
+      kind: 'bar', labels, caCur, caPrev, lossCur, lossPrev,
       curLabel: `Sem. du ${refKey.slice(8)}/${refKey.slice(5, 7)}`,
       prevLabel: `Sem. du ${prevMon.slice(8)}/${prevMon.slice(5, 7)}`,
       title: `CA par jour — ${refLabel('semaine', refKey)}`,
@@ -324,7 +350,10 @@ export function buildBucketSeries(
   }
 
   // Jour : pas de détail intra-période pertinent (le bloc « jour/veille » le couvre).
-  return { kind: 'bar', labels: [], caCur: [], caPrev: [], curLabel: '', prevLabel: '', title: '', empty: true }
+  return {
+    kind: 'bar', labels: [], caCur: [], caPrev: [], lossCur: [], lossPrev: [],
+    curLabel: '', prevLabel: '', title: '', empty: true,
+  }
 }
 
 /** Résultat d'analyse sur une plage de dates libre. */
@@ -344,14 +373,22 @@ export function buildFreeSeries(
   to: string,
   mode: CompareMode = 'date',
   included: number[] = [0, 1, 2, 3, 4, 5, 6],
+  price: Map<number, number> = new Map(),
 ): FreeResult {
   const caByDate = new Map<string, number>()
-  for (const e of entries) caByDate.set(e.date, (caByDate.get(e.date) ?? 0) + (e.revenue ?? 0))
+  const lossByDate = new Map<string, number>()
+  for (const e of entries) {
+    caByDate.set(e.date, (caByDate.get(e.date) ?? 0) + (e.revenue ?? 0))
+    lossByDate.set(e.date, (lossByDate.get(e.date) ?? 0) + lossOf(e, price))
+  }
   const ca = (iso: string) => Math.round(caByDate.get(iso) ?? 0)
+  const loss = (iso: string) => Math.round(lossByDate.get(iso) ?? 0)
   const includedSet = new Set(included)
   const labels: string[] = []
   const caCur: number[] = []
   const caPrev: number[] = []
+  const lossCur: number[] = []
+  const lossPrev: number[] = []
   let curRef = 0
   let prevRef = 0
   if (from && to && from <= to) {
@@ -363,6 +400,8 @@ export function buildFreeSeries(
       labels.push(`${d.slice(8)}/${d.slice(5, 7)}`)
       caCur.push(cur)
       caPrev.push(pv)
+      lossCur.push(loss(d))
+      lossPrev.push(loss(prev))
       curRef += cur
       prevRef += pv
     }
@@ -374,6 +413,8 @@ export function buildFreeSeries(
       labels,
       caCur,
       caPrev,
+      lossCur,
+      lossPrev,
       curLabel: 'Période',
       prevLabel: 'N-1',
       title: `CA par jour — du ${fr(from)} au ${fr(to)}`,
