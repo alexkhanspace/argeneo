@@ -21,8 +21,7 @@ import { DataGrid, type GridColDef } from '@mui/x-data-grid'
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome'
 import { errorMessage } from '../api/client'
 import { PageHeader } from '../components/PageHeader'
-import { getCost, listArticles, listRawMaterials } from '../api/costing'
-import { listEmployees, listEtablissements } from '../api/iam'
+import { getCost, listArticles } from '../api/costing'
 import { getDay, listMonth, listMyEtablissements } from '../api/daily'
 import {
   getHourlyWeather,
@@ -172,7 +171,6 @@ const MARGIN_COLUMNS: GridColDef<MarginRow>[] = [
 export function DashboardPage() {
   const { baseline } = useSettings()
   const [error, setError] = useState<string | null>(null)
-  const [counts, setCounts] = useState({ etabs: 0, articles: 0, employees: 0, materials: 0 })
   const [caJour, setCaJour] = useState<number | null>(null)
   const [margins, setMargins] = useState<MarginRow[]>([])
   const [recent, setRecent] = useState<DailyEntry[]>([])
@@ -202,20 +200,6 @@ export function DashboardPage() {
 
   useEffect(() => {
     const today = toISODate(new Date())
-
-    // KPI counts (chacun indépendant, tolérant aux erreurs).
-    listEtablissements()
-      .then((l) => setCounts((c) => ({ ...c, etabs: l.length })))
-      .catch(() => undefined)
-    listArticles()
-      .then((l) => setCounts((c) => ({ ...c, articles: l.length })))
-      .catch(() => undefined)
-    listEmployees()
-      .then((l) => setCounts((c) => ({ ...c, employees: l.length })))
-      .catch(() => undefined)
-    listRawMaterials()
-      .then((l) => setCounts((c) => ({ ...c, materials: l.length })))
-      .catch(() => undefined)
 
     // CA du jour (total) + activité récente du 1er établissement.
     listMyEtablissements()
@@ -829,12 +813,12 @@ export function DashboardPage() {
     )
   }
 
-  const kpis: Array<{ value: string; label: string; accent?: boolean }> = [
-    { value: String(counts.etabs), label: 'Établissements' },
-    { value: String(counts.articles), label: 'Articles' },
-    { value: String(counts.employees), label: 'Employés' },
-    { value: String(counts.materials), label: 'Matières premières' },
-    { value: caJour == null ? '…' : formatEur(caJour), label: 'CA du jour (TTC, total)', accent: true },
+  // Trois chiffres clés de l'établissement principal : réalisé du jour, réalisé de la veille,
+  // et prévisionnel (référence du même jour l'an dernier).
+  const figures: Array<{ label: string; value: number | null; sub?: string }> = [
+    { label: 'Chiffre du jour', value: today?.entry?.revenue ?? null },
+    { label: 'Chiffre de la veille', value: yesterday?.entry?.revenue ?? null },
+    { label: 'Chiffre prévisionnel', value: today?.ar.ca ?? null, sub: 'réf. même jour l’an dernier' },
   ]
 
   return (
@@ -847,36 +831,48 @@ export function DashboardPage() {
         </Alert>
       )}
 
+      {/* Bandeau plein largeur : CA du jour (total, tous établissements). */}
+      <Card sx={{ mb: 2, borderTop: 3, borderColor: 'primary.main' }}>
+        <CardContent>
+          <Typography variant="body2" color="text.secondary">
+            CA du jour (TTC, total)
+          </Typography>
+          <Typography
+            variant="h3"
+            color="primary"
+            sx={{ fontWeight: 'bold', fontSize: { xs: '2rem', sm: '3rem' }, lineHeight: 1.1 }}
+          >
+            {caJour == null ? '…' : formatEur(caJour)}
+          </Typography>
+        </CardContent>
+      </Card>
+
+      {/* Trois chiffres : jour / veille / prévisionnel. */}
       <Box
         sx={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))',
+          gridTemplateColumns: { xs: '1fr', sm: 'repeat(3, 1fr)' },
           gap: 2,
           mb: 3,
         }}
       >
-        {kpis.map((k) => (
+        {figures.map((k) => (
           <Card key={k.label}>
             <CardContent>
               <Typography
                 variant="h4"
-                sx={{
-                  fontWeight: 'bold',
-                  // Police compacte sur mobile pour que le montant ne déborde pas de la carte.
-                  fontSize: { xs: '1.35rem', sm: '2.125rem' },
-                  lineHeight: 1.15,
-                }}
-                color={k.accent ? 'primary' : 'text.primary'}
+                sx={{ fontWeight: 'bold', fontSize: { xs: '1.5rem', sm: '2rem' }, lineHeight: 1.15 }}
               >
-                {k.value}
+                {k.value == null ? '—' : formatEur(k.value)}
               </Typography>
-              <Typography
-                variant="body2"
-                color="text.secondary"
-                sx={{ fontSize: { xs: '0.78rem', sm: '0.875rem' } }}
-              >
+              <Typography variant="body2" color="text.secondary" sx={{ fontSize: { xs: '0.82rem', sm: '0.9rem' } }}>
                 {k.label}
               </Typography>
+              {k.sub && (
+                <Typography variant="caption" color="text.disabled" sx={{ display: 'block' }}>
+                  {k.sub}
+                </Typography>
+              )}
             </CardContent>
           </Card>
         ))}
