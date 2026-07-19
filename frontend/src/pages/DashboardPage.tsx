@@ -17,11 +17,9 @@ import {
   TableRow,
   Typography,
 } from '@mui/material'
-import { DataGrid, type GridColDef } from '@mui/x-data-grid'
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome'
 import { errorMessage } from '../api/client'
 import { PageHeader } from '../components/PageHeader'
-import { getCost, listArticles } from '../api/costing'
 import { getDay, listMonth, listMyEtablissements } from '../api/daily'
 import {
   getHourlyWeather,
@@ -37,7 +35,7 @@ import { getMuslimDays, getJewishDays } from '../api/religiousCalendar'
 import { getCuratedEvents } from '../api/observances'
 import { getDayAnalysis, getDaysAnalysis, getTrend, type DayContextInput } from '../api/insights'
 import { useSettings } from '../settings/SettingsContext'
-import type { DailyEntry, MyEtablissement, Pnet } from '../api/types'
+import type { DailyEntry, MyEtablissement } from '../api/types'
 
 function formatEur(value: number | null | undefined): string {
   if (value == null) return '—'
@@ -125,54 +123,10 @@ interface DayContextResult {
   mode: 'action' | 'bilan' | 'prep'
 }
 
-interface MarginRow {
-  id: number
-  code: string
-  name: string
-  pnet: number
-  pvTtc: number | null
-  marginHt: number | null
-  coefficient: number | null
-}
-
-const MARGIN_COLUMNS: GridColDef<MarginRow>[] = [
-  { field: 'code', headerName: 'Code', width: 90 },
-  { field: 'name', headerName: 'Article', flex: 1, minWidth: 140 },
-  {
-    field: 'pnet',
-    headerName: 'PNET HT',
-    width: 110,
-    type: 'number',
-    valueFormatter: (v) => formatEur(v as number | null),
-  },
-  {
-    field: 'pvTtc',
-    headerName: 'PV TTC',
-    width: 110,
-    type: 'number',
-    valueFormatter: (v) => formatEur(v as number | null),
-  },
-  {
-    field: 'marginHt',
-    headerName: 'Marge €',
-    width: 110,
-    type: 'number',
-    valueFormatter: (v) => formatEur(v as number | null),
-  },
-  {
-    field: 'coefficient',
-    headerName: 'Coef',
-    width: 90,
-    type: 'number',
-    valueFormatter: (v) => (v == null ? '—' : (v as number).toFixed(2)),
-  },
-]
-
 export function DashboardPage() {
   const { baseline } = useSettings()
   const [error, setError] = useState<string | null>(null)
   const [caJour, setCaJour] = useState<number | null>(null)
-  const [margins, setMargins] = useState<MarginRow[]>([])
   const [recent, setRecent] = useState<DailyEntry[]>([])
   const [recentEtab, setRecentEtab] = useState<string | null>(null)
 
@@ -222,35 +176,7 @@ export function DashboardPage() {
       })
       .catch((e) => setError(errorMessage(e)))
 
-    // Marges des articles fabriqués.
-    listArticles()
-      .then(async (list) => {
-        const fabriques = list.filter((a) => a.type === 'FABRIQUE')
-        const codeById = new Map(fabriques.map((a) => [a.id, a.code]))
-        const results = await Promise.all(
-          fabriques.map((a) =>
-            getCost(a.id)
-              .then((p) => p)
-              .catch(() => null),
-          ),
-        )
-        const rows: MarginRow[] = results
-          .filter((p): p is Pnet => p !== null)
-          .map((p) => ({
-            id: p.articleId,
-            code: codeById.get(p.articleId) ?? String(p.articleId),
-            name: p.articleName,
-            pnet: p.unitCost,
-            pvTtc: p.salePriceTtc ?? null,
-            marginHt: p.marginHt ?? null,
-            coefficient: p.coefficient ?? null,
-          }))
-        // Le DataGrid gère tri (par défaut sur le coef) et pagination : on envoie tout.
-        setMargins(rows)
-      })
-      .catch(() => undefined)
-
-    // KPI/marges/CA : une seule fois au montage (indépendants de l'axe de comparaison).
+    // CA du jour : chargé une seule fois au montage (indépendant de l'axe de comparaison).
   }, [])
 
   // Cockpit du matin : (re)chargé au montage ET à chaque changement d'axe de comparaison,
@@ -1009,45 +935,11 @@ export function DashboardPage() {
         </CardContent>
       </Card>
 
-      <Box
-        sx={{
-          display: 'grid',
-          gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' },
-          gap: 3,
-        }}
-      >
-        <Card>
-          <CardContent>
-            <Typography variant="h2" gutterBottom>
-              Marges (articles fabriqués)
-            </Typography>
-            {margins.length === 0 ? (
-              <Typography color="text.secondary">Aucune donnée de marge disponible.</Typography>
-            ) : (
-              <Box sx={{ height: 420, width: '100%' }}>
-                <DataGrid
-                  rows={margins}
-                  columns={MARGIN_COLUMNS}
-                  showToolbar
-                  disableRowSelectionOnClick
-                  sortingOrder={['asc', 'desc', null]}
-                  pageSizeOptions={[10, 25, 50]}
-                  initialState={{
-                    pagination: { paginationModel: { pageSize: 10 } },
-                    sorting: { sortModel: [{ field: 'coefficient', sort: 'desc' }] },
-                  }}
-                  sx={{ border: 0 }}
-                />
-              </Box>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent>
-            <Typography variant="h2" gutterBottom>
-              Activité récente
-            </Typography>
+      <Card>
+        <CardContent>
+          <Typography variant="h2" gutterBottom>
+            Activité récente
+          </Typography>
             <Typography variant="body2" color="text.secondary">
               {recentEtab ? `7 derniers jours — ${recentEtab}` : 'Aucun établissement.'}
             </Typography>
@@ -1090,7 +982,6 @@ export function DashboardPage() {
             )}
           </CardContent>
         </Card>
-      </Box>
 
       {/* Popup météo heure par heure (clic sur la météo d'une carte) */}
       <Popover
