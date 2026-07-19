@@ -48,6 +48,10 @@ import { getDay, listMonth, listMyEtablissements, saveDay, scanTicket } from '..
 import DocumentScannerIcon from '@mui/icons-material/DocumentScanner'
 import { listArticles } from '../api/costing'
 import type { Article, DailyEntry, MyEtablissement } from '../api/types'
+import { lossOf, priceMap } from '../dashboard/analytics'
+
+/** Métrique affichée sur les cases du calendrier. */
+type CalMetric = 'ca' | 'clients' | 'pertes'
 import { Modal } from '../components/Modal'
 import { PageHeader } from '../components/PageHeader'
 
@@ -72,12 +76,22 @@ function formatEur(value: number | null | undefined): string {
 }
 
 /** Petite flèche de progression du CA d'un jour vs l'an dernier (base au choix). */
-function DayTrend({ delta, label }: { delta: number | null; label: string }) {
+function DayTrend({
+  delta,
+  label,
+  goodWhenDown = false,
+}: {
+  delta: number | null
+  label: string
+  /** Pour les pertes : une hausse est mauvaise → on inverse le vert/rouge (la flèche reste directionnelle). */
+  goodWhenDown?: boolean
+}) {
   if (delta == null) return null
   const flat = Math.abs(delta) < 2
   const up = delta >= 0
   const Icon = flat ? TrendingFlatIcon : up ? TrendingUpIcon : TrendingDownIcon
-  const color = flat ? 'text.disabled' : up ? 'success.main' : 'error.main'
+  const positive = goodWhenDown ? !up : up
+  const color = flat ? 'text.disabled' : positive ? 'success.main' : 'error.main'
   return (
     <Tooltip title={`${label} : ${up && !flat ? '+' : ''}${delta.toFixed(0)} %`}>
       <Stack direction="row" sx={{ alignItems: 'center', color, gap: 0.1, flexShrink: 0 }}>
@@ -100,19 +114,36 @@ function DayTrend({ delta, label }: { delta: number | null; label: string }) {
  * - 'n1_date'  : même DATE calendaire (année - 1).
  * null si incomparable.
  */
+/** Valeur d'un jour selon la métrique choisie (CA, nombre de clients, pertes valorisées en €). */
+function dayMetricValue(
+  e: DailyEntry | undefined,
+  metric: CalMetric,
+  price: Map<number, number>,
+): number | null {
+  if (!e) return null
+  if (metric === 'clients') return e.clientCount ?? null
+  if (metric === 'pertes') {
+    const v = lossOf(e, price)
+    return v > 0 ? v : null
+  }
+  return e.revenue ?? null
+}
+
 function dayTrendPct(
   entries: Record<string, DailyEntry>,
   prevEntries: Record<string, DailyEntry>,
   date: Date,
   mode: 'n1_equiv' | 'n1_date',
+  metric: CalMetric,
+  price: Map<number, number>,
 ): number | null {
   const iso = toISODate(date)
   const prevIso =
     mode === 'n1_date'
       ? toISODate(new Date(date.getFullYear() - 1, date.getMonth(), date.getDate()))
       : toISODate(addDays(date, -364))
-  const cur = entries[iso]?.revenue ?? null
-  const prev = prevEntries[prevIso]?.revenue ?? null
+  const cur = dayMetricValue(entries[iso], metric, price)
+  const prev = dayMetricValue(prevEntries[prevIso], metric, price)
   return cur != null && prev != null && prev > 0 ? ((cur - prev) / prev) * 100 : null
 }
 
@@ -320,6 +351,10 @@ export function DailyPage() {
   )
   const calCompareLabel =
     calCompare === 'n1_date' ? 'vs même date l’an dernier' : 'vs même jour l’an dernier'
+  // Métrique affichée sur les cases : CA (défaut), nombre de clients, ou pertes valorisées.
+  const [calMetric, setCalMetric] = useState<CalMetric>('ca')
+  // Carte des prix de vente (valorisation des pertes par article sur les cases).
+  const price = useMemo(() => priceMap(articles), [articles])
   const [muslimDays, setMuslimDays] = useState<Record<string, string>>({})
   const [jewishDays, setJewishDays] = useState<Record<string, string>>({})
 
@@ -566,6 +601,14 @@ export function DailyPage() {
     }
     return parts.length > 0 ? parts.join(' · ') : '—'
   }
+
+  // Valeur formatée à afficher sur une case selon la métrique choisie (null = rien à afficher).
+  const metricText = (e?: DailyEntry): string | null => {
+    const v = dayMetricValue(e, calMetric, price)
+    if (v == null) return null
+    return calMetric === 'clients' ? v.toLocaleString('fr-FR') : formatEur(v)
+  }
+  const metricColor = calMetric === 'pertes' ? 'error.main' : 'primary.main'
 
   // Bloc de comparaison (un jour de l'an dernier) pour le popover.
   const renderCompare = (label: string, iso: string | null) => {
@@ -940,6 +983,20 @@ export function DailyPage() {
               Fête / événement
             </Typography>
             <Stack direction="row" sx={{ alignItems: 'center', gap: 0.75, ml: { sm: 'auto' } }}>
+              <Typography variant="caption">Afficher :</Typography>
+              <ToggleButtonGroup
+                size="small"
+                exclusive
+                value={calMetric}
+                onChange={(_, v: CalMetric | null) => v && setCalMetric(v)}
+                sx={{ '& .MuiToggleButton-root': { py: 0.1, px: 1, textTransform: 'none', fontSize: '0.7rem' } }}
+              >
+                <ToggleButton value="ca">CA</ToggleButton>
+                <ToggleButton value="clients">Clients</ToggleButton>
+                <ToggleButton value="pertes">Pertes</ToggleButton>
+              </ToggleButtonGroup>
+            </Stack>
+            <Stack direction="row" sx={{ alignItems: 'center', gap: 0.75 }}>
               <Typography variant="caption">Comparer les flèches :</Typography>
               <ToggleButtonGroup
                 size="small"
@@ -1062,16 +1119,19 @@ export function DailyPage() {
                     ))}
                   </Box>
 
-                  {/* CA + progression + comparaison */}
+                  {/* Valeur (CA / clients / pertes) + progression + comparaison */}
                   <Stack direction="row" sx={{ alignItems: 'center', gap: 0.5, flexShrink: 0 }}>
-                    {entry && entry.revenue != null ? (
-                      <Typography variant="body2" sx={{ fontWeight: 700, color: 'primary.main' }}>
-                        {formatEur(entry.revenue)}
-                      </Typography>
-                    ) : entry ? (
-                      <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: 'primary.main' }} />
-                    ) : null}
-                    <DayTrend delta={dayTrendPct(entries, prevEntries, new Date(year, month, d), calCompare)} label={calCompareLabel} />
+                    {(() => {
+                      const t = metricText(entry)
+                      return t != null ? (
+                        <Typography variant="body2" sx={{ fontWeight: 700, color: metricColor }}>
+                          {t}
+                        </Typography>
+                      ) : entry ? (
+                        <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: 'primary.main' }} />
+                      ) : null
+                    })()}
+                    <DayTrend delta={dayTrendPct(entries, prevEntries, new Date(year, month, d), calCompare, calMetric, price)} label={calCompareLabel} goodWhenDown={calMetric === 'pertes'} />
                     {iaAdvice[iso] && (
                       <Box
                         component="span"
@@ -1249,14 +1309,17 @@ export function DailyPage() {
                   {/* Pied de case : CA + progression + bouton comparaison */}
                   <Stack direction="row" sx={{ mt: 'auto', alignItems: 'flex-end', justifyContent: 'space-between' }}>
                     <Stack direction="row" sx={{ alignItems: 'center', gap: 0.5, minWidth: 0 }}>
-                      {entry && entry.revenue != null ? (
-                        <Typography variant="caption" sx={{ fontWeight: 700, color: 'primary.main', fontSize: { xs: '0.7rem', sm: '0.75rem' } }}>
-                          {formatEur(entry.revenue)}
-                        </Typography>
-                      ) : entry ? (
-                        <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: 'primary.main' }} />
-                      ) : null}
-                      <DayTrend delta={dayTrendPct(entries, prevEntries, new Date(year, month, d), calCompare)} label={calCompareLabel} />
+                      {(() => {
+                        const t = metricText(entry)
+                        return t != null ? (
+                          <Typography variant="caption" sx={{ fontWeight: 700, color: metricColor, fontSize: { xs: '0.7rem', sm: '0.75rem' } }}>
+                            {t}
+                          </Typography>
+                        ) : entry ? (
+                          <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: 'primary.main' }} />
+                        ) : null
+                      })()}
+                      <DayTrend delta={dayTrendPct(entries, prevEntries, new Date(year, month, d), calCompare, calMetric, price)} label={calCompareLabel} goodWhenDown={calMetric === 'pertes'} />
                     </Stack>
                     <Stack direction="row" sx={{ alignItems: 'center', gap: 0.25 }}>
                       {iaAdvice[iso] && (
