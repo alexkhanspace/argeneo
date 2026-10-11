@@ -9,6 +9,8 @@ export interface RecipePdfData {
   pnet: Pnet | null
   /** Fournisseur par id de matière (pour la colonne « Fournisseur » de la fiche coût). */
   supplierById?: Record<number, string | null>
+  /** Ingrédients de la recette (quantités pour le rendement indiqué). */
+  ingredients?: { label: string; quantity: number; unit: string }[]
   steps: string[]
   method: string
   yieldQuantity: string
@@ -188,7 +190,10 @@ function CostPage({ d, s }: { d: RecipePdfData; s: ReturnType<typeof makeStyles>
           </View>
         </View>
       ) : (
-        <Text style={s.muted}>PNET non calculé (enregistrez la recette).</Text>
+        <View>
+          <Text style={s.muted}>PNET non calculé (enregistrez la recette).</Text>
+          <IngredientsTable d={d} s={s} />
+        </View>
       )}
 
       <Text style={s.footer}>Fiche coût — usage interne (gérant){'\n'}Généré par ARGÉNEO</Text>
@@ -196,7 +201,31 @@ function CostPage({ d, s }: { d: RecipePdfData; s: ReturnType<typeof makeStyles>
   )
 }
 
-/** Fiche PRÉPARATION — pour l'équipe : photo, étapes, méthode. */
+const qty = (v: number): string => v.toLocaleString('fr-FR', { maximumFractionDigits: 3 })
+
+/** Tableau des ingrédients (nom + quantité), sans les coûts. */
+function IngredientsTable({ d, s }: { d: RecipePdfData; s: ReturnType<typeof makeStyles> }) {
+  const list = d.ingredients ?? []
+  if (list.length === 0) return <Text style={s.muted}>Aucun ingrédient renseigné.</Text>
+  return (
+    <View>
+      <View style={s.tHead}>
+        <Text style={[s.tHeadCell, s.cName]}>Ingrédient</Text>
+        <Text style={[s.tHeadCell, s.cQty]}>Quantité</Text>
+      </View>
+      {list.map((ing, i) => (
+        <View key={i} style={i % 2 === 1 ? [s.tRow, s.tRowAlt] : s.tRow}>
+          <Text style={s.cName}>{ing.label}</Text>
+          <Text style={s.cQty}>
+            {qty(ing.quantity)} {ing.unit.toLowerCase()}
+          </Text>
+        </View>
+      ))}
+    </View>
+  )
+}
+
+/** Fiche PRÉPARATION — pour l'équipe : photo, ingrédients, étapes, méthode. */
 function PrepPage({ d, s }: { d: RecipePdfData; s: ReturnType<typeof makeStyles> }) {
   const trimmed = d.steps.map((x) => x.trim()).filter((x) => x.length > 0)
   return (
@@ -206,6 +235,11 @@ function PrepPage({ d, s }: { d: RecipePdfData; s: ReturnType<typeof makeStyles>
         {d.photoUrl ? <Image style={s.photoBig} src={d.photoUrl} /> : null}
         <MetaBlock s={s} d={d} />
       </View>
+
+      <Text style={s.h2}>
+        Ingrédients — pour {d.yieldQuantity} {d.yieldUnit.toLowerCase()}
+      </Text>
+      <IngredientsTable d={d} s={s} />
 
       <Text style={s.h2}>Étapes de préparation</Text>
       {trimmed.length ? (

@@ -18,12 +18,15 @@ import DeleteIcon from '@mui/icons-material/Delete'
 import PlaylistAddCheckIcon from '@mui/icons-material/PlaylistAddCheck'
 import RestaurantMenuIcon from '@mui/icons-material/RestaurantMenu'
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf'
+import TableChartIcon from '@mui/icons-material/TableChart'
 import { errorMessage } from '../api/client'
-import { photoUrl } from '../api/costing'
+import { getRecipe, photoUrl } from '../api/costing'
 import { buildRecipePdfBlob } from '../pdf/buildRecipePdf'
 import type { Article } from '../api/types'
 import { Modal } from './Modal'
 import { PdfViewerModal } from './PdfViewerModal'
+import { ProportionalSheet } from './ProportionalSheet'
+import type { PropIngredient } from '../utils/proportional'
 
 const fmt = (v: number | null | undefined): string =>
   v == null ? '—' : v.toLocaleString('fr-FR', { style: 'currency', currency: 'EUR', maximumFractionDigits: 4 })
@@ -68,6 +71,23 @@ export function ProductSheet({
   const [pdfError, setPdfError] = useState<string | null>(null)
   // Photo en plein écran (lightbox) au clic sur la vignette.
   const [photoFull, setPhotoFull] = useState(false)
+  // Fiche proportionnelle : ingrédients chargés depuis la recette enregistrée.
+  const [propIngredients, setPropIngredients] = useState<PropIngredient[] | null>(null)
+
+  const openProportional = async () => {
+    setPdfError(null)
+    setPdfBusy('prop')
+    try {
+      const recipe = await getRecipe(article.id)
+      setPropIngredients(
+        recipe.components.map((c) => ({ label: c.label ?? '—', quantity: Number(c.quantity), unit: c.unit })),
+      )
+    } catch (e) {
+      setPdfError(errorMessage(e))
+    } finally {
+      setPdfBusy(null)
+    }
+  }
 
   const exportRecipePdf = async (mode: 'cost' | 'prep') => {
     setPdfError(null)
@@ -170,6 +190,16 @@ export function ProductSheet({
               Fiche prépa (PDF)
             </Button>
           )}
+          {article.type === 'FABRIQUE' && (
+            <Button
+              variant="outlined"
+              startIcon={pdfBusy === 'prop' ? <CircularProgress size={16} /> : <TableChartIcon />}
+              onClick={() => void openProportional()}
+              disabled={pdfBusy != null}
+            >
+              Fiche proportionnelle
+            </Button>
+          )}
           {article.type === 'MENU' && (
             <Button variant="outlined" startIcon={<RestaurantMenuIcon />} onClick={onMenu}>
               Composition du menu
@@ -207,6 +237,14 @@ export function ProductSheet({
         blob={pdf?.blob ?? null}
         filename={pdf?.name ?? 'document.pdf'}
         title={pdf?.title}
+      />
+
+      <ProportionalSheet
+        open={propIngredients != null}
+        onClose={() => setPropIngredients(null)}
+        name={article.name}
+        code={article.code}
+        ingredients={propIngredients ?? []}
       />
 
       {/* Photo en plein écran : clic n'importe où pour fermer. */}

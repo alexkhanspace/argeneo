@@ -44,6 +44,9 @@ import { Modal } from '../../components/Modal'
 import { PageHeader } from '../../components/PageHeader'
 import { PriceCalculator } from '../../components/PriceCalculator'
 import { ProductSheet } from '../../components/ProductSheet'
+import { SearchField } from '../../components/SearchField'
+import { SimilarHint } from '../../components/SimilarHint'
+import { matchesQuery } from '../../utils/text'
 
 const typeLabel = (t: ArticleType): string =>
   t === 'FABRIQUE' ? 'Fabriqué' : t === 'MENU' ? 'Menu' : 'Acheté'
@@ -97,6 +100,7 @@ export function ArticlesPage() {
   // Filtres par famille / sous-famille (côté client) + gestion du référentiel.
   const [filterFamille, setFilterFamille] = useState<number | ''>('')
   const [filterSousFamille, setFilterSousFamille] = useState<number | ''>('')
+  const [search, setSearch] = useState('')
   const [managerOpen, setManagerOpen] = useState(false)
 
   const [open, setOpen] = useState(false)
@@ -343,9 +347,9 @@ export function ArticlesPage() {
       rows.filter((a) => {
         if (filterFamille !== '' && a.familleId !== filterFamille) return false
         if (filterSousFamille !== '' && a.sousFamilleId !== filterSousFamille) return false
-        return true
+        return matchesQuery(search, a.name, a.code, a.familleName, a.sousFamilleName, a.gtin)
       }),
-    [rows, filterFamille, filterSousFamille],
+    [rows, filterFamille, filterSousFamille, search],
   )
 
   // Tri pour la vue cartes mobile (le tableau desktop gère son tri lui-même).
@@ -446,12 +450,19 @@ export function ArticlesPage() {
 
       <Card sx={{ mb: 3 }}>
         <CardContent>
-          {/* Barre de filtres famille / sous-famille (réduit la liste, donc le scroll). */}
+          {/* Recherche + filtres famille / sous-famille (réduit la liste, donc le scroll). */}
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} sx={{ mb: 2 }}>
+            <SearchField
+              value={search}
+              onChange={setSearch}
+              placeholder="Rechercher un article (nom, code…)"
+              sx={{ flex: 1, maxWidth: { sm: 360 } }}
+            />
           {familles.length > 0 && (
             <Stack
               direction={{ xs: 'column', sm: 'row' }}
               spacing={1.5}
-              sx={{ mb: 2, maxWidth: { sm: 520 } }}
+              sx={{ flex: 1, maxWidth: { sm: 520 } }}
             >
               <TextField
                 select
@@ -489,6 +500,7 @@ export function ArticlesPage() {
               </TextField>
             </Stack>
           )}
+          </Stack>
 
           {items.length === 0 ? (
             <Typography color="text.secondary">Aucun article. Cliquez sur « Nouvel article ».</Typography>
@@ -506,6 +518,9 @@ export function ArticlesPage() {
                 <MenuItem value="coef">Marge (coef)</MenuItem>
                 <MenuItem value="pv">Prix de vente</MenuItem>
               </TextField>
+              {sortedMobileRows.length === 0 && (
+                <Typography color="text.secondary">Aucun article ne correspond.</Typography>
+              )}
               {sortedMobileRows.map((a) => (
                 <Card
                   key={a.id}
@@ -589,6 +604,7 @@ export function ArticlesPage() {
               onKeyDown={nameKeyDown}
               helperText="Shift+Entrée : saut de ligne (repris sur l'étiquette)"
             />
+            <SimilarHint name={name} items={items} what="Article" />
             <TextField
               label="Description (aide l'IA : photo & prix)"
               value={description}

@@ -50,6 +50,11 @@ export async function buildRecipePdfBlob(
     salePriceTtc: article.salePriceTtc,
     pnet,
     supplierById,
+    ingredients: (recipe?.components ?? []).map((c) => ({
+      label: c.label ?? '—',
+      quantity: Number(c.quantity),
+      unit: c.unit,
+    })),
     steps: recipe?.steps ?? [],
     method: recipe?.method ?? '',
     yieldQuantity: recipe ? String(recipe.yieldQuantity) : '1',

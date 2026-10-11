@@ -2,12 +2,12 @@ import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import {
   Alert,
+  Autocomplete,
   Box,
   Button,
   Card,
   CardContent,
   IconButton,
-  MenuItem,
   Snackbar,
   Stack,
   TextField,
@@ -117,21 +117,15 @@ export function MenuEditorPage() {
             <Stack spacing={1.5}>
               {rows.map((r, i) => (
                 <Stack key={i} direction="row" spacing={1} sx={{ alignItems: 'flex-start' }}>
-                  <TextField
-                    select
-                    label="Article"
-                    value={r.componentArticleId === '' ? '' : String(r.componentArticleId)}
-                    onChange={(e) =>
-                      setRow(i, { componentArticleId: e.target.value === '' ? '' : Number(e.target.value) })
-                    }
+                  <Autocomplete
+                    options={candidates}
+                    getOptionLabel={(a) => `${a.code} — ${a.name}`}
+                    value={candidates.find((a) => a.id === r.componentArticleId) ?? null}
+                    onChange={(_, a) => setRow(i, { componentArticleId: a ? a.id : '' })}
+                    noOptionsText="Aucun article"
+                    renderInput={(params) => <TextField {...params} label="Article" placeholder="Tapez pour chercher…" />}
                     sx={{ flex: 1, minWidth: 0 }}
-                  >
-                    {candidates.map((a) => (
-                      <MenuItem key={a.id} value={String(a.id)}>
-                        {a.code} — {a.name}
-                      </MenuItem>
-                    ))}
-                  </TextField>
+                  />
                   <TextField
                     label="Qté"
                     type="number"

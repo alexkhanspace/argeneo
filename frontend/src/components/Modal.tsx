@@ -15,6 +15,8 @@ interface ModalProps {
   title?: ReactNode
   onClose: () => void
   children: ReactNode
+  /** Largeur max (défaut « sm ») — « lg » pour les tableaux larges. */
+  maxWidth?: 'xs' | 'sm' | 'md' | 'lg' | 'xl'
 }
 
 /**
@@ -22,10 +24,10 @@ interface ModalProps {
  * Plein écran sur mobile ; croix positionnée proprement en haut à droite.
  * Même signature que l'ancienne version maison — les pages appelantes sont inchangées.
  */
-export function Modal({ open, title, onClose, children }: ModalProps) {
+export function Modal({ open, title, onClose, children, maxWidth = 'sm' }: ModalProps) {
   const fullScreen = useMediaQuery(theme.breakpoints.down('sm'))
   return (
-    <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm" fullScreen={fullScreen}>
+    <Dialog open={open} onClose={onClose} fullWidth maxWidth={maxWidth} fullScreen={fullScreen}>
       {/* pr réservé pour la croix afin que le titre ne passe pas dessous. */}
       <DialogTitle component="div" sx={{ pr: 7 }}>
         <Typography variant="h6" component="span" sx={{ textTransform: 'capitalize' }}>

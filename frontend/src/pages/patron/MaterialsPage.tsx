@@ -34,6 +34,9 @@ import { FamilleManager } from '../../components/FamilleManager'
 import { FamilleSelect } from '../../components/FamilleSelect'
 import { Modal } from '../../components/Modal'
 import { PageHeader } from '../../components/PageHeader'
+import { SearchField } from '../../components/SearchField'
+import { SimilarHint } from '../../components/SimilarHint'
+import { matchesQuery } from '../../utils/text'
 
 /** Carte d'une matière en vue mobile : nom, famille, prix éditable, édition complète et suppression. */
 function MobileMaterialCard({
@@ -130,6 +133,7 @@ export function MaterialsPage() {
   // Filtres par famille / sous-famille (côté client).
   const [filterFamille, setFilterFamille] = useState<number | ''>('')
   const [filterSousFamille, setFilterSousFamille] = useState<number | ''>('')
+  const [search, setSearch] = useState('')
   const [managerOpen, setManagerOpen] = useState(false)
 
   // Sélection multiple (tableau desktop) pour suppression groupée.
@@ -176,9 +180,9 @@ export function MaterialsPage() {
       items.filter((m) => {
         if (filterFamille !== '' && m.familleId !== filterFamille) return false
         if (filterSousFamille !== '' && m.sousFamilleId !== filterSousFamille) return false
-        return true
+        return matchesQuery(search, m.name, m.supplier, m.familleName, m.sousFamilleName)
       }),
-    [items, filterFamille, filterSousFamille],
+    [items, filterFamille, filterSousFamille, search],
   )
 
   const onDelete = async (m: RawMaterial) => {
@@ -364,12 +368,19 @@ export function MaterialsPage() {
 
       <Card sx={{ mb: 3 }}>
         <CardContent>
-          {/* Barre de filtres famille / sous-famille (réduit la liste, donc le scroll). */}
+          {/* Recherche + filtres famille / sous-famille (réduit la liste, donc le scroll). */}
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} sx={{ mb: 2 }}>
+            <SearchField
+              value={search}
+              onChange={setSearch}
+              placeholder="Rechercher une matière (nom, fournisseur…)"
+              sx={{ flex: 1, maxWidth: { sm: 360 } }}
+            />
           {familles.length > 0 && (
             <Stack
               direction={{ xs: 'column', sm: 'row' }}
               spacing={1.5}
-              sx={{ mb: 2, maxWidth: { sm: 520 } }}
+              sx={{ flex: 1, maxWidth: { sm: 520 } }}
             >
               <TextField
                 select
@@ -407,6 +418,7 @@ export function MaterialsPage() {
               </TextField>
             </Stack>
           )}
+          </Stack>
 
           {items.length === 0 ? (
             <Typography color="text.secondary">Aucune matière. Cliquez sur « + Nouvelle matière ».</Typography>
@@ -423,6 +435,9 @@ export function MaterialsPage() {
                 <MenuItem value="name">Nom</MenuItem>
                 <MenuItem value="price">Prix</MenuItem>
               </TextField>
+              {filtered.length === 0 && (
+                <Typography color="text.secondary">Aucune matière ne correspond.</Typography>
+              )}
               {[...filtered]
                 .sort((a, b) =>
                   mobileSort === 'price'
@@ -486,6 +501,7 @@ export function MaterialsPage() {
             required
             autoFocus
           />
+          <SimilarHint name={name} items={items} what="Matière" />
           <TextField
             select
             label="Unité de référence"

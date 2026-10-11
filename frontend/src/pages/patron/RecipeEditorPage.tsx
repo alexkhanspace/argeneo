@@ -1,8 +1,9 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import axios from 'axios'
 import {
   Alert,
+  Autocomplete,
   Box,
   Button,
   Card,
@@ -30,7 +31,9 @@ import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward'
 import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward'
 import DeleteIcon from '@mui/icons-material/Delete'
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf'
+import TableChartIcon from '@mui/icons-material/TableChart'
 import { PdfViewerModal } from '../../components/PdfViewerModal'
+import { ProportionalSheet } from '../../components/ProportionalSheet'
 import { errorMessage } from '../../api/client'
 import { getProfile, getSettings, logoUrl } from '../../api/billing'
 import {
@@ -52,11 +55,23 @@ import type {
   UnitInfo,
 } from '../../api/types'
 
+/** Option du sélecteur de composant : matière première ou sous-recette (liste unique, groupée). */
+interface CompOption {
+  type: ComponentType
+  id: number
+  name: string
+  unit: MeasureUnit
+}
+
+const UNIT_DIMENSION: Record<MeasureUnit, string> = { G: 'MASS', KG: 'MASS', ML: 'VOLUME', L: 'VOLUME', PIECE: 'PIECE' }
+
 interface CompRow {
   type: ComponentType
   refId: number | ''
   quantity: string
   unit: MeasureUnit
+  /** Libellé renvoyé par le serveur (affiché si la référence n'est plus dans les listes). */
+  label?: string
 }
 
 function formatEur(value: number): string {
@@ -107,6 +122,7 @@ export function RecipeEditorPage() {
   const [brandColor, setBrandColor] = useState('#b5651d')
   const [exporting, setExporting] = useState<string | null>(null)
   const [pdfView, setPdfView] = useState<{ blob: Blob | null; name: string; title: string } | null>(null)
+  const [propOpen, setPropOpen] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
@@ -155,6 +171,7 @@ export function RecipeEditorPage() {
             refId: c.type === 'RAW' ? (c.rawMaterialId ?? '') : (c.subArticleId ?? ''),
             quantity: String(c.quantity),
             unit: c.unit,
+            label: c.label,
           })),
         )
         setSteps(r.steps ?? [])
@@ -168,6 +185,37 @@ export function RecipeEditorPage() {
       })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [articleId])
+
+  // Options du sélecteur (matières puis sous-recettes, triées) : recherche par saisie.
+  const compOptions = useMemo<CompOption[]>(
+    () => [
+      ...materials
+        .map((m) => ({ type: 'RAW' as const, id: m.id, name: m.name, unit: m.referenceUnit }))
+        .sort((a, b) => a.name.localeCompare(b.name)),
+      ...subArticles
+        .map((a) => ({ type: 'SUBRECIPE' as const, id: a.id, name: a.name, unit: a.unit }))
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    ],
+    [materials, subArticles],
+  )
+
+  /** Option sélectionnée d'une ligne (ou option de secours construite depuis le libellé serveur). */
+  const optionOf = (row: CompRow): CompOption | null => {
+    if (row.refId === '') return null
+    return (
+      compOptions.find((o) => o.type === row.type && o.id === row.refId) ?? {
+        type: row.type,
+        id: row.refId,
+        name: row.label ?? `#${row.refId}`,
+        unit: row.unit,
+      }
+    )
+  }
+
+  // Ingrédients saisis (même non enregistrés) : fiche PDF et fiche proportionnelle.
+  const ingredients = rows
+    .filter((r) => r.refId !== '' && Number(r.quantity) > 0)
+    .map((r) => ({ label: optionOf(r)?.name ?? '—', quantity: Number(r.quantity), unit: r.unit }))
 
   const addRow = () =>
     setRows((r) => [...r, { type: 'RAW', refId: '', quantity: '', unit: 'G' }])
@@ -236,6 +284,7 @@ export function RecipeEditorPage() {
         gtin: article.gtin,
         salePriceTtc: article.salePriceTtc,
         pnet,
+        ingredients,
         steps,
         method,
         yieldQuantity,
@@ -306,6 +355,14 @@ export function RecipeEditorPage() {
             disabled={!!exporting}
           >
             Fiche préparation
+          </Button>
+          <Button
+            variant="outlined"
+            size="small"
+            startIcon={<TableChartIcon />}
+            onClick={() => setPropOpen(true)}
+          >
+            Fiche proportionnelle
           </Button>
         </Stack>
       </Stack>
@@ -395,34 +452,32 @@ export function RecipeEditorPage() {
                     key={i}
                     sx={{
                       display: 'grid',
-                      gridTemplateColumns: { xs: '1fr', sm: '1fr 2fr 1fr 1fr auto' },
+                      gridTemplateColumns: { xs: '1fr', sm: '3fr 1fr 1fr auto' },
                       gap: 1,
                       alignItems: 'center',
                     }}
                   >
-                    <TextField
-                      select
-                      value={row.type}
-                      onChange={(e) =>
-                        updateRow(i, { type: e.target.value as ComponentType, refId: '' })
-                      }
-                    >
-                      <MenuItem value="RAW">Matière</MenuItem>
-                      <MenuItem value="SUBRECIPE">Sous-recette</MenuItem>
-                    </TextField>
-                    <TextField
-                      select
-                      value={row.refId}
-                      onChange={(e) => updateRow(i, { refId: Number(e.target.value) })}
-                      required
-                    >
-                      <MenuItem value="">— choisir —</MenuItem>
-                      {(row.type === 'RAW' ? materials : subArticles).map((opt) => (
-                        <MenuItem key={opt.id} value={opt.id}>
-                          {opt.name}
-                        </MenuItem>
-                      ))}
-                    </TextField>
+                    <Autocomplete
+                      options={compOptions}
+                      groupBy={(o) => (o.type === 'RAW' ? 'Matières premières' : 'Sous-recettes')}
+                      getOptionLabel={(o) => o.name}
+                      getOptionKey={(o) => `${o.type}-${o.id}`}
+                      isOptionEqualToValue={(o, v) => o.type === v.type && o.id === v.id}
+                      value={optionOf(row)}
+                      onChange={(_, o) => {
+                        if (!o) {
+                          updateRow(i, { refId: '' })
+                          return
+                        }
+                        // Unité incompatible (ex. g pour une matière à la pièce) : on reprend celle de la référence.
+                        const unit = UNIT_DIMENSION[row.unit] === UNIT_DIMENSION[o.unit] ? row.unit : o.unit
+                        updateRow(i, { type: o.type, refId: o.id, unit })
+                      }}
+                      noOptionsText="Aucun résultat — créez la matière dans « Matières »"
+                      renderInput={(params) => (
+                        <TextField {...params} placeholder="Tapez pour chercher…" required />
+                      )}
+                    />
                     <TextField
                       type="number"
                       placeholder="Qté"
@@ -627,6 +682,15 @@ export function RecipeEditorPage() {
           </CardContent>
         </Card>
       </Box>
+
+      <ProportionalSheet
+        open={propOpen}
+        onClose={() => setPropOpen(false)}
+        name={article.name}
+        code={article.code}
+        ingredients={ingredients}
+        color={brandColor}
+      />
 
       <PdfViewerModal
         open={pdfView != null}
