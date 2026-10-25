@@ -231,7 +231,16 @@ export function OrderEntry({
   return (
     <Box sx={{ pb: tablet ? 14 : 10 }}>
       {/* En-tête : livraison, notes, filtres. */}
-      <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} sx={{ mb: 2, alignItems: { md: 'center' } }}>
+      {/* Grille (et non Stack) : le thème met les champs en fullWidth, ce qui écrasait les remarques. */}
+      <Box
+        sx={{
+          display: 'grid',
+          gridTemplateColumns: { xs: '1fr', md: '200px 1fr auto' },
+          gap: 2,
+          mb: 2,
+          alignItems: 'center',
+        }}
+      >
         <TextField
           label="Livraison souhaitée"
           type="date"
@@ -239,14 +248,12 @@ export function OrderEntry({
           onChange={(e) => setDeliveryDate(e.target.value)}
           slotProps={{ inputLabel: { shrink: true } }}
           disabled={validated}
-          sx={{ minWidth: 180 }}
         />
         <TextField
           label="Remarques pour le fournisseur"
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
           disabled={validated}
-          sx={{ flex: 1 }}
         />
         {!validated && (
           <Button
@@ -255,11 +262,12 @@ export function OrderEntry({
             onClick={() => void fillFromLast()}
             disabled={busy != null}
             size={tablet ? 'large' : 'medium'}
+            sx={{ whiteSpace: 'nowrap' }}
           >
             Reprendre la dernière commande
           </Button>
         )}
-      </Stack>
+      </Box>
 
       {sheet.notes && <Alert severity="info" sx={{ mb: 2 }}>{sheet.notes}</Alert>}
       {validated && (
