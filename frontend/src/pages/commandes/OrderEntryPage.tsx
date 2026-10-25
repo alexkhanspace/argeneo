@@ -69,7 +69,7 @@ export function OrderEntryPage() {
           Commandes
         </Button>
         <Stack direction="row" sx={{ gap: 1 }}>
-          {order?.status === 'VALIDEE' && patron && (
+          {order != null && order.status !== 'BROUILLON' && patron && (
             <Button size="small" variant="outlined" startIcon={<LockOpenIcon />} onClick={() => void onReopen()}>
               Rouvrir
             </Button>

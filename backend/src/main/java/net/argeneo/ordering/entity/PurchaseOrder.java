@@ -78,6 +78,9 @@ public class PurchaseOrder {
     @Column(name = "validated_at")
     private Instant validatedAt;
 
+    @Column(name = "received_at")
+    private Instant receivedAt;
+
     @OneToMany(cascade = CascadeType.ALL, orphanRemoval = true)
     @JoinColumn(name = "order_id", nullable = false)
     @OrderBy("position ASC")

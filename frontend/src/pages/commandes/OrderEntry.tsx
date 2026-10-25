@@ -26,8 +26,11 @@ import SaveIcon from '@mui/icons-material/Save'
 import { errorMessage } from '../../api/client'
 import {
   createOrder,
+  deliveryDaysLabel,
   getOrder,
   listOrders,
+  STATUS_COLOR,
+  STATUS_LABEL,
   updateOrder,
   type OrderSheet,
   type PurchaseOrder,
@@ -105,7 +108,12 @@ export function OrderEntry({
   // Téléphone : même en mode tablette, on garde des tailles compactes (écran ~375 px).
   const phone = useMediaQuery(useTheme().breakpoints.down('sm'))
   const big = tablet && !phone
-  const validated = current?.status === 'VALIDEE'
+  // Validée ou reçue : la saisie est verrouillée.
+  const validated = current != null && current.status !== 'BROUILLON'
+  // Date de livraison : seulement pour les fournisseurs « au choix » (ex. farine) ; les autres
+  // livrent à jour fixe. On la garde visible si une date a déjà été saisie.
+  const showDate = sheet.deliveryDateChoice || Boolean(deliveryDate)
+  const usualDays = deliveryDaysLabel(sheet.deliveryDays)
   const orderedCount =
     sheet.lines.filter((l) => l.id != null && num(qty[l.id]) > 0).length +
     free.filter((f) => f.designation.trim() && num(f.quantity) > 0).length
@@ -289,20 +297,23 @@ export function OrderEntry({
       <Box
         sx={{
           display: 'grid',
-          gridTemplateColumns: { xs: '1fr', md: '200px 1fr auto' },
+          gridTemplateColumns: { xs: '1fr', md: showDate ? '200px 1fr auto' : '1fr auto' },
           gap: 2,
           mb: 2,
           alignItems: 'center',
         }}
       >
-        <TextField
-          label="Livraison souhaitée"
-          type="date"
-          value={deliveryDate}
-          onChange={(e) => setDeliveryDate(e.target.value)}
-          slotProps={{ inputLabel: { shrink: true } }}
-          disabled={validated}
-        />
+        {showDate && (
+          <TextField
+            label="Livraison souhaitée"
+            type="date"
+            value={deliveryDate}
+            onChange={(e) => setDeliveryDate(e.target.value)}
+            slotProps={{ inputLabel: { shrink: true } }}
+            disabled={validated}
+            helperText={usualDays ? `Habituellement : ${usualDays}` : undefined}
+          />
+        )}
         <TextField
           label="Remarques pour le fournisseur"
           value={notes}
@@ -323,6 +334,11 @@ export function OrderEntry({
         )}
       </Box>
 
+      {!showDate && usualDays && (
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+          Livraison habituelle : <b>{usualDays}</b>
+        </Typography>
+      )}
       {sheet.notes && <Alert severity="info" sx={{ mb: 2 }}>{sheet.notes}</Alert>}
       {validated && (
         <Alert severity="success" icon={<CheckCircleIcon />} sx={{ mb: 2 }}>
@@ -527,7 +543,7 @@ export function OrderEntry({
             <Typography variant="body2" color="text.secondary" noWrap sx={{ minWidth: 0 }}>
               {sheet.name} · {etablissement.name}
             </Typography>
-            {current && <Chip size="small" label={validated ? 'Validée' : 'Brouillon'} color={validated ? 'success' : 'default'} />}
+            {current && <Chip size="small" label={STATUS_LABEL[current.status]} color={STATUS_COLOR[current.status]} />}
             {amount > 0 && (
               <Typography variant="body2" color="text.secondary">
                 ≈ {eur(amount)} HT

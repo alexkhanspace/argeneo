@@ -39,7 +39,7 @@ export function CadenciersPage() {
       <PageHeader
         title="Cadenciers"
         action={
-          <Stack direction="row" spacing={1}>
+          <Stack direction="row" sx={{ gap: 1, flexWrap: 'wrap' }}>
             <Button
               variant="outlined"
               startIcon={<DocumentScannerIcon />}

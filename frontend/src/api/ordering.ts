@@ -37,6 +37,10 @@ export interface OrderSheet {
   color: string | null
   showPrices: boolean
   active: boolean
+  /** true : date de livraison choisie à la commande (ex. farine) ; sinon jours fixes. */
+  deliveryDateChoice: boolean
+  /** Jours habituels de livraison, ISO (1 = lundi … 7 = dimanche), ex. « 2,5 ». */
+  deliveryDays: string | null
   updatedAt: string
   lines: SheetLine[]
 }
@@ -84,7 +88,14 @@ export async function scanSheetPage(file: File): Promise<SheetScanResult> {
 
 // --- Commandes ---
 
-export type OrderStatus = 'BROUILLON' | 'VALIDEE'
+export type OrderStatus = 'BROUILLON' | 'VALIDEE' | 'RECUE'
+
+export const STATUS_LABEL: Record<OrderStatus, string> = { BROUILLON: 'Brouillon', VALIDEE: 'Validée', RECUE: 'Reçue' }
+export const STATUS_COLOR: Record<OrderStatus, 'default' | 'success' | 'info'> = {
+  BROUILLON: 'default',
+  VALIDEE: 'info',
+  RECUE: 'success',
+}
 
 export interface OrderLine {
   id: number
@@ -112,6 +123,9 @@ export interface OrderSummary {
   totalAmount: number | null
   createdByName: string | null
   createdAt: string
+  /** Livraison attendue : date demandée, sinon prochain jour de livraison du fournisseur. */
+  expectedDate: string | null
+  receivedAt: string | null
 }
 
 export interface PurchaseOrder extends Omit<OrderSummary, 'lineCount'> {
@@ -160,6 +174,23 @@ export async function updateOrder(id: number, input: OrderInput): Promise<Purcha
 export async function reopenOrder(id: number): Promise<PurchaseOrder> {
   const { data } = await api.post<PurchaseOrder>(`/purchase-orders/${id}/reopen`)
   return data
+}
+
+/** Pointe la réception d'une commande (ou l'annule avec received = false). */
+export async function receiveOrder(id: number, received = true): Promise<PurchaseOrder> {
+  const { data } = await api.post<PurchaseOrder>(`/purchase-orders/${id}/receive`, null, { params: { received } })
+  return data
+}
+
+const DAY_NAMES = ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi', 'dimanche']
+
+/** « 2,5 » → « mardi, vendredi » (null si aucun jour). */
+export function deliveryDaysLabel(days: string | null | undefined): string | null {
+  const list = (days ?? '')
+    .split(',')
+    .map((d) => Number(d))
+    .filter((d) => d >= 1 && d <= 7)
+  return list.length ? list.map((d) => DAY_NAMES[d - 1]).join(', ') : null
 }
 
 export async function deleteOrder(id: number): Promise<void> {

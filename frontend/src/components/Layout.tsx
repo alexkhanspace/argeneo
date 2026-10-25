@@ -110,6 +110,7 @@ function navGroupsFor(me: Me): NavGroup[] {
         icon: 'fa-solid fa-truck',
         items: [
           { to: '/commandes', label: 'Commandes', icon: 'fa-solid fa-cart-shopping' },
+          { to: '/commandes/receptions', label: 'Réceptions à venir', icon: 'fa-solid fa-truck-ramp-box' },
           { to: '/commandes/cadenciers', label: 'Cadenciers', icon: 'fa-solid fa-list-check' },
           { to: '/tablette/commandes', label: 'Mode tablette', icon: 'fa-solid fa-tablet-screen-button' },
         ],
@@ -138,6 +139,7 @@ function navGroupsFor(me: Me): NavGroup[] {
     if (canOrder(me)) {
       items.push(
         { to: '/commandes', label: 'Commandes', icon: 'fa-solid fa-cart-shopping' },
+        { to: '/commandes/receptions', label: 'Réceptions à venir', icon: 'fa-solid fa-truck-ramp-box' },
         { to: '/tablette/commandes', label: 'Mode tablette', icon: 'fa-solid fa-tablet-screen-button' },
       )
     }

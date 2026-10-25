@@ -1,7 +1,8 @@
 package net.argeneo.ordering.entity;
 
-/** Cycle de vie d'une commande : brouillon (modifiable) puis validée (envoyée au fournisseur). */
+/** Cycle de vie : brouillon (modifiable) → validée (envoyée au fournisseur) → reçue (livraison pointée). */
 public enum PurchaseOrderStatus {
     BROUILLON,
-    VALIDEE
+    VALIDEE,
+    RECUE
 }

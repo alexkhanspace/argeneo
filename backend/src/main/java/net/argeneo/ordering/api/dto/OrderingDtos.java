@@ -49,6 +49,8 @@ public final class OrderingDtos {
             String color,
             boolean showPrices,
             boolean active,
+            boolean deliveryDateChoice,
+            String deliveryDays,
             Instant updatedAt,
             List<SheetLine> lines) {
     }
@@ -75,6 +77,9 @@ public final class OrderingDtos {
             @Size(max = 9) String color,
             Boolean showPrices,
             Boolean active,
+            Boolean deliveryDateChoice,
+            @jakarta.validation.constraints.Pattern(regexp = "^$|^[1-7](,[1-7]){0,6}$",
+                    message = "Jours de livraison invalides") String deliveryDays,
             @NotNull @Valid List<SheetLineRequest> lines) {
     }
 
@@ -113,7 +118,10 @@ public final class OrderingDtos {
             int lineCount,
             BigDecimal totalAmount,
             String createdByName,
-            Instant createdAt) {
+            Instant createdAt,
+            /** Livraison attendue : date demandée, sinon prochain jour de livraison du fournisseur. */
+            LocalDate expectedDate,
+            Instant receivedAt) {
     }
 
     public record OrderResponse(
@@ -130,6 +138,8 @@ public final class OrderingDtos {
             String createdByName,
             Instant createdAt,
             Instant validatedAt,
+            Instant receivedAt,
+            LocalDate expectedDate,
             BigDecimal totalAmount,
             List<OrderLine> lines) {
     }

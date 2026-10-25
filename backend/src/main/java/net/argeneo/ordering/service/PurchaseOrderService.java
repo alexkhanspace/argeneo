@@ -66,11 +66,13 @@ public class PurchaseOrderService {
                 ? repository.findTop200ByOrderByOrderDateDescIdDesc()
                 : repository.findTop200ByEtablissementIdInOrderByOrderDateDescIdDesc(myOrderingEtablissements());
         Map<Long, String> names = etablissementNames();
+        Map<Long, String> deliveryDays = sheetService.deliveryDaysById();
         return orders.stream().map(o -> new OrderSummary(o.getId(), o.getSheetId(), o.getSheetName(),
                 o.getSupplierName(), o.getEtablissementId(), names.get(o.getEtablissementId()),
                 o.getOrderDate(), o.getDeliveryDate(), o.getStatus(),
                 (int) o.getLines().stream().filter(l -> l.getQuantity().signum() > 0).count(),
-                total(o), o.getCreatedByName(), o.getCreatedAt())).toList();
+                total(o), o.getCreatedByName(), o.getCreatedAt(),
+                expectedDate(o, deliveryDays.get(o.getSheetId())), o.getReceivedAt())).toList();
     }
 
     @Transactional(readOnly = true)
@@ -99,13 +101,13 @@ public class PurchaseOrderService {
         PurchaseOrder order = require(id);
         checkCanOrder(order.getEtablissementId());
         checkCanOrder(request.etablissementId());
-        if (order.getStatus() == PurchaseOrderStatus.VALIDEE && !isPatron()) {
+        if (order.getStatus() != PurchaseOrderStatus.BROUILLON && !isPatron()) {
             throw new ConflictException("Commande déjà validée : seul le patron peut la modifier.");
         }
         PurchaseOrderStatus before = order.getStatus();
         apply(order, request);
         PurchaseOrder saved = repository.save(order);
-        audit.record(before != PurchaseOrderStatus.VALIDEE && saved.getStatus() == PurchaseOrderStatus.VALIDEE
+        audit.record(before == PurchaseOrderStatus.BROUILLON && saved.getStatus() == PurchaseOrderStatus.VALIDEE
                 ? "ORDER_VALIDATE" : "ORDER_UPDATE", "PURCHASE_ORDER", saved.getId(), describe(saved));
         return toResponse(saved);
     }
@@ -116,8 +118,24 @@ public class PurchaseOrderService {
         PurchaseOrder order = require(id);
         order.setStatus(PurchaseOrderStatus.BROUILLON);
         order.setValidatedAt(null);
+        order.setReceivedAt(null);
         PurchaseOrder saved = repository.save(order);
         audit.record("ORDER_REOPEN", "PURCHASE_ORDER", saved.getId(), describe(saved));
+        return toResponse(saved);
+    }
+
+    /** Pointe la livraison d'une commande validée (received = false : annule le pointage). */
+    @Transactional
+    public OrderResponse receive(Long id, boolean received) {
+        PurchaseOrder order = require(id);
+        checkCanOrder(order.getEtablissementId());
+        if (order.getStatus() == PurchaseOrderStatus.BROUILLON) {
+            throw new ConflictException("Commande non validée : rien à réceptionner.");
+        }
+        order.setStatus(received ? PurchaseOrderStatus.RECUE : PurchaseOrderStatus.VALIDEE);
+        order.setReceivedAt(received ? Instant.now() : null);
+        PurchaseOrder saved = repository.save(order);
+        audit.record(received ? "ORDER_RECEIVE" : "ORDER_UNRECEIVE", "PURCHASE_ORDER", saved.getId(), describe(saved));
         return toResponse(saved);
     }
 
@@ -125,7 +143,7 @@ public class PurchaseOrderService {
     public void delete(Long id) {
         PurchaseOrder order = require(id);
         checkCanOrder(order.getEtablissementId());
-        if (order.getStatus() == PurchaseOrderStatus.VALIDEE && !isPatron()) {
+        if (order.getStatus() != PurchaseOrderStatus.BROUILLON && !isPatron()) {
             throw new ConflictException("Commande déjà validée : seul le patron peut la supprimer.");
         }
         repository.delete(order);
@@ -182,7 +200,7 @@ public class PurchaseOrderService {
             if (lines.isEmpty()) {
                 throw new ConflictException("Commande vide : saisissez au moins une quantité.");
             }
-            if (order.getStatus() != PurchaseOrderStatus.VALIDEE) {
+            if (order.getStatus() == PurchaseOrderStatus.BROUILLON) {
                 order.setStatus(PurchaseOrderStatus.VALIDEE);
                 order.setValidatedAt(Instant.now());
             }
@@ -198,7 +216,43 @@ public class PurchaseOrderService {
                 : etablissementRepository.findById(o.getEtablissementId()).map(Etablissement::getName).orElse(null);
         return new OrderResponse(o.getId(), o.getSheetId(), o.getSheetName(), o.getSupplierName(),
                 o.getEtablissementId(), etabName, o.getOrderDate(), o.getDeliveryDate(), o.getStatus(),
-                o.getNotes(), o.getCreatedByName(), o.getCreatedAt(), o.getValidatedAt(), total(o), lines);
+                o.getNotes(), o.getCreatedByName(), o.getCreatedAt(), o.getValidatedAt(), o.getReceivedAt(),
+                expectedDate(o, o.getSheetId() == null ? null : sheetService.deliveryDaysById().get(o.getSheetId())),
+                total(o), lines);
+    }
+
+    /**
+     * Date de livraison attendue : celle demandée à la commande, sinon le premier jour habituel de
+     * livraison du fournisseur strictement après la validation (ou la date de commande).
+     */
+    static LocalDate expectedDate(PurchaseOrder o, String deliveryDays) {
+        if (o.getDeliveryDate() != null) {
+            return o.getDeliveryDate();
+        }
+        if (deliveryDays == null || deliveryDays.isBlank()) {
+            return null;
+        }
+        java.util.Set<Integer> days = new java.util.HashSet<>();
+        for (String d : deliveryDays.split(",")) {
+            try {
+                days.add(Integer.parseInt(d.trim()));
+            } catch (NumberFormatException ignored) {
+                // valeur invalide : ignorée
+            }
+        }
+        if (days.isEmpty()) {
+            return null;
+        }
+        LocalDate from = o.getValidatedAt() != null
+                ? o.getValidatedAt().atZone(java.time.ZoneId.of("Europe/Paris")).toLocalDate()
+                : o.getOrderDate();
+        for (int i = 1; i <= 7; i++) {
+            LocalDate d = from.plusDays(i);
+            if (days.contains(d.getDayOfWeek().getValue())) {
+                return d;
+            }
+        }
+        return null;
     }
 
     /**

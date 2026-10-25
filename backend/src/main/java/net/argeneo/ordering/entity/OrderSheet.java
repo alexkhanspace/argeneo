@@ -61,6 +61,14 @@ public class OrderSheet {
     @Column(nullable = false)
     private boolean active = true;
 
+    /** true : la date de livraison se choisit à la commande (ex. farine) ; sinon jour fixe. */
+    @Column(name = "delivery_date_choice", nullable = false)
+    private boolean deliveryDateChoice = false;
+
+    /** Jours habituels de livraison, ISO (1 = lundi … 7 = dimanche), ex. « 2,5 ». */
+    @Column(name = "delivery_days", length = 20)
+    private String deliveryDays;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
 

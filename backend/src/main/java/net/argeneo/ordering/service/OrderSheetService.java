@@ -173,6 +173,10 @@ public class OrderSheetService {
         if (r.active() != null) {
             sheet.setActive(r.active());
         }
+        if (r.deliveryDateChoice() != null) {
+            sheet.setDeliveryDateChoice(r.deliveryDateChoice());
+        }
+        sheet.setDeliveryDays(blankToNull(r.deliveryDays()));
         // Lignes : on remplace la liste en réutilisant les entités par id, pour garder les ids
         // (référencés par les commandes en cours) même si l'ordre change.
         java.util.Map<Long, OrderSheetLine> existing = new java.util.HashMap<>();
@@ -195,6 +199,14 @@ public class OrderSheetService {
         }
     }
 
+    /** Jours de livraison par cadencier (pour calculer les réceptions attendues). */
+    @Transactional(readOnly = true)
+    public java.util.Map<Long, String> deliveryDaysById() {
+        java.util.Map<Long, String> map = new java.util.HashMap<>();
+        repository.findAll().forEach(s -> map.put(s.getId(), s.getDeliveryDays()));
+        return map;
+    }
+
     OrderSheet require(Long id) {
         return repository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Cadencier introuvable : " + id));
@@ -208,7 +220,7 @@ public class OrderSheetService {
                 .toList();
         return new SheetResponse(s.getId(), s.getName(), s.getSupplierName(), s.getSupplierEmail(),
                 s.getSupplierPhone(), s.getNotes(), s.getColor(), s.isShowPrices(), s.isActive(),
-                s.getUpdatedAt(), lines);
+                s.isDeliveryDateChoice(), s.getDeliveryDays(), s.getUpdatedAt(), lines);
     }
 
     private static JsonNode readJson(String raw) {

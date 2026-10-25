@@ -60,6 +60,13 @@ public class PurchaseOrderController {
         return service.reopen(id);
     }
 
+    /** Pointe la réception (true) ou l'annule (false). */
+    @PostMapping("/{id}/receive")
+    public OrderResponse receive(@PathVariable Long id,
+                                 @org.springframework.web.bind.annotation.RequestParam(defaultValue = "true") boolean received) {
+        return service.receive(id, received);
+    }
+
     @DeleteMapping("/{id}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void delete(@PathVariable Long id) {

@@ -17,12 +17,23 @@ import {
   TableRow,
   TextField,
   Typography,
+  useMediaQuery,
 } from '@mui/material'
+import { useTheme } from '@mui/material/styles'
 import AddIcon from '@mui/icons-material/Add'
 import TabletIcon from '@mui/icons-material/TabletMac'
+import TruckIcon from '@mui/icons-material/LocalShipping'
 import { errorMessage } from '../../api/client'
 import { listMyEtablissements } from '../../api/daily'
-import { listOrders, listSheets, ORDER_PERMISSION, type OrderSummary, type SheetSummary } from '../../api/ordering'
+import {
+  listOrders,
+  listSheets,
+  ORDER_PERMISSION,
+  STATUS_COLOR,
+  STATUS_LABEL,
+  type OrderSummary,
+  type SheetSummary,
+} from '../../api/ordering'
 import type { MyEtablissement } from '../../api/types'
 import { useAuth } from '../../auth/AuthContext'
 import { isPatron } from '../../auth/roles'
@@ -38,6 +49,7 @@ export function OrdersPage() {
   const { me } = useAuth()
   const patron = me ? isPatron(me) : false
   const navigate = useNavigate()
+  const phone = useMediaQuery(useTheme().breakpoints.down('sm'))
   const [orders, setOrders] = useState<OrderSummary[] | null>(null)
   const [sheets, setSheets] = useState<SheetSummary[]>([])
   const [etabs, setEtabs] = useState<MyEtablissement[]>([])
@@ -80,7 +92,10 @@ export function OrdersPage() {
       <PageHeader
         title="Commandes fournisseurs"
         action={
-          <Stack direction="row" spacing={1}>
+          <Stack direction="row" sx={{ gap: 1, flexWrap: 'wrap' }}>
+            <Button variant="outlined" startIcon={<TruckIcon />} component={Link} to="/commandes/receptions">
+              Réceptions
+            </Button>
             <Button variant="outlined" startIcon={<TabletIcon />} component={Link} to="/tablette/commandes">
               Mode tablette
             </Button>
@@ -144,6 +159,30 @@ export function OrdersPage() {
             <Typography color="text.secondary">Chargement…</Typography>
           ) : visible.length === 0 ? (
             <Typography color="text.secondary">Aucune commande.</Typography>
+          ) : phone ? (
+            // Téléphone : une carte par commande plutôt qu'un tableau à faire défiler.
+            <Stack spacing={1}>
+              {visible.map((o) => (
+                <Card key={o.id} variant="outlined" onClick={() => navigate(`/commandes/${o.id}`)} sx={{ cursor: 'pointer' }}>
+                  <CardContent sx={{ py: 1.25, '&:last-child': { pb: 1.25 } }}>
+                    <Stack direction="row" sx={{ justifyContent: 'space-between', gap: 1, alignItems: 'center' }}>
+                      <Typography sx={{ fontWeight: 700 }} noWrap>
+                        {o.sheetName}
+                      </Typography>
+                      <Chip size="small" label={STATUS_LABEL[o.status]} color={STATUS_COLOR[o.status]} />
+                    </Stack>
+                    <Typography variant="body2" color="text.secondary">
+                      {fmtDate(o.orderDate)} · {o.etablissementName ?? '—'} · {o.lineCount} produit{o.lineCount > 1 ? 's' : ''}
+                    </Typography>
+                    {(o.deliveryDate ?? o.expectedDate) && (
+                      <Typography variant="caption" color="text.secondary">
+                        Livraison {fmtDate(o.deliveryDate ?? o.expectedDate)}
+                      </Typography>
+                    )}
+                  </CardContent>
+                </Card>
+              ))}
+            </Stack>
           ) : (
             <TableContainer sx={{ overflowX: 'auto' }}>
               <Table size="small" sx={{ minWidth: 640 }}>
@@ -165,16 +204,12 @@ export function OrdersPage() {
                       <TableCell>{fmtDate(o.orderDate)}</TableCell>
                       <TableCell sx={{ fontWeight: 600 }}>{o.sheetName}</TableCell>
                       <TableCell>{o.etablissementName ?? '—'}</TableCell>
-                      <TableCell>{fmtDate(o.deliveryDate)}</TableCell>
+                      <TableCell>{fmtDate(o.deliveryDate ?? o.expectedDate)}</TableCell>
                       <TableCell align="right">{o.lineCount}</TableCell>
                       <TableCell align="right">{eur(o.totalAmount)}</TableCell>
                       <TableCell>{o.createdByName ?? '—'}</TableCell>
                       <TableCell>
-                        <Chip
-                          size="small"
-                          label={o.status === 'VALIDEE' ? 'Validée' : 'Brouillon'}
-                          color={o.status === 'VALIDEE' ? 'success' : 'default'}
-                        />
+                        <Chip size="small" label={STATUS_LABEL[o.status]} color={STATUS_COLOR[o.status]} />
                       </TableCell>
                     </TableRow>
                   ))}

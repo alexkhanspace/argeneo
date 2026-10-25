@@ -33,6 +33,7 @@ import { CadencierEditorPage } from './pages/commandes/CadencierEditorPage'
 import { OrdersPage } from './pages/commandes/OrdersPage'
 import { OrderEntryPage } from './pages/commandes/OrderEntryPage'
 import { TabletOrderPage } from './pages/commandes/TabletOrderPage'
+import { ReceptionsPage } from './pages/commandes/ReceptionsPage'
 
 function HomeRedirect() {
   const { me, loading } = useAuth()
@@ -272,6 +273,14 @@ export default function App() {
           element={
             <ProtectedRoute allow={canOrder}>
               <OrderEntryPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/commandes/receptions"
+          element={
+            <ProtectedRoute allow={canOrder}>
+              <ReceptionsPage />
             </ProtectedRoute>
           }
         />

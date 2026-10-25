@@ -9,6 +9,7 @@ import {
   Chip,
   IconButton,
   Paper,
+  Stack,
   Toolbar,
   Typography,
 } from '@mui/material'
@@ -193,9 +194,14 @@ export function TabletOrderPage() {
                 )
               })}
             </Box>
-            <Button size="large" sx={{ mt: 3, fontSize: 16 }} onClick={() => navigate('/commandes')}>
-              Voir l'historique des commandes
-            </Button>
+            <Stack direction={{ xs: 'column', sm: 'row' }} sx={{ mt: 3, gap: 1 }}>
+              <Button size="large" variant="outlined" sx={{ fontSize: 16 }} onClick={() => navigate('/commandes/receptions')}>
+                Réceptions à venir
+              </Button>
+              <Button size="large" sx={{ fontSize: 16 }} onClick={() => navigate('/commandes')}>
+                Historique des commandes
+              </Button>
+            </Stack>
           </>
         ) : (
           <OrderEntry

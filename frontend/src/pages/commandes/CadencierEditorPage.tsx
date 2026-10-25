@@ -13,6 +13,8 @@ import {
   Stack,
   Switch,
   TextField,
+  ToggleButton,
+  ToggleButtonGroup,
   Tooltip,
   Typography,
 } from '@mui/material'
@@ -95,6 +97,8 @@ export function CadencierEditorPage() {
   const [color, setColor] = useState('#1f4e79')
   const [showPrices, setShowPrices] = useState(true)
   const [active, setActive] = useState(true)
+  const [deliveryDateChoice, setDeliveryDateChoice] = useState(false)
+  const [deliveryDays, setDeliveryDays] = useState<number[]>([])
   const [lines, setLines] = useState<EditLine[]>([])
 
   const [busy, setBusy] = useState(false)
@@ -118,6 +122,8 @@ export function CadencierEditorPage() {
         setColor(s.color ?? '#1f4e79')
         setShowPrices(s.showPrices)
         setActive(s.active)
+        setDeliveryDateChoice(s.deliveryDateChoice)
+        setDeliveryDays((s.deliveryDays ?? '').split(',').map(Number).filter((d) => d >= 1 && d <= 7))
         setLines(s.lines.map(toEdit))
         setLoaded(true)
       })
@@ -182,6 +188,8 @@ export function CadencierEditorPage() {
     color,
     showPrices,
     active,
+    deliveryDateChoice,
+    deliveryDays: deliveryDays.length ? [...deliveryDays].sort().join(',') : null,
     lines: lines
       .filter((l) => l.designation.trim())
       .map((l) => ({
@@ -316,8 +324,33 @@ export function CadencierEditorPage() {
               control={<Switch checked={active} onChange={(e) => setActive(e.target.checked)} />}
               label={active ? 'Actif (proposé à la commande)' : 'Archivé'}
             />
+            {/* Livraison : jours fixes du fournisseur (calcul des réceptions à venir) ou date au choix. */}
+            <Box sx={{ gridColumn: { md: '1 / -1' } }}>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
+                Jours de livraison habituels
+              </Typography>
+              <Stack direction={{ xs: 'column', sm: 'row' }} sx={{ gap: 1.5, alignItems: { sm: 'center' } }}>
+                <ToggleButtonGroup
+                  size="small"
+                  value={deliveryDays}
+                  onChange={(_, v: number[]) => setDeliveryDays(v)}
+                  aria-label="Jours de livraison"
+                  sx={{ flexWrap: 'wrap' }}
+                >
+                  {['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'].map((d, i) => (
+                    <ToggleButton key={d} value={i + 1} sx={{ px: 1.25 }}>
+                      {d}
+                    </ToggleButton>
+                  ))}
+                </ToggleButtonGroup>
+                <FormControlLabel
+                  control={<Switch checked={deliveryDateChoice} onChange={(e) => setDeliveryDateChoice(e.target.checked)} />}
+                  label="Date de livraison à choisir à la commande"
+                />
+              </Stack>
+            </Box>
             <TextField
-              label="Notes (jours de livraison, minimum de commande…)"
+              label="Notes (minimum de commande, horaires…)"
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               multiline
