@@ -39,6 +39,7 @@ export function PurchaseOrderPdf({ data, mode }: { data: PoPdfData; mode: 'order
   const c = /^#[0-9a-fA-F]{6}$/.test(data.color) ? data.color : '#1f4e79'
   const hasCode = data.lines.some((l) => l.code)
   const hasAlt = data.lines.some((l) => l.designationAlt)
+  const blank = mode === 'blank'
   const hasPrice = data.showPrices && data.lines.some((l) => l.unitPrice != null)
   const s = StyleSheet.create({
     page: { padding: 28, paddingBottom: 40, fontSize: 9, fontFamily: 'Helvetica', color: '#222' },
@@ -94,19 +95,26 @@ export function PurchaseOrderPdf({ data, mode }: { data: PoPdfData; mode: 'order
           {data.logoUrl ? <Image style={s.logo} src={data.logoUrl} /> : null}
         </View>
 
+        {/* Commande : seules les infos renseignées ; cadencier vierge : champs à remplir à la main. */}
         <View style={s.meta}>
-          <Text style={s.metaItem}>
-            <Text style={s.metaLabel}>Lieu : </Text>
-            <Text style={s.metaVal}>{data.etablissementName ?? '________________'}</Text>
-          </Text>
-          <Text style={s.metaItem}>
-            <Text style={s.metaLabel}>Date : </Text>
-            <Text style={s.metaVal}>{date(data.orderDate) || '____/____/______'}</Text>
-          </Text>
-          <Text style={s.metaItem}>
-            <Text style={s.metaLabel}>Livraison : </Text>
-            <Text style={s.metaVal}>{date(data.deliveryDate) || '____/____/______'}</Text>
-          </Text>
+          {data.etablissementName || blank ? (
+            <Text style={s.metaItem}>
+              <Text style={s.metaLabel}>Lieu : </Text>
+              <Text style={s.metaVal}>{data.etablissementName ?? '________________'}</Text>
+            </Text>
+          ) : null}
+          {data.orderDate || blank ? (
+            <Text style={s.metaItem}>
+              <Text style={s.metaLabel}>Date : </Text>
+              <Text style={s.metaVal}>{date(data.orderDate) || '____/____/______'}</Text>
+            </Text>
+          ) : null}
+          {data.deliveryDate || blank ? (
+            <Text style={s.metaItem}>
+              <Text style={s.metaLabel}>Livraison : </Text>
+              <Text style={s.metaVal}>{date(data.deliveryDate) || '____/____/______'}</Text>
+            </Text>
+          ) : null}
           {data.createdByName ? (
             <Text style={s.metaItem}>
               <Text style={s.metaLabel}>Par : </Text>
@@ -155,7 +163,6 @@ export function PurchaseOrderPdf({ data, mode }: { data: PoPdfData; mode: 'order
         {mode === 'order' ? (
           <View style={s.sign}>
             <Text>{data.lines.length} produit(s) commandé(s)</Text>
-            <Text>Signature : ______________________</Text>
           </View>
         ) : null}
 

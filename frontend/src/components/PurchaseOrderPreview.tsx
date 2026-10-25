@@ -28,10 +28,12 @@ export function PurchaseOrderPreview({ data }: { data: Omit<PoPdfData, 'logoUrl'
           <Box component="span" sx={{ color: '#777' }}>Date : </Box>
           <b>{fmtDate(data.orderDate)}</b>
         </span>
-        <span>
-          <Box component="span" sx={{ color: '#777' }}>Livraison : </Box>
-          <b>{fmtDate(data.deliveryDate)}</b>
-        </span>
+        {data.deliveryDate && (
+          <span>
+            <Box component="span" sx={{ color: '#777' }}>Livraison : </Box>
+            <b>{fmtDate(data.deliveryDate)}</b>
+          </span>
+        )}
         {data.createdByName && (
           <span>
             <Box component="span" sx={{ color: '#777' }}>Par : </Box>
