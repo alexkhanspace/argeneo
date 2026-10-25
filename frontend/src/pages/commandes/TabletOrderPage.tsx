@@ -37,10 +37,13 @@ import { OrderEntry } from './OrderEntry'
 function Tile({ title, subtitle, badge, onClick }: { title: string; subtitle?: string; badge?: string; onClick: () => void }) {
   return (
     <Paper variant="outlined" sx={{ overflow: 'hidden', borderWidth: 2 }}>
-      <ButtonBase onClick={onClick} sx={{ width: '100%', minHeight: 120, p: 2.5, display: 'block', textAlign: 'left' }}>
-        <Typography sx={{ fontSize: 24, fontWeight: 800, lineHeight: 1.2 }}>{title}</Typography>
+      <ButtonBase
+        onClick={onClick}
+        sx={{ width: '100%', minHeight: { xs: 84, sm: 120 }, p: { xs: 2, sm: 2.5 }, display: 'block', textAlign: 'left' }}
+      >
+        <Typography sx={{ fontSize: { xs: 19, sm: 24 }, fontWeight: 800, lineHeight: 1.2 }}>{title}</Typography>
         {subtitle && (
-          <Typography color="text.secondary" sx={{ fontSize: 16, mt: 0.5 }}>
+          <Typography color="text.secondary" sx={{ fontSize: { xs: 14, sm: 16 }, mt: 0.5 }}>
             {subtitle}
           </Typography>
         )}
@@ -117,11 +120,11 @@ export function TabletOrderPage() {
   return (
     <Box sx={{ minHeight: '100vh', bgcolor: 'background.default' }}>
       <AppBar position="sticky" color="default" elevation={1}>
-        <Toolbar sx={{ gap: 1, minHeight: 72 }}>
-          <IconButton onClick={back} aria-label="Retour" sx={{ width: 56, height: 56 }}>
+        <Toolbar sx={{ gap: { xs: 0.5, sm: 1 }, minHeight: { xs: 56, sm: 72 }, px: { xs: 1, sm: 2 } }}>
+          <IconButton onClick={back} aria-label="Retour" sx={{ width: { xs: 44, sm: 56 }, height: { xs: 44, sm: 56 } }}>
             <ArrowBackIcon fontSize="large" />
           </IconButton>
-          <Typography sx={{ flex: 1, fontSize: 24, fontWeight: 800 }} noWrap>
+          <Typography sx={{ flex: 1, minWidth: 0, fontSize: { xs: 17, sm: 24 }, fontWeight: 800 }} noWrap>
             {title}
           </Typography>
           {me && (
@@ -129,10 +132,19 @@ export function TabletOrderPage() {
               {me.fullName}
             </Typography>
           )}
-          <IconButton onClick={toggleFullscreen} aria-label="Plein écran" sx={{ width: 56, height: 56 }}>
+          {/* Plein écran : inutile (et souvent absent) sur téléphone. */}
+          <IconButton
+            onClick={toggleFullscreen}
+            aria-label="Plein écran"
+            sx={{ width: 56, height: 56, display: { xs: 'none', sm: 'inline-flex' } }}
+          >
             {fullscreen ? <FullscreenExitIcon fontSize="large" /> : <FullscreenIcon fontSize="large" />}
           </IconButton>
-          <IconButton onClick={() => navigate('/')} aria-label="Quitter le mode tablette" sx={{ width: 56, height: 56 }}>
+          <IconButton
+            onClick={() => navigate('/')}
+            aria-label="Quitter le mode tablette"
+            sx={{ width: { xs: 44, sm: 56 }, height: { xs: 44, sm: 56 } }}
+          >
             <HomeIcon fontSize="large" />
           </IconButton>
         </Toolbar>
@@ -152,7 +164,7 @@ export function TabletOrderPage() {
           </Alert>
         ) : !etab ? (
           <>
-            <Typography sx={{ fontSize: 22, fontWeight: 700, mb: 2 }}>Pour quel établissement ?</Typography>
+            <Typography sx={{ fontSize: { xs: 18, sm: 22 }, fontWeight: 700, mb: 2 }}>Pour quel établissement ?</Typography>
             <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr', md: '1fr 1fr 1fr' }, gap: 2 }}>
               {etabs.map((e) => (
                 <Tile key={e.id} title={e.name} subtitle={e.address ?? undefined} onClick={() => setEtab(e)} />
@@ -161,7 +173,7 @@ export function TabletOrderPage() {
           </>
         ) : !entry ? (
           <>
-            <Typography sx={{ fontSize: 22, fontWeight: 700, mb: 2 }}>Quel fournisseur ?</Typography>
+            <Typography sx={{ fontSize: { xs: 18, sm: 22 }, fontWeight: 700, mb: 2 }}>Quel fournisseur ?</Typography>
             {sheets.length === 0 && (
               <Alert severity="info" sx={{ fontSize: 16 }}>
                 Aucun cadencier : le patron doit d'abord créer ou importer les cadenciers fournisseurs.

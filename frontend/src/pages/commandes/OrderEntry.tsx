@@ -12,7 +12,9 @@ import {
   Switch,
   TextField,
   Typography,
+  useMediaQuery,
 } from '@mui/material'
+import { useTheme } from '@mui/material/styles'
 import AddIcon from '@mui/icons-material/Add'
 import CheckCircleIcon from '@mui/icons-material/CheckCircle'
 import DeleteIcon from '@mui/icons-material/Delete'
@@ -96,6 +98,9 @@ export function OrderEntry({
   const [pdf, setPdf] = useState<Blob | null>(null)
 
   const { me } = useAuth()
+  // Téléphone : même en mode tablette, on garde des tailles compactes (écran ~375 px).
+  const phone = useMediaQuery(useTheme().breakpoints.down('sm'))
+  const big = tablet && !phone
   const validated = current?.status === 'VALIDEE'
   const orderedCount =
     sheet.lines.filter((l) => l.id != null && num(qty[l.id]) > 0).length +
@@ -268,10 +273,14 @@ export function OrderEntry({
     }
   }
 
-  const btn = tablet ? 56 : 36
+  const btn = big ? 56 : phone ? 44 : 36
+  // Boutons de la barre du bas sur téléphone : icône au-dessus du libellé (4 colonnes étroites).
+  const barBtnSx = phone
+    ? ({ flexDirection: 'column', gap: 0.25, py: 0.75, minWidth: 0, fontSize: 12, '& .MuiButton-startIcon': { m: 0 } } as const)
+    : undefined
 
   return (
-    <Box sx={{ pb: tablet ? 14 : 10 }}>
+    <Box sx={{ pb: phone ? 20 : big ? 14 : 10 }}>
       {/* En-tête : livraison, notes, filtres. */}
       {/* Grille (et non Stack) : le thème met les champs en fullWidth, ce qui écrasait les remarques. */}
       <Box
@@ -303,7 +312,7 @@ export function OrderEntry({
             startIcon={busy === 'last' ? <CircularProgress size={16} /> : <HistoryIcon />}
             onClick={() => void fillFromLast()}
             disabled={busy != null}
-            size={tablet ? 'large' : 'medium'}
+            size={big ? 'large' : 'medium'}
             sx={{ whiteSpace: 'nowrap' }}
           >
             Reprendre la dernière commande
@@ -354,7 +363,7 @@ export function OrderEntry({
             <Fragment key={id}>
               {showSection && (
                 <Typography
-                  sx={{ px: 2, py: 0.75, bgcolor: 'action.hover', fontWeight: 700, fontSize: tablet ? 16 : 14 }}
+                  sx={{ px: 2, py: 0.75, bgcolor: 'action.hover', fontWeight: 700, fontSize: big ? 16 : 14 }}
                 >
                   {l.section}
                 </Typography>
@@ -363,7 +372,7 @@ export function OrderEntry({
                 direction="row"
                 sx={{
                   px: { xs: 1, sm: 2 },
-                  py: tablet ? 1.25 : 0.75,
+                  py: big ? 1.25 : 0.75,
                   gap: 1,
                   alignItems: 'center',
                   borderBottom: '1px solid',
@@ -372,10 +381,10 @@ export function OrderEntry({
                 }}
               >
                 <Box sx={{ flex: 1, minWidth: 0 }}>
-                  <Typography sx={{ fontWeight: q > 0 ? 700 : 500, fontSize: tablet ? 18 : 15, lineHeight: 1.3 }}>
+                  <Typography sx={{ fontWeight: q > 0 ? 700 : 500, fontSize: big ? 18 : 15, lineHeight: 1.3 }}>
                     {l.designation}
                   </Typography>
-                  <Typography variant="body2" color="text.secondary" sx={{ fontSize: tablet ? 14 : 12.5 }}>
+                  <Typography variant="body2" color="text.secondary" sx={{ fontSize: big ? 14 : 12.5 }}>
                     {[
                       l.code,
                       l.designationAlt,
@@ -395,7 +404,7 @@ export function OrderEntry({
                     disabled={validated || q === 0}
                     sx={{ width: btn, height: btn, border: '1px solid', borderColor: 'divider' }}
                   >
-                    <RemoveIcon fontSize={tablet ? 'medium' : 'small'} />
+                    <RemoveIcon fontSize={big ? 'medium' : 'small'} />
                   </IconButton>
                   <TextField
                     value={qty[id] ?? ''}
@@ -403,15 +412,15 @@ export function OrderEntry({
                     onFocus={(e) => e.target.select()}
                     disabled={validated}
                     placeholder="0"
-                    size={tablet ? 'medium' : 'small'}
+                    size={big ? 'medium' : 'small'}
                     slotProps={{
                       htmlInput: {
                         inputMode: 'decimal',
-                        style: { textAlign: 'center', fontWeight: 700, fontSize: tablet ? 20 : 15 },
+                        style: { textAlign: 'center', fontWeight: 700, fontSize: big ? 20 : 15 },
                         'aria-label': `Quantité ${l.designation}`,
                       },
                     }}
-                    sx={{ width: tablet ? 84 : 64 }}
+                    sx={{ width: big ? 84 : phone ? 56 : 64 }}
                   />
                   <IconButton
                     aria-label="Plus"
@@ -420,7 +429,7 @@ export function OrderEntry({
                     disabled={validated}
                     sx={{ width: btn, height: btn, border: '1px solid', borderColor: 'primary.main' }}
                   >
-                    <AddIcon fontSize={tablet ? 'medium' : 'small'} />
+                    <AddIcon fontSize={big ? 'medium' : 'small'} />
                   </IconButton>
                 </Stack>
               </Stack>
@@ -435,20 +444,27 @@ export function OrderEntry({
       </Typography>
       <Stack spacing={1}>
         {free.map((f) => (
-          <Stack key={f.key} direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+          <Box
+            key={f.key}
+            sx={{
+              display: 'grid',
+              gridTemplateColumns: { xs: '1fr 72px 40px', sm: '2fr 1fr 90px 40px' },
+              gap: 1,
+              alignItems: 'center',
+            }}
+          >
             <TextField
               placeholder="Produit"
               value={f.designation}
               onChange={(e) => setFree((fs) => fs.map((x) => (x.key === f.key ? { ...x, designation: e.target.value } : x)))}
               disabled={validated}
-              sx={{ flex: 2 }}
+              sx={{ gridColumn: { xs: '1 / -1', sm: 'auto' } }}
             />
             <TextField
               placeholder="Conditionnement"
               value={f.packaging}
               onChange={(e) => setFree((fs) => fs.map((x) => (x.key === f.key ? { ...x, packaging: e.target.value } : x)))}
               disabled={validated}
-              sx={{ flex: 1 }}
             />
             <TextField
               placeholder="Qté"
@@ -458,14 +474,13 @@ export function OrderEntry({
               }
               disabled={validated}
               slotProps={{ htmlInput: { inputMode: 'decimal', style: { textAlign: 'center' } } }}
-              sx={{ width: tablet ? 90 : 72 }}
             />
             {!validated && (
               <IconButton color="error" onClick={() => setFree((fs) => fs.filter((x) => x.key !== f.key))}>
                 <DeleteIcon />
               </IconButton>
             )}
-          </Stack>
+          </Box>
         ))}
       </Stack>
       {!validated && (
@@ -473,7 +488,7 @@ export function OrderEntry({
           startIcon={<AddIcon />}
           onClick={() => setFree((fs) => [...fs, { key: freeKey++, designation: '', packaging: '', quantity: '' }])}
           sx={{ mt: 1 }}
-          size={tablet ? 'large' : 'medium'}
+          size={big ? 'large' : 'medium'}
         >
           Ajouter un produit
         </Button>
@@ -491,20 +506,22 @@ export function OrderEntry({
           right: 0,
           bottom: 0,
           zIndex: 10,
-          px: 2,
-          py: tablet ? 1.5 : 1,
-          display: 'flex',
+          px: phone ? 1 : 2,
+          pt: big ? 1.5 : 1,
+          pb: `calc(${big ? 12 : 8}px + env(safe-area-inset-bottom))`,
+          // Téléphone : résumé sur une ligne puis boutons en grille égale ; sinon tout en ligne.
+          display: 'grid',
+          gridTemplateColumns: phone ? `repeat(${validated ? 2 : 4}, 1fr)` : `1fr repeat(${validated ? 2 : 4}, auto)`,
           alignItems: 'center',
           gap: 1,
-          flexWrap: 'wrap',
         }}
       >
-        <Box sx={{ flex: 1, minWidth: 140 }}>
-          <Typography sx={{ fontWeight: 700, fontSize: tablet ? 18 : 15 }}>
+        <Box sx={{ minWidth: 0, gridColumn: phone ? '1 / -1' : 'auto' }}>
+          <Typography sx={{ fontWeight: 700, fontSize: big ? 18 : 15 }}>
             {orderedCount} produit{orderedCount > 1 ? 's' : ''} commandé{orderedCount > 1 ? 's' : ''}
           </Typography>
           <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
-            <Typography variant="body2" color="text.secondary">
+            <Typography variant="body2" color="text.secondary" noWrap sx={{ minWidth: 0 }}>
               {sheet.name} · {etablissement.name}
             </Typography>
             {current && <Chip size="small" label={validated ? 'Validée' : 'Brouillon'} color={validated ? 'success' : 'default'} />}
@@ -517,28 +534,31 @@ export function OrderEntry({
         </Box>
         <Button
           variant="outlined"
-          size={tablet ? 'large' : 'medium'}
+          size={big ? 'large' : 'medium'}
+          sx={barBtnSx}
           startIcon={busy === 'pdf' ? <CircularProgress size={16} /> : <PictureAsPdfIcon />}
           onClick={() => void showPdf()}
           disabled={busy != null || orderedCount === 0}
         >
-          Bon PDF
+          {phone ? 'PDF' : 'Bon PDF'}
         </Button>
         <Button
           // Une fois validée, l'envoi devient l'action principale : un appui ouvre le mail prêt à partir.
           variant={validated ? 'contained' : 'outlined'}
-          size={tablet ? 'large' : 'medium'}
+          size={big ? 'large' : 'medium'}
+          sx={barBtnSx}
           startIcon={<EmailIcon />}
           href={mailtoHref()}
           disabled={orderedCount === 0}
         >
-          Envoyer par e-mail
+          {phone ? 'E-mail' : 'Envoyer par e-mail'}
         </Button>
         {!validated && (
           <>
             <Button
               variant="outlined"
-              size={tablet ? 'large' : 'medium'}
+              size={big ? 'large' : 'medium'}
+          sx={barBtnSx}
               startIcon={busy === 'save' ? <CircularProgress size={16} /> : <SaveIcon />}
               onClick={() => void save(false)}
               disabled={busy != null}
@@ -548,7 +568,8 @@ export function OrderEntry({
             <Button
               variant="contained"
               color="success"
-              size={tablet ? 'large' : 'medium'}
+              size={big ? 'large' : 'medium'}
+          sx={barBtnSx}
               startIcon={busy === 'validate' ? <CircularProgress size={16} color="inherit" /> : <CheckCircleIcon />}
               onClick={() => {
                 if (window.confirm(`Valider la commande ${sheet.name} (${orderedCount} produit(s)) ?`)) void save(true)
