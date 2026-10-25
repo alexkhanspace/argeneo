@@ -1,7 +1,7 @@
 import { getArticle, getCost, getRecipe, listRawMaterials, photoUrl } from '../api/costing'
 import { getProfile, getSettings, logoUrl } from '../api/billing'
 
-async function toDataUrl(url: string | null): Promise<string | null> {
+export async function toDataUrl(url: string | null): Promise<string | null> {
   if (!url) return null
   try {
     const res = await fetch(url)

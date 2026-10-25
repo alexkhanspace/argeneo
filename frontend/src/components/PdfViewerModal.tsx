@@ -14,6 +14,7 @@ import {
 import CloseIcon from '@mui/icons-material/Close'
 import DownloadIcon from '@mui/icons-material/Download'
 import OpenInNewIcon from '@mui/icons-material/OpenInNew'
+import ShareIcon from '@mui/icons-material/Share'
 import { theme } from '../theme'
 
 /**
@@ -57,6 +58,15 @@ export function PdfViewerModal({
     a.remove()
   }
 
+  // Partage natif (tablette / mobile : e-mail, WhatsApp…) quand le navigateur sait partager un fichier.
+  const shareFile = blob ? new File([blob], filename, { type: 'application/pdf' }) : null
+  const canShare =
+    shareFile != null && typeof navigator.canShare === 'function' && navigator.canShare({ files: [shareFile] })
+  const share = () => {
+    if (!shareFile) return
+    navigator.share({ files: [shareFile], title }).catch(() => undefined) // annulation : rien à faire
+  }
+
   return (
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="md" fullScreen={fullScreen}>
       <DialogTitle component="div" sx={{ pr: 7 }}>
@@ -94,6 +104,11 @@ export function PdfViewerModal({
           >
             Ouvrir
           </Button>
+          {canShare && (
+            <Button startIcon={<ShareIcon />} onClick={share}>
+              Partager
+            </Button>
+          )}
           <Button variant="contained" startIcon={<DownloadIcon />} onClick={download} disabled={!url}>
             Télécharger
           </Button>

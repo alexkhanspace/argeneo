@@ -1,7 +1,7 @@
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { useAuth } from './auth/AuthContext'
 import { ProtectedRoute } from './auth/ProtectedRoute'
-import { homePathFor, isAdmin, isPatron } from './auth/roles'
+import { canOrder, homePathFor, isAdmin, isPatron } from './auth/roles'
 import { Layout } from './components/Layout'
 import { AccountPage } from './pages/AccountPage'
 import { DashboardPage } from './pages/DashboardPage'
@@ -28,6 +28,11 @@ import { MaterialsPage } from './pages/patron/MaterialsPage'
 import { SaisieRapidePage } from './pages/patron/SaisieRapidePage'
 import { RecipeEditorPage } from './pages/patron/RecipeEditorPage'
 import { MenuEditorPage } from './pages/patron/MenuEditorPage'
+import { CadenciersPage } from './pages/commandes/CadenciersPage'
+import { CadencierEditorPage } from './pages/commandes/CadencierEditorPage'
+import { OrdersPage } from './pages/commandes/OrdersPage'
+import { OrderEntryPage } from './pages/commandes/OrderEntryPage'
+import { TabletOrderPage } from './pages/commandes/TabletOrderPage'
 
 function HomeRedirect() {
   const { me, loading } = useAuth()
@@ -40,6 +45,16 @@ export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
+
+      {/* Mode tablette : plein écran, sans le menu de l'application. */}
+      <Route
+        path="/tablette/commandes"
+        element={
+          <ProtectedRoute allow={canOrder}>
+            <TabletOrderPage />
+          </ProtectedRoute>
+        }
+      />
 
       <Route
         element={
@@ -241,6 +256,46 @@ export default function App() {
           element={
             <ProtectedRoute allow={isPatron}>
               <BillingSettingsPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/commandes"
+          element={
+            <ProtectedRoute allow={canOrder}>
+              <OrdersPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/commandes/saisie"
+          element={
+            <ProtectedRoute allow={canOrder}>
+              <OrderEntryPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/commandes/cadenciers"
+          element={
+            <ProtectedRoute allow={isPatron}>
+              <CadenciersPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/commandes/cadenciers/:id"
+          element={
+            <ProtectedRoute allow={isPatron}>
+              <CadencierEditorPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/commandes/:id"
+          element={
+            <ProtectedRoute allow={canOrder}>
+              <OrderEntryPage />
             </ProtectedRoute>
           }
         />

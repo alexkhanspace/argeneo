@@ -32,7 +32,7 @@ import SettingsIcon from '@mui/icons-material/Settings'
 import SupportAgentIcon from '@mui/icons-material/SupportAgent'
 import type { Me } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
-import { isAdmin, isEmploye, isPatron } from '../auth/roles'
+import { canOrder, isAdmin, isEmploye, isPatron } from '../auth/roles'
 import { useSettings } from '../settings/SettingsContext'
 import { BrandLogo } from './BrandLogo'
 import { HeaderSettingsContext, type HeaderSettings } from './HeaderSettings'
@@ -106,6 +106,15 @@ function navGroupsFor(me: Me): NavGroup[] {
         ],
       },
       {
+        label: 'Commandes',
+        icon: 'fa-solid fa-truck',
+        items: [
+          { to: '/commandes', label: 'Commandes', icon: 'fa-solid fa-cart-shopping' },
+          { to: '/commandes/cadenciers', label: 'Cadenciers', icon: 'fa-solid fa-list-check' },
+          { to: '/tablette/commandes', label: 'Mode tablette', icon: 'fa-solid fa-tablet-screen-button' },
+        ],
+      },
+      {
         label: 'Commercial',
         icon: 'fa-solid fa-handshake',
         items: [
@@ -124,8 +133,16 @@ function navGroupsFor(me: Me): NavGroup[] {
       },
     ]
   }
-  if (isEmploye(me))
-    return [{ label: '', items: [{ to: '/saisie', label: 'Calendrier', icon: 'fa-solid fa-calendar-days' }] }]
+  if (isEmploye(me)) {
+    const items: NavItem[] = [{ to: '/saisie', label: 'Calendrier', icon: 'fa-solid fa-calendar-days' }]
+    if (canOrder(me)) {
+      items.push(
+        { to: '/commandes', label: 'Commandes', icon: 'fa-solid fa-cart-shopping' },
+        { to: '/tablette/commandes', label: 'Mode tablette', icon: 'fa-solid fa-tablet-screen-button' },
+      )
+    }
+    return [{ label: '', items }]
+  }
   return []
 }
 
