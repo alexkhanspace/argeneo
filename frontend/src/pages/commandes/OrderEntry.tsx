@@ -16,6 +16,7 @@ import {
 import AddIcon from '@mui/icons-material/Add'
 import CheckCircleIcon from '@mui/icons-material/CheckCircle'
 import DeleteIcon from '@mui/icons-material/Delete'
+import EmailIcon from '@mui/icons-material/Email'
 import HistoryIcon from '@mui/icons-material/History'
 import PictureAsPdfIcon from '@mui/icons-material/PictureAsPdf'
 import RemoveIcon from '@mui/icons-material/Remove'
@@ -29,6 +30,7 @@ import {
   type OrderSheet,
   type PurchaseOrder,
 } from '../../api/ordering'
+import { useAuth } from '../../auth/AuthContext'
 import { PdfViewerModal } from '../../components/PdfViewerModal'
 import { SearchField } from '../../components/SearchField'
 import { buildPurchaseOrderPdfBlob } from '../../pdf/buildPurchaseOrderPdf'
@@ -93,6 +95,7 @@ export function OrderEntry({
   const [current, setCurrent] = useState<PurchaseOrder | null>(order)
   const [pdf, setPdf] = useState<Blob | null>(null)
 
+  const { me } = useAuth()
   const validated = current?.status === 'VALIDEE'
   const orderedCount =
     sheet.lines.filter((l) => l.id != null && num(qty[l.id]) > 0).length +
@@ -181,6 +184,45 @@ export function OrderEntry({
     } finally {
       setBusy(null)
     }
+  }
+
+  /**
+   * Lien mailto : ouvre l'app mail de l'appareil avec destinataire, objet et commande déjà
+   * rédigés (le mailto ne permet pas de joindre le PDF : la commande est écrite en texte).
+   */
+  const mailtoHref = () => {
+    const fmtDate = (iso: string) => new Date(iso + 'T00:00:00').toLocaleDateString('fr-FR')
+    const lines = [
+      ...sheet.lines
+        .filter((l) => l.id != null && num(qty[l.id]) > 0)
+        .map((l) => {
+          const details = [l.code ? `réf. ${l.code}` : null, l.packaging].filter(Boolean).join(' – ')
+          return `- ${fmtQty(num(qty[l.id as number]))} × ${l.designation}${details ? ` (${details})` : ''}`
+        }),
+      ...free
+        .filter((f) => f.designation.trim() && num(f.quantity) > 0)
+        .map((f) => `- ${fmtQty(num(f.quantity))} × ${f.designation.trim()}${f.packaging.trim() ? ` (${f.packaging.trim()})` : ''}`),
+    ]
+    const subject = `Commande ${etablissement.name} — ${fmtDate(current?.orderDate ?? today())}`
+    const body = [
+      'Bonjour,',
+      '',
+      `Voici notre commande pour ${etablissement.name} :`,
+      '',
+      ...lines,
+      '',
+      deliveryDate ? `Livraison souhaitée : ${fmtDate(deliveryDate)}` : null,
+      notes.trim() ? `Remarques : ${notes.trim()}` : null,
+      deliveryDate || notes.trim() ? '' : null,
+      'Merci de nous confirmer la bonne réception.',
+      '',
+      'Cordialement,',
+      me?.fullName ?? '',
+      etablissement.name,
+    ]
+      .filter((x) => x !== null)
+      .join('\n')
+    return `mailto:${encodeURIComponent(sheet.supplierEmail ?? '')}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`
   }
 
   const showPdf = async () => {
@@ -274,6 +316,7 @@ export function OrderEntry({
         <Alert severity="success" icon={<CheckCircleIcon />} sx={{ mb: 2 }}>
           Commande validée{current?.validatedAt ? ` le ${new Date(current.validatedAt).toLocaleString('fr-FR')}` : ''}.
           Seul le patron peut la rouvrir pour la modifier.
+          {!sheet.supplierEmail && ' Pas d’e-mail fournisseur dans le cadencier : saisissez le destinataire dans le mail.'}
         </Alert>
       )}
 
@@ -480,6 +523,16 @@ export function OrderEntry({
           disabled={busy != null || orderedCount === 0}
         >
           Bon PDF
+        </Button>
+        <Button
+          // Une fois validée, l'envoi devient l'action principale : un appui ouvre le mail prêt à partir.
+          variant={validated ? 'contained' : 'outlined'}
+          size={tablet ? 'large' : 'medium'}
+          startIcon={<EmailIcon />}
+          href={mailtoHref()}
+          disabled={orderedCount === 0}
+        >
+          Envoyer par e-mail
         </Button>
         {!validated && (
           <>
