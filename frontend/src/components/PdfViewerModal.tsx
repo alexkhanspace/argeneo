@@ -14,6 +14,7 @@ import {
 import CloseIcon from '@mui/icons-material/Close'
 import DownloadIcon from '@mui/icons-material/Download'
 import OpenInNewIcon from '@mui/icons-material/OpenInNew'
+import ContentCopyIcon from '@mui/icons-material/ContentCopy'
 import ShareIcon from '@mui/icons-material/Share'
 import { theme } from '../theme'
 
@@ -28,17 +29,22 @@ export function PdfViewerModal({
   blob,
   filename,
   title = 'Document PDF',
+  copyOnShare,
 }: {
   open: boolean
   onClose: () => void
   blob: Blob | null
   filename: string
   title?: string
+  /** Texte copié dans le presse-papier au partage (ex. e-mail du fournisseur, à coller en destinataire). */
+  copyOnShare?: string | null
 }) {
   const fullScreen = useMediaQuery(theme.breakpoints.down('sm'))
   const [url, setUrl] = useState<string | null>(null)
+  const [copied, setCopied] = useState(false)
 
   useEffect(() => {
+    setCopied(false)
     if (!blob) {
       setUrl(null)
       return
@@ -62,8 +68,15 @@ export function PdfViewerModal({
   const shareFile = blob ? new File([blob], filename, { type: 'application/pdf' }) : null
   const canShare =
     shareFile != null && typeof navigator.canShare === 'function' && navigator.canShare({ files: [shareFile] })
+  // Copie sans attendre la promesse : sur iOS, un await avant navigator.share ferait perdre
+  // « l'activation utilisateur » et le partage serait refusé.
+  const copy = () => {
+    if (!copyOnShare || !navigator.clipboard) return
+    navigator.clipboard.writeText(copyOnShare).then(() => setCopied(true)).catch(() => undefined)
+  }
   const share = () => {
     if (!shareFile) return
+    copy()
     navigator.share({ files: [shareFile], title }).catch(() => undefined) // annulation : rien à faire
   }
 
@@ -95,7 +108,12 @@ export function PdfViewerModal({
           </Box>
         )}
       </DialogContent>
-      <DialogActions>
+      <DialogActions sx={{ flexWrap: 'wrap', gap: 1 }}>
+        {copied && copyOnShare && (
+          <Typography variant="body2" color="success.main" sx={{ flex: 1, minWidth: 200 }}>
+            E-mail copié : {copyOnShare} — collez-le comme destinataire.
+          </Typography>
+        )}
         <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap' }}>
           <Button
             startIcon={<OpenInNewIcon />}
@@ -107,6 +125,11 @@ export function PdfViewerModal({
           {canShare && (
             <Button startIcon={<ShareIcon />} onClick={share}>
               Partager
+            </Button>
+          )}
+          {!canShare && copyOnShare && (
+            <Button startIcon={<ContentCopyIcon />} onClick={copy}>
+              Copier l'e-mail
             </Button>
           )}
           <Button variant="contained" startIcon={<DownloadIcon />} onClick={download} disabled={!url}>

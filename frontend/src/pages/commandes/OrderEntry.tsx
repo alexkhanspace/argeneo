@@ -588,6 +588,7 @@ export function OrderEntry({
         blob={pdf}
         filename={`commande-${sheet.name}-${current?.orderDate ?? today()}.pdf`}
         title={`Bon de commande ${sheet.name}`}
+        copyOnShare={sheet.supplierEmail}
       />
     </Box>
   )
