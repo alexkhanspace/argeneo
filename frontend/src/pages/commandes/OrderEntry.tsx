@@ -158,6 +158,8 @@ export function OrderEntry({
       setCurrent(res)
       setInfo(validate ? 'Commande validée.' : 'Brouillon enregistré.')
       onSaved(res, validate)
+      // Validée : on affiche aussitôt le bon de commande, prêt à « Partager » au fournisseur.
+      if (validate) await showPdf()
     } catch (e) {
       setError(errorMessage(e))
     } finally {
@@ -533,7 +535,8 @@ export function OrderEntry({
           </Stack>
         </Box>
         <Button
-          variant="outlined"
+          // Une fois validée, le bon (et son « Partager ») devient l'action principale.
+          variant={validated ? 'contained' : 'outlined'}
           size={big ? 'large' : 'medium'}
           sx={barBtnSx}
           startIcon={busy === 'pdf' ? <CircularProgress size={16} /> : <PictureAsPdfIcon />}
@@ -543,8 +546,7 @@ export function OrderEntry({
           {phone ? 'PDF' : 'Bon PDF'}
         </Button>
         <Button
-          // Une fois validée, l'envoi devient l'action principale : un appui ouvre le mail prêt à partir.
-          variant={validated ? 'contained' : 'outlined'}
+          variant="outlined"
           size={big ? 'large' : 'medium'}
           sx={barBtnSx}
           startIcon={<EmailIcon />}
