@@ -34,8 +34,10 @@ import {
 } from '../../api/ordering'
 import { useAuth } from '../../auth/AuthContext'
 import { PdfViewerModal } from '../../components/PdfViewerModal'
+import { PurchaseOrderPreview } from '../../components/PurchaseOrderPreview'
 import { SearchField } from '../../components/SearchField'
 import { buildPurchaseOrderPdfBlob } from '../../pdf/buildPurchaseOrderPdf'
+import type { PoPdfData } from '../../pdf/PurchaseOrderPdf'
 import { matchesQuery } from '../../utils/text'
 
 /** Ligne libre : produit absent du cadencier (ex. « Kesko mousseline »). */
@@ -96,6 +98,8 @@ export function OrderEntry({
   const [info, setInfo] = useState<string | null>(null)
   const [current, setCurrent] = useState<PurchaseOrder | null>(order)
   const [pdf, setPdf] = useState<Blob | null>(null)
+  // Données du dernier bon généré : aperçu HTML sur téléphone.
+  const [pdfData, setPdfData] = useState<Omit<PoPdfData, 'logoUrl'> | null>(null)
 
   const { me } = useAuth()
   // Téléphone : même en mode tablette, on garde des tailles compactes (écran ~375 px).
@@ -251,23 +255,20 @@ export function OrderEntry({
             quantity: num(f.quantity),
           })),
       ]
-      setPdf(
-        await buildPurchaseOrderPdfBlob(
-          {
-            title: sheet.name,
-            supplierName: sheet.supplierName,
-            etablissementName: etablissement.name,
-            orderDate: current?.orderDate ?? today(),
-            deliveryDate: deliveryDate || null,
-            notes: notes.trim() || null,
-            createdByName: current?.createdByName ?? null,
-            color: sheet.color ?? '#1f4e79',
-            showPrices: sheet.showPrices,
-            lines,
-          },
-          'order',
-        ),
-      )
+      const data = {
+        title: sheet.name,
+        supplierName: sheet.supplierName,
+        etablissementName: etablissement.name,
+        orderDate: current?.orderDate ?? today(),
+        deliveryDate: deliveryDate || null,
+        notes: notes.trim() || null,
+        createdByName: current?.createdByName ?? me?.fullName ?? null,
+        color: sheet.color ?? '#1f4e79',
+        showPrices: sheet.showPrices,
+        lines,
+      }
+      setPdfData(data)
+      setPdf(await buildPurchaseOrderPdfBlob(data, 'order'))
     } catch (e) {
       setError(errorMessage(e))
     } finally {
@@ -591,6 +592,7 @@ export function OrderEntry({
         filename={`commande-${sheet.name}-${current?.orderDate ?? today()}.pdf`}
         title={`Bon de commande ${sheet.name}`}
         copyOnShare={sheet.supplierEmail}
+        mobilePreview={pdfData ? <PurchaseOrderPreview data={pdfData} /> : undefined}
       />
     </Box>
   )

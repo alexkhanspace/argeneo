@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import {
   Box,
   Button,
@@ -30,6 +30,7 @@ export function PdfViewerModal({
   filename,
   title = 'Document PDF',
   copyOnShare,
+  mobilePreview,
 }: {
   open: boolean
   onClose: () => void
@@ -38,6 +39,11 @@ export function PdfViewerModal({
   title?: string
   /** Texte copié dans le presse-papier au partage (ex. e-mail du fournisseur, à coller en destinataire). */
   copyOnShare?: string | null
+  /**
+   * Aperçu HTML affiché sur téléphone à la place de l'iframe PDF (iOS rend le PDF en taille A4
+   * qui déborde, Android ne l'affiche souvent pas). Le fichier partagé reste le PDF.
+   */
+  mobilePreview?: ReactNode
 }) {
   const fullScreen = useMediaQuery(theme.breakpoints.down('sm'))
   const [url, setUrl] = useState<string | null>(null)
@@ -95,7 +101,9 @@ export function PdfViewerModal({
         </IconButton>
       </DialogTitle>
       <DialogContent dividers sx={{ p: 0, height: fullScreen ? 'auto' : '72vh' }}>
-        {url ? (
+        {fullScreen && mobilePreview ? (
+          mobilePreview
+        ) : url ? (
           <Box
             component="iframe"
             src={url}
@@ -114,7 +122,16 @@ export function PdfViewerModal({
             E-mail copié : {copyOnShare} — collez-le comme destinataire.
           </Typography>
         )}
-        <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap' }}>
+        <Stack
+          direction="row"
+          spacing={1}
+          // Téléphone : boutons de même largeur sur une ligne (la marge de Stack est neutralisée).
+          sx={
+            fullScreen
+              ? { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', width: '100%', '& > *': { m: '0 !important' }, gap: 1 }
+              : { flexWrap: 'wrap' }
+          }
+        >
           <Button
             startIcon={<OpenInNewIcon />}
             onClick={() => url && window.open(url, '_blank')}
@@ -123,7 +140,7 @@ export function PdfViewerModal({
             Ouvrir
           </Button>
           {canShare && (
-            <Button startIcon={<ShareIcon />} onClick={share}>
+            <Button startIcon={<ShareIcon />} onClick={share} variant={fullScreen ? 'contained' : 'text'}>
               Partager
             </Button>
           )}
@@ -132,7 +149,12 @@ export function PdfViewerModal({
               Copier l'e-mail
             </Button>
           )}
-          <Button variant="contained" startIcon={<DownloadIcon />} onClick={download} disabled={!url}>
+          <Button
+            variant={fullScreen && canShare ? 'outlined' : 'contained'}
+            startIcon={<DownloadIcon />}
+            onClick={download}
+            disabled={!url}
+          >
             Télécharger
           </Button>
         </Stack>
