@@ -1,4 +1,5 @@
 import { Box, Stack, Typography } from '@mui/material'
+import { buyerDisplayName } from '../api/ordering'
 import type { PoPdfData } from '../pdf/PurchaseOrderPdf'
 
 const fmtDate = (iso: string | null) => (iso ? new Date(iso + 'T00:00:00').toLocaleDateString('fr-FR') : '—')
@@ -19,11 +20,24 @@ export function PurchaseOrderPreview({ data }: { data: Omit<PoPdfData, 'logoUrl'
         {data.supplierName && <Typography sx={{ fontSize: 13, opacity: 0.9 }}>Fournisseur : {data.supplierName}</Typography>}
       </Box>
 
+      {data.buyer && (
+        <Box sx={{ mx: 2, mt: 1.5, p: 1.25, borderLeft: `4px solid ${color}`, bgcolor: '#f4f6f9', fontSize: 13, lineHeight: 1.45 }}>
+          <Box sx={{ fontSize: 11, color: '#777', fontWeight: 700, letterSpacing: 1 }}>COMMANDÉ PAR</Box>
+          <Box sx={{ fontSize: 17, fontWeight: 800 }}>{buyerDisplayName(data.buyer)}</Box>
+          {data.buyer.address && <Box>{data.buyer.address}</Box>}
+          {(data.buyer.phone || data.buyer.email) && (
+            <Box>{[data.buyer.phone ? `Tél. ${data.buyer.phone}` : null, data.buyer.email].filter(Boolean).join(' · ')}</Box>
+          )}
+        </Box>
+      )}
+
       <Box sx={{ px: 2, py: 1.25, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 0.5, fontSize: 13 }}>
-        <span>
-          <Box component="span" sx={{ color: '#777' }}>Lieu : </Box>
-          <b>{data.etablissementName ?? '—'}</b>
-        </span>
+        {!data.buyer && (
+          <span>
+            <Box component="span" sx={{ color: '#777' }}>Lieu : </Box>
+            <b>{data.etablissementName ?? '—'}</b>
+          </span>
+        )}
         <span>
           <Box component="span" sx={{ color: '#777' }}>Date : </Box>
           <b>{fmtDate(data.orderDate)}</b>

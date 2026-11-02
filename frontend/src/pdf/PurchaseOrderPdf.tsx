@@ -1,4 +1,5 @@
 import { Document, Page, View, Text, Image, StyleSheet } from '@react-pdf/renderer'
+import { buyerDisplayName, type BuyerInfo } from '../api/ordering'
 
 export interface PoPdfLine {
   section: string | null
@@ -23,6 +24,8 @@ export interface PoPdfData {
   color: string
   showPrices: boolean
   logoUrl: string | null
+  /** Établissement qui commande (bloc « Commandé par » bien visible en tête du bon). */
+  buyer?: BuyerInfo | null
   lines: PoPdfLine[]
 }
 
@@ -80,6 +83,16 @@ export function PurchaseOrderPdf({ data, mode }: { data: PoPdfData; mode: 'order
     cQty: { width: 58, textAlign: 'center', backgroundColor: '#fff8e1' },
     qtyStrong: { fontFamily: 'Helvetica-Bold', fontSize: 10 },
     notes: { marginTop: 10, padding: 6, borderWidth: 0.5, borderColor: '#ccc' },
+    buyer: {
+      marginTop: 10,
+      padding: 8,
+      borderLeftWidth: 4,
+      borderLeftColor: c,
+      backgroundColor: '#f4f6f9',
+      lineHeight: 1.4,
+    },
+    buyerLabel: { fontSize: 7.5, color: '#777', letterSpacing: 1, fontFamily: 'Helvetica-Bold' },
+    buyerName: { fontSize: 14, fontFamily: 'Helvetica-Bold', marginTop: 1 },
     sign: { marginTop: 14, flexDirection: 'row', justifyContent: 'space-between', color: '#555' },
     footer: { position: 'absolute', bottom: 16, left: 28, right: 28, fontSize: 7, color: '#aaa', textAlign: 'center' },
   })
@@ -95,9 +108,21 @@ export function PurchaseOrderPdf({ data, mode }: { data: PoPdfData; mode: 'order
           {data.logoUrl ? <Image style={s.logo} src={data.logoUrl} /> : null}
         </View>
 
+        {data.buyer ? (
+          <View style={s.buyer}>
+            <Text style={s.buyerLabel}>COMMANDÉ PAR</Text>
+            <Text style={s.buyerName}>{buyerDisplayName(data.buyer)}</Text>
+            {data.buyer.address ? <Text>{data.buyer.address}</Text> : null}
+            {data.buyer.phone || data.buyer.email ? (
+              <Text>{[data.buyer.phone ? `Tél. ${data.buyer.phone}` : null, data.buyer.email].filter(Boolean).join('  ·  ')}</Text>
+            ) : null}
+            {data.buyer.siret ? <Text style={s.metaLabel}>SIRET {data.buyer.siret}</Text> : null}
+          </View>
+        ) : null}
+
         {/* Commande : seules les infos renseignées ; cadencier vierge : champs à remplir à la main. */}
         <View style={s.meta}>
-          {data.etablissementName || blank ? (
+          {(data.etablissementName && !data.buyer) || blank ? (
             <Text style={s.metaItem}>
               <Text style={s.metaLabel}>Lieu : </Text>
               <Text style={s.metaVal}>{data.etablissementName ?? '________________'}</Text>

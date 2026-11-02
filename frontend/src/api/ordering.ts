@@ -176,6 +176,28 @@ export async function reopenOrder(id: number): Promise<PurchaseOrder> {
   return data
 }
 
+/** Coordonnées de l'établissement commandeur (en-tête « Commandé par » du bon). */
+export interface BuyerInfo {
+  companyName: string | null
+  etablissementName: string
+  address: string | null
+  phone: string | null
+  email: string | null
+  siret: string | null
+}
+
+export async function getBuyer(etablissementId: number): Promise<BuyerInfo> {
+  const { data } = await api.get<BuyerInfo>('/purchase-orders/buyer', { params: { etablissementId } })
+  return data
+}
+
+/** « MB Riclin — Gare » (sans répéter l'enseigne si le nom de l'établissement la contient déjà). */
+export function buyerDisplayName(b: Pick<BuyerInfo, 'companyName' | 'etablissementName'>): string {
+  const company = b.companyName?.trim()
+  if (!company || b.etablissementName.toLowerCase().includes(company.toLowerCase())) return b.etablissementName
+  return `${company} — ${b.etablissementName}`
+}
+
 /** Pointe la réception d'une commande (ou l'annule avec received = false). */
 export async function receiveOrder(id: number, received = true): Promise<PurchaseOrder> {
   const { data } = await api.post<PurchaseOrder>(`/purchase-orders/${id}/receive`, null, { params: { received } })

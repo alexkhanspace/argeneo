@@ -2,6 +2,7 @@ package net.argeneo.ordering.api;
 
 import jakarta.validation.Valid;
 import java.util.List;
+import net.argeneo.ordering.api.dto.OrderingDtos.BuyerInfo;
 import net.argeneo.ordering.api.dto.OrderingDtos.OrderRequest;
 import net.argeneo.ordering.api.dto.OrderingDtos.OrderResponse;
 import net.argeneo.ordering.api.dto.OrderingDtos.OrderSummary;
@@ -36,6 +37,12 @@ public class PurchaseOrderController {
     @GetMapping
     public List<OrderSummary> list() {
         return service.list();
+    }
+
+    /** Coordonnées de l'établissement commandeur, pour l'en-tête du bon de commande. */
+    @GetMapping("/buyer")
+    public BuyerInfo buyer(@org.springframework.web.bind.annotation.RequestParam Long etablissementId) {
+        return service.buyer(etablissementId);
     }
 
     @GetMapping("/{id}")

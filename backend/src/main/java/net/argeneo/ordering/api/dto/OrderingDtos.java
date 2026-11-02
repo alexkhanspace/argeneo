@@ -144,6 +144,19 @@ public final class OrderingDtos {
             List<OrderLine> lines) {
     }
 
+    /**
+     * Coordonnées de l'acheteur pour l'en-tête du bon de commande : enseigne (tenant),
+     * établissement commandeur, adresse et contacts (profil de facturation de l'établissement).
+     */
+    public record BuyerInfo(
+            String companyName,
+            String etablissementName,
+            String address,
+            String phone,
+            String email,
+            String siret) {
+    }
+
     /** Quantité saisie : sur un produit du cadencier (sheetLineId) ou sur une ligne libre (designation). */
     public record OrderLineRequest(
             Long sheetLineId,

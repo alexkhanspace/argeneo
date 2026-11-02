@@ -11,8 +11,13 @@ import java.util.stream.Collectors;
 import net.argeneo.audit.AuditService;
 import net.argeneo.common.error.ConflictException;
 import net.argeneo.common.error.ResourceNotFoundException;
+import net.argeneo.billing.domain.BillingProfile;
+import net.argeneo.billing.repository.BillingProfileRepository;
 import net.argeneo.iam.domain.Etablissement;
+import net.argeneo.iam.domain.Tenant;
 import net.argeneo.iam.repository.EtablissementRepository;
+import net.argeneo.iam.repository.TenantRepository;
+import net.argeneo.ordering.api.dto.OrderingDtos.BuyerInfo;
 import net.argeneo.ordering.api.dto.OrderingDtos.OrderLine;
 import net.argeneo.ordering.api.dto.OrderingDtos.OrderLineRequest;
 import net.argeneo.ordering.api.dto.OrderingDtos.OrderRequest;
@@ -47,17 +52,43 @@ public class PurchaseOrderService {
     private final EtablissementRepository etablissementRepository;
     private final EtablissementAccess access;
     private final AuditService audit;
+    private final TenantRepository tenantRepository;
+    private final BillingProfileRepository profileRepository;
 
     public PurchaseOrderService(PurchaseOrderRepository repository,
                                 OrderSheetService sheetService,
                                 EtablissementRepository etablissementRepository,
                                 EtablissementAccess access,
-                                AuditService audit) {
+                                AuditService audit,
+                                TenantRepository tenantRepository,
+                                BillingProfileRepository profileRepository) {
         this.repository = repository;
         this.sheetService = sheetService;
         this.etablissementRepository = etablissementRepository;
         this.access = access;
         this.audit = audit;
+        this.tenantRepository = tenantRepository;
+        this.profileRepository = profileRepository;
+    }
+
+    /**
+     * En-tête « Commandé par » du bon : nom de l'enseigne, établissement, adresse, téléphone,
+     * e-mail et SIRET (profil de facturation de l'établissement, s'il existe).
+     */
+    @Transactional(readOnly = true)
+    public BuyerInfo buyer(Long etablissementId) {
+        checkCanOrder(etablissementId);
+        // Recherche filtrée par tenant : un établissement d'un autre tenant est introuvable.
+        Etablissement etab = etablissementRepository.findById(etablissementId)
+                .orElseThrow(() -> new ResourceNotFoundException("Établissement introuvable : " + etablissementId));
+        Long tenantId = CurrentUser.require().tenantId();
+        String company = tenantId == null ? null
+                : tenantRepository.findById(tenantId).map(Tenant::getName).orElse(null);
+        BillingProfile profile = profileRepository.findByEtablissementId(etablissementId).orElse(null);
+        return new BuyerInfo(company, etab.getName(), etab.getAddress(),
+                profile != null ? profile.getContactPhone() : null,
+                profile != null ? profile.getContactEmail() : null,
+                profile != null ? profile.getSiret() : null);
     }
 
     @Transactional(readOnly = true)

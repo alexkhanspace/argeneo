@@ -1,4 +1,4 @@
-import { Fragment, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useState } from 'react'
 import {
   Alert,
   Box,
@@ -27,11 +27,14 @@ import { errorMessage } from '../../api/client'
 import {
   createOrder,
   deliveryDaysLabel,
+  buyerDisplayName,
+  getBuyer,
   getOrder,
   listOrders,
   STATUS_COLOR,
   STATUS_LABEL,
   updateOrder,
+  type BuyerInfo,
   type OrderSheet,
   type PurchaseOrder,
 } from '../../api/ordering'
@@ -103,6 +106,14 @@ export function OrderEntry({
   const [pdf, setPdf] = useState<Blob | null>(null)
   // Données du dernier bon généré : aperçu HTML sur téléphone.
   const [pdfData, setPdfData] = useState<Omit<PoPdfData, 'logoUrl'> | null>(null)
+  // Établissement commandeur (enseigne, adresse, contacts) pour l'en-tête du bon et le mail.
+  const [buyer, setBuyer] = useState<BuyerInfo | null>(null)
+  useEffect(() => {
+    getBuyer(etablissement.id)
+      .then(setBuyer)
+      .catch(() => undefined) // en-tête simplifié (nom de l'établissement) si indisponible
+  }, [etablissement.id])
+  const buyerName = buyer ? buyerDisplayName(buyer) : etablissement.name
 
   const { me } = useAuth()
   // Téléphone : même en mode tablette, on garde des tailles compactes (écran ~375 px).
@@ -222,11 +233,11 @@ export function OrderEntry({
         .filter((f) => f.designation.trim() && num(f.quantity) > 0)
         .map((f) => `- ${fmtQty(num(f.quantity))} × ${f.designation.trim()}${f.packaging.trim() ? ` (${f.packaging.trim()})` : ''}`),
     ]
-    const subject = `Commande ${etablissement.name} — ${fmtDate(current?.orderDate ?? today())}`
+    const subject = `Commande ${buyerName} — ${fmtDate(current?.orderDate ?? today())}`
     const body = [
       'Bonjour,',
       '',
-      `Voici notre commande pour ${etablissement.name} :`,
+      `Voici notre commande pour ${buyerName} :`,
       '',
       ...lines,
       '',
@@ -237,7 +248,9 @@ export function OrderEntry({
       '',
       'Cordialement,',
       me?.fullName ?? '',
-      etablissement.name,
+      buyerName,
+      buyer?.address ?? null,
+      buyer?.phone ? `Tél. ${buyer.phone}` : null,
     ]
       .filter((x) => x !== null)
       .join('\n')
@@ -271,6 +284,7 @@ export function OrderEntry({
         deliveryDate: deliveryDate || null,
         notes: notes.trim() || null,
         createdByName: current?.createdByName ?? me?.fullName ?? null,
+        buyer,
         color: sheet.color ?? '#1f4e79',
         showPrices: sheet.showPrices,
         lines,
