@@ -98,7 +98,8 @@ export function OrderEntry({
   const [deliveryDate, setDeliveryDate] = useState(order?.deliveryDate ?? '')
   const [notes, setNotes] = useState(order?.notes ?? '')
   const [search, setSearch] = useState('')
-  const [onlyOrdered, setOnlyOrdered] = useState(false)
+  // Commande passée (validée / reçue) : on n'affiche d'emblée que les produits commandés.
+  const [onlyOrdered, setOnlyOrdered] = useState(order != null && order.status !== 'BROUILLON')
   const [busy, setBusy] = useState<'save' | 'validate' | 'last' | 'pdf' | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [info, setInfo] = useState<string | null>(null)
@@ -179,6 +180,7 @@ export function OrderEntry({
       }
       const res = current ? await updateOrder(current.id, input) : await createOrder(input)
       setCurrent(res)
+      if (validate) setOnlyOrdered(true)
       setInfo(validate ? 'Commande validée.' : 'Brouillon enregistré.')
       onSaved(res, validate)
       // Validée : on affiche aussitôt le bon de commande, prêt à « Partager » au fournisseur.
