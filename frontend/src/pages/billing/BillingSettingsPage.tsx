@@ -5,6 +5,7 @@ import {
   Button,
   Card,
   CardContent,
+  MenuItem,
   Snackbar,
   Stack,
   TextField,
@@ -20,6 +21,8 @@ import {
   saveSettings,
   uploadBillingLogo,
 } from '../../api/billing'
+import { listMyEtablissements } from '../../api/daily'
+import type { MyEtablissement } from '../../api/types'
 import { PageHeader } from '../../components/PageHeader'
 
 /** États de formulaire : tous les champs en chaîne (coercition à l'enregistrement). */
@@ -80,9 +83,22 @@ export function BillingSettingsPage() {
   const [busy, setBusy] = useState(false)
   const [uploading, setUploading] = useState(false)
   const logoInputRef = useRef<HTMLInputElement>(null)
+  // Établissement dont on édite le profil (coordonnées reprises sur factures et bons de commande).
+  const [etabs, setEtabs] = useState<MyEtablissement[]>([])
+  const [etabId, setEtabId] = useState<number | undefined>(undefined)
 
   useEffect(() => {
-    getProfile()
+    listMyEtablissements()
+      .then((list) => {
+        setEtabs(list)
+        // Même défaut que le serveur : le premier par nom.
+        setEtabId((cur) => cur ?? list[0]?.id)
+      })
+      .catch(() => undefined)
+  }, [])
+
+  useEffect(() => {
+    getProfile(etabId)
       .then((p) => {
         setLogoFile(p.logoFile)
         setProfile({
@@ -100,7 +116,7 @@ export function BillingSettingsPage() {
         })
       })
       .catch((e) => setError(errorMessage(e)))
-    getSettings()
+    getSettings(etabId)
       .then((s) =>
         setSettings({
           legalMentions: s.legalMentions ?? '',
@@ -113,7 +129,7 @@ export function BillingSettingsPage() {
         }),
       )
       .catch((e) => setError(errorMessage(e)))
-  }, [])
+  }, [etabId])
 
   const setP = (key: keyof ProfileForm) => (e: { target: { value: string } }) =>
     setProfile((p) => ({ ...p, [key]: e.target.value }))
@@ -127,7 +143,7 @@ export function BillingSettingsPage() {
     setError(null)
     setUploading(true)
     try {
-      const updated = await uploadBillingLogo(file)
+      const updated = await uploadBillingLogo(file, etabId)
       setLogoFile(updated.logoFile)
     } catch (err) {
       setError(errorMessage(err))
@@ -152,7 +168,7 @@ export function BillingSettingsPage() {
         bic: profile.bic || null,
         contactEmail: profile.contactEmail || null,
         contactPhone: profile.contactPhone || null,
-      })
+      }, etabId)
       await saveSettings({
         legalMentions: settings.legalMentions || null,
         brandColor1: settings.brandColor1 || null,
@@ -162,7 +178,7 @@ export function BillingSettingsPage() {
           settings.paymentTermsDays === '' ? null : Number(settings.paymentTermsDays),
         latePenalty: settings.latePenalty || null,
         footer: settings.footer || null,
-      })
+      }, etabId)
       setSaved(true)
     } catch (err) {
       setError(errorMessage(err))
@@ -183,6 +199,23 @@ export function BillingSettingsPage() {
       />
 
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+
+      {etabs.length > 1 && (
+        <TextField
+          select
+          label="Établissement"
+          value={etabId != null ? String(etabId) : ''}
+          onChange={(e) => setEtabId(Number(e.target.value))}
+          helperText="Chaque établissement a ses propres coordonnées (factures, bons de commande)."
+          sx={{ mb: 3, maxWidth: 360 }}
+        >
+          {etabs.map((e) => (
+            <MenuItem key={e.id} value={String(e.id)}>
+              {e.name}
+            </MenuItem>
+          ))}
+        </TextField>
+      )}
 
       <Card sx={{ mb: 3 }}>
         <CardContent>

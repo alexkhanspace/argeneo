@@ -129,20 +129,22 @@ export async function deactivateClient(id: number): Promise<void> {
 }
 
 // --- Profil émetteur ---
-export async function getProfile(): Promise<BillingProfile> {
-  const { data } = await api.get<BillingProfile>('/billing/profile')
+// `etablissementId` optionnel : sans lui, le serveur prend le premier établissement (par nom).
+export async function getProfile(etablissementId?: number): Promise<BillingProfile> {
+  const { data } = await api.get<BillingProfile>('/billing/profile', { params: { etablissementId } })
   return data
 }
 
-export async function saveProfile(input: BillingProfileInput): Promise<BillingProfile> {
-  const { data } = await api.put<BillingProfile>('/billing/profile', input)
+export async function saveProfile(input: BillingProfileInput, etablissementId?: number): Promise<BillingProfile> {
+  const { data } = await api.put<BillingProfile>('/billing/profile', input, { params: { etablissementId } })
   return data
 }
 
 /** Upload du logo de l'émetteur (multipart). */
-export async function uploadBillingLogo(file: File): Promise<BillingProfile> {
+export async function uploadBillingLogo(file: File, etablissementId?: number): Promise<BillingProfile> {
   const form = new FormData()
   form.append('file', file)
+  if (etablissementId != null) form.append('etablissementId', String(etablissementId))
   const { data } = await api.post<BillingProfile>('/billing/profile/logo', form)
   return data
 }
@@ -159,13 +161,13 @@ export async function fetchDocumentPdf(id: number): Promise<Blob> {
 }
 
 // --- Paramètres & mentions ---
-export async function getSettings(): Promise<BillingSettings> {
-  const { data } = await api.get<BillingSettings>('/billing/settings')
+export async function getSettings(etablissementId?: number): Promise<BillingSettings> {
+  const { data } = await api.get<BillingSettings>('/billing/settings', { params: { etablissementId } })
   return data
 }
 
-export async function saveSettings(input: BillingSettingsInput): Promise<BillingSettings> {
-  const { data } = await api.put<BillingSettings>('/billing/settings', input)
+export async function saveSettings(input: BillingSettingsInput, etablissementId?: number): Promise<BillingSettings> {
+  const { data } = await api.put<BillingSettings>('/billing/settings', input, { params: { etablissementId } })
   return data
 }
 
