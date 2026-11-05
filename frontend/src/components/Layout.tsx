@@ -88,7 +88,7 @@ function navGroupsFor(me: Me): NavGroup[] {
         label: 'Pilotage',
         icon: 'fa-solid fa-compass',
         items: [
-          { to: '/dashboard', label: 'Tableau de bord', icon: 'fa-solid fa-gauge-high' },
+          { to: '/dashboard', label: 'TABLEAU DE BORD', icon: 'fa-solid fa-gauge-high' },
           { to: '/analytique', label: 'Analytique', icon: 'fa-solid fa-chart-line' },
           { to: '/saisie', label: 'Calendrier', icon: 'fa-solid fa-calendar-days' },
           { to: '/saisie-rapide', label: 'Saisie longue période', icon: 'fa-solid fa-pen-to-square' },

@@ -749,7 +749,7 @@ export function DashboardPage() {
 
   return (
     <>
-      <PageHeader title="Tableau de bord" />
+      <PageHeader title="TABLEAU DE BORD" />
 
       {error && (
         <Alert severity="error" sx={{ mb: 2 }}>
